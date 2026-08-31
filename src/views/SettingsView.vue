@@ -9,7 +9,7 @@ import {
   RefreshCw,
   Share2,
   Trash2,
-} from 'lucide-vue-next'
+} from '@lucide/vue'
 import { useLibraryStore } from '@/stores/library'
 import { useTheme, type ThemeMode } from '@/composables/useTheme'
 import { toast } from '@/composables/useToast'

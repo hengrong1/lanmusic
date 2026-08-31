@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { FolderOpen, Heart, LoaderCircle, Music, SearchX } from 'lucide-vue-next'
+import { FolderOpen, Heart, LoaderCircle, Music, SearchX } from '@lucide/vue'
 import { open as openFileDialog } from '@tauri-apps/plugin-dialog'
 import TrackTable from '@/components/TrackTable.vue'
 import EmptyState from '@/components/EmptyState.vue'

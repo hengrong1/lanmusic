@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { nextTick, ref } from 'vue'
-import { Disc3, Heart, History, Mic, Music, Plus, Settings, Wifi, X } from 'lucide-vue-next'
+import { Disc3, Heart, History, Mic, Music, Plus, Settings, Wifi, X } from '@lucide/vue'
 import { useLibraryStore } from '@/stores/library'
 import { useNav } from '@/composables/useNav'
 import { toast } from '@/composables/useToast'

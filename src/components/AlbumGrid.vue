@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Play } from 'lucide-vue-next'
+import { Play } from '@lucide/vue'
 import type { AlbumItem } from '@/types'
 import CoverImg from '@/components/CoverImg.vue'
 

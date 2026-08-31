@@ -15,7 +15,7 @@ import {
   Volume1,
   Volume2,
   VolumeX,
-} from 'lucide-vue-next'
+} from '@lucide/vue'
 import { usePlayerStore, type PlayMode } from '@/stores/player'
 import { useNav } from '@/composables/useNav'
 import { useAmbient } from '@/composables/useAmbient'

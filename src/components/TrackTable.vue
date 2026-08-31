@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { ArrowDown, ArrowUp, ChevronsUpDown, Disc3, FolderOpen, Heart, ListEnd, ListPlus, LocateFixed, Play } from 'lucide-vue-next'
+import { ArrowDown, ArrowUp, ChevronsUpDown, Disc3, FolderOpen, Heart, ListEnd, ListPlus, LocateFixed, Play } from '@lucide/vue'
 import type { Track } from '@/types'
 import VirtualList from '@/components/VirtualList.vue'
 import ContextMenu from '@/components/ContextMenu.vue'

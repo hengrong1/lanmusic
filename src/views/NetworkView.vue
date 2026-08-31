@@ -11,7 +11,7 @@ import {
   RefreshCw,
   Server,
   Wifi,
-} from 'lucide-vue-next'
+} from '@lucide/vue'
 import { useNetworkStore } from '@/stores/network'
 import { useStagger } from '@/composables/useStagger'
 import { toast } from '@/composables/useToast'

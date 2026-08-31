@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, watch } from 'vue'
-import { ChevronDown } from 'lucide-vue-next'
+import { ChevronDown } from '@lucide/vue'
 import { usePlayerStore } from '@/stores/player'
 import { useNav } from '@/composables/useNav'
 import { useAmbient } from '@/composables/useAmbient'

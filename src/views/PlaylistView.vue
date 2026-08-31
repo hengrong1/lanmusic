@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { ListMusic, LoaderCircle, Play } from 'lucide-vue-next'
+import { ListMusic, LoaderCircle, Play } from '@lucide/vue'
 import TrackTable from '@/components/TrackTable.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import { useLibraryStore } from '@/stores/library'

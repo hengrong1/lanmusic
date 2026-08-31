@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { Disc3, LoaderCircle } from 'lucide-vue-next'
+import { Disc3, LoaderCircle } from '@lucide/vue'
 import AlbumGrid from '@/components/AlbumGrid.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import { useLibraryStore } from '@/stores/library'

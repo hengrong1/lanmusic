@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
-import { ArrowLeft, Moon, Search, Sun, X } from 'lucide-vue-next'
+import { ArrowLeft, Moon, Search, Sun, X } from '@lucide/vue'
 import { useNav } from '@/composables/useNav'
 import { useTheme } from '@/composables/useTheme'
 import { CUSTOM_WINDOW_CONTROLS, IS_MAC } from '@/utils/platform'

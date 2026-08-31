@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { LoaderCircle, Mic } from 'lucide-vue-next'
+import { LoaderCircle, Mic } from '@lucide/vue'
 import EmptyState from '@/components/EmptyState.vue'
 import { useLibraryStore } from '@/stores/library'
 import { useNav } from '@/composables/useNav'

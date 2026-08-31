@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { LocateFixed, Trash2, X } from 'lucide-vue-next'
+import { LocateFixed, Trash2, X } from '@lucide/vue'
 import { usePlayerStore } from '@/stores/player'
 
 const player = usePlayerStore()

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /// Windows/Linux 无边框窗口的自绘窗口控制按钮（macOS 用原生红绿灯，不渲染本组件）
 import { onMounted, onUnmounted, ref } from 'vue'
-import { Copy, Minus, Square, X } from 'lucide-vue-next'
+import { Copy, Minus, Square, X } from '@lucide/vue'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 
 const appWindow = getCurrentWindow()
