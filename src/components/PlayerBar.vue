@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import {
   ChevronDown,
   ChevronUp,
+  Heart,
   ListMusic,
   MicVocal,
   Pause,

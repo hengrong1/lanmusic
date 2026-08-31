@@ -5,6 +5,7 @@ import { useLibraryStore } from '@/stores/library'
 import { useNav } from '@/composables/useNav'
 import { toast } from '@/composables/useToast'
 import { confirmDialog } from '@/composables/useConfirm'
+import { IS_WIN } from '@/utils/platform'
 import ContextMenu from '@/components/ContextMenu.vue'
 import type { MenuItem } from '@/components/ContextMenu.vue'
 import type { NavRoute } from '@/types'
@@ -115,11 +116,18 @@ function openPlaylistMenu(e: MouseEvent, p: { id: number; name: string }) {
 
 <template>
   <nav class="flex w-60 shrink-0 flex-col border-r border-zinc-200 bg-zinc-50/80 dark:border-zinc-800 dark:bg-zinc-900/60">
-    <div class="flex h-14 items-center gap-2 px-5">
-      <div class="flex h-7 w-7 items-center justify-center rounded-lg bg-violet-500 text-white shadow-sm">
+    <!-- 仅 Windows：logo 区补上拖拽区（该区域不与 TopBar 的标题栏重叠），macOS 保持原样 -->
+    <div class="flex h-14 items-center gap-2 px-5" :data-tauri-drag-region="IS_WIN ? '' : undefined">
+      <div
+        class="flex h-7 w-7 items-center justify-center rounded-lg bg-violet-500 text-white shadow-sm"
+        :data-tauri-drag-region="IS_WIN ? '' : undefined"
+      >
         <Music class="h-4 w-4" fill="currentColor" />
       </div>
-      <span class="text-[15px] font-bold tracking-wide text-zinc-800 dark:text-zinc-100">LanMusic</span>
+      <span
+        class="text-[15px] font-bold tracking-wide text-zinc-800 dark:text-zinc-100"
+        :data-tauri-drag-region="IS_WIN ? '' : undefined"
+      >LanMusic</span>
     </div>
 
     <div class="px-3">

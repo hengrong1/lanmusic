@@ -70,6 +70,13 @@ function viewLeave(el: Element, done: () => void) {
   gsap.to(el, { opacity: 0, y: -14, duration: 0.16, ease: 'power1.in', onComplete: done })
 }
 
+// ---- GSAP 过渡：播放页环境背景（进入淡入；退出与内容层同步下滑，全程保持不透明，避免中途透出底层视图）----
+function npBgEnter(el: Element, done: () => void) {
+  gsap.fromTo(el, { opacity: 0 }, { opacity: 1, duration: 0.5, ease: 'power2.out', onComplete: done })
+}
+function npBgLeave(el: Element, done: () => void) {
+  gsap.to(el, { yPercent: 100, duration: 0.42, ease: 'power3.in', onComplete: done })
+}
 // ---- GSAP 过渡：播放页上滑进入 / 下滑退出 ----
 function nowPlayingEnter(el: Element, done: () => void) {
   gsap.fromTo(el, { yPercent: 100 }, { yPercent: 0, duration: 0.55, ease: 'power3.out', onComplete: done })
@@ -147,12 +154,7 @@ window.addEventListener('keydown', (e) => {
     <ConfirmDialog />
     <!-- 播放页环境：全窗渐变（含播放条背后）+ 上滑的内容层。z-15 低于播放条，播放条透明浮于其上 -->
     <div class="pointer-events-none absolute inset-0 z-[15] overflow-hidden" :style="{ '--np-accent': npAccent }">
-      <Transition
-        enter-active-class="transition-opacity duration-500"
-        enter-from-class="opacity-0"
-        leave-active-class="transition-opacity duration-300"
-        leave-to-class="opacity-0"
-      >
+      <Transition :css="false" @enter="npBgEnter" @leave="npBgLeave">
         <div v-if="nowPlaying" class="absolute inset-0" :style="npBgStyle"></div>
       </Transition>
       <Transition :css="false" @enter="nowPlayingEnter" @leave="nowPlayingLeave">

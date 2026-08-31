@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { computed, watch } from 'vue'
-import { ChevronDown } from '@lucide/vue'
 import { usePlayerStore } from '@/stores/player'
 import { useNav } from '@/composables/useNav'
 import { useAmbient } from '@/composables/useAmbient'
+import { CUSTOM_WINDOW_CONTROLS, IS_MAC } from '@/utils/platform'
 import CoverImg from '@/components/CoverImg.vue'
 import LyricsPanel from '@/components/LyricsPanel.vue'
+import WindowControls from '@/components/WindowControls.vue'
 
 const emit = defineEmits<{ close: [] }>()
 const player = usePlayerStore()
@@ -35,20 +36,17 @@ function openArtist() {
 </script>
 
 <template>
-  <!-- 控制按钮在常驻播放条上，这里只保留封面 / 曲目信息 / 歌词 -->
-  <!-- 控制按钮在常驻播放条上；页面背景（环境渐变）由 App 渲染，这里保持透明 -->
+  <!-- 控制按钮在常驻播放条上；顶栏为自定义标题栏（拖拽 + 窗口控制按钮），页面背景（环境渐变）由 App 渲染，这里保持透明 -->
   <div class="pointer-events-auto flex h-full w-full flex-col">
-    <!-- 顶栏 -->
-    <div class="np-fade flex h-14 shrink-0 items-center justify-between px-5">
-      <span class="text-sm font-medium text-white/80">正在播放</span>
-      <button
-        class="flex h-9 w-9 items-center justify-center rounded-full text-white/70 transition hover:bg-white/10 hover:text-white"
-        title="收起 (Esc)"
-        @click="emit('close')"
-      >
-        <ChevronDown class="h-5 w-5" />
-      </button>
-    </div>
+    <!-- 顶栏：自定义标题栏，空白处可拖拽移动窗口（播放页遮住了 TopBar 的拖拽区，这里补上）；
+         Windows/Linux 右侧自绘窗口控制按钮，macOS 用原生红绿灯（左侧留出约 76px 偏移） -->
+    <header
+      data-tauri-drag-region
+      class="np-fade flex h-14 shrink-0 items-center justify-end"
+      :class="IS_MAC ? 'pl-[76px] pr-4' : 'pr-0'"
+    >
+      <WindowControls v-if="CUSTOM_WINDOW_CONTROLS" ambient />
+    </header>
 
     <div class="flex min-h-0 flex-1 gap-12 px-10 pb-8">
       <!-- 左：仅封面（垂直居中），辉光随主色 -->
