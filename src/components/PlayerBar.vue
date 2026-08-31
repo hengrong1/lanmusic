@@ -19,6 +19,7 @@ import {
 import { usePlayerStore, type PlayMode } from '@/stores/player'
 import { useNav } from '@/composables/useNav'
 import { useAmbient } from '@/composables/useAmbient'
+import { activeLineIndex } from '@/utils/lrc'
 import CoverImg from '@/components/CoverImg.vue'
 import MarqueeText from '@/components/MarqueeText.vue'
 
@@ -84,6 +85,33 @@ const volPct = computed(() => (player.muted ? 0 : player.volume * 100))
 const volDisplay = computed(() => Math.round(player.volume * 100))
 /** 音量条/图标悬停时显示音量数字气泡 */
 const volHover = ref(false)
+
+// ---- 进度条悬停气泡：时间 + 对应歌词 ----
+const progressHover = ref(false)
+const hoverPct = ref(0)
+/** 悬停位置对应的时间（秒）；未悬停时退化为当前播放进度 */
+const hoverTime = computed(() =>
+  progressHover.value && player.duration > 0 ? (hoverPct.value / 100) * player.duration : player.position,
+)
+/** 悬停时间对应的歌词文本；无时间轴歌词时退化为专辑名 */
+const hoverLyric = computed(() => {
+  const lines = player.lyricsLines
+  if (!lines?.length) return player.current?.album ?? '暂无歌词'
+  const i = activeLineIndex(lines, hoverTime.value)
+  if (i < 0) return lines[0]?.text || '···'
+  return lines[i].text || '···'
+})
+/** 气泡相对进度条的水平位置（左右收边避免溢出到时间文字上） */
+const bubblePosStyle = computed(() => ({
+  left: `clamp(3.5rem, ${hoverPct}%, calc(100% - 3.5rem))`,
+  transform: 'translateX(-50%)',
+}))
+function onProgressMove(e: MouseEvent) {
+  const el = e.currentTarget as HTMLInputElement
+  const rect = el.getBoundingClientRect()
+  if (rect.width <= 0) return
+  hoverPct.value = Math.min(100, Math.max(0, ((e.clientX - rect.left) / rect.width) * 100))
+}
 
 const modeMeta: Record<PlayMode, { label: string; icon: typeof Repeat }> = {
   order: { label: '顺序播放', icon: Repeat },
@@ -275,17 +303,31 @@ const theme = computed(() =>
       </div>
       <div class="flex w-full max-w-xl items-center gap-2">
         <span class="w-10 text-right font-mono text-[11px] tabular-nums transition-colors duration-500" :class="theme.time">{{ fmt(player.position) }}</span>
-        <input
-          type="range"
-          class="slider flex-1"
-          min="0"
-          :max="Math.max(player.duration, 0.1)"
-          step="0.1"
-          :value="player.position"
-          :style="{ '--fill': pct + '%' }"
-          :disabled="!player.current"
-          @input="player.seek(Number(($event.target as HTMLInputElement).value))"
-        />
+        <div class="relative flex min-w-0 flex-1 items-center">
+          <!-- 进度条悬停气泡：时间 + 对应歌词，随鼠标平移 -->
+          <div
+            class="pointer-events-none absolute -top-9 z-10 flex items-baseline gap-1.5 rounded-md bg-zinc-800 px-2 py-1 shadow-lg transition-opacity duration-150 dark:bg-zinc-700"
+            :class="progressHover ? 'opacity-100' : 'opacity-0'"
+            :style="bubblePosStyle"
+          >
+            <span class="shrink-0 font-mono text-[11px] leading-none text-white tabular-nums">{{ fmt(hoverTime) }}</span>
+            <span class="max-w-[240px] truncate text-[11px] leading-none text-white/70" :title="hoverLyric">{{ hoverLyric }}</span>
+          </div>
+          <input
+            type="range"
+            class="slider w-full"
+            min="0"
+            :max="Math.max(player.duration, 0.1)"
+            step="0.1"
+            :value="player.position"
+            :style="{ '--fill': pct + '%' }"
+            :disabled="!player.current"
+            @mouseenter="progressHover = true"
+            @mouseleave="progressHover = false"
+            @mousemove="onProgressMove"
+            @input="player.seek(Number(($event.target as HTMLInputElement).value))"
+          />
+        </div>
         <span class="w-10 font-mono text-[11px] tabular-nums transition-colors duration-500" :class="theme.time">{{ fmt(player.duration) }}</span>
       </div>
     </div>
