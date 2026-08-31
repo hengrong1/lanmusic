@@ -295,7 +295,6 @@ const theme = computed(() =>
             :style="pingStyle"
           ></span>
           <Transition
-            mode="out-in"
             enter-active-class="transition duration-150 ease-out"
             enter-from-class="scale-50 opacity-0"
             leave-active-class="transition duration-100 ease-in"
@@ -305,19 +304,19 @@ const theme = computed(() =>
             <LoaderCircle
               v-if="player.buffering"
               key="buffering"
-              class="relative h-5 w-5 animate-spin text-white"
+              class="absolute top-1/2 left-1/2 h-5 w-5 -translate-x-1/2 -translate-y-1/2 animate-spin text-white"
             />
             <Pause
               v-else-if="player.playing"
               key="pause"
-              class="relative h-4.5 w-4.5"
+              class="absolute top-1/2 left-1/2 h-4.5 w-4.5 -translate-x-1/2 -translate-y-1/2"
               fill="currentColor"
               stroke="none"
             />
             <Play
               v-else
               key="play"
-              class="relative ml-0.5 h-4.5 w-4.5"
+              class="absolute top-1/2 left-1/2 ml-0.5 h-4.5 w-4.5 -translate-x-1/2 -translate-y-1/2"
               fill="currentColor"
               stroke="none"
             />
