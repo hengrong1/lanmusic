@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, watch } from 'vue'
+import { ChevronDown } from '@lucide/vue'
 import { usePlayerStore } from '@/stores/player'
 import { useNav } from '@/composables/useNav'
 import { useAmbient } from '@/composables/useAmbient'
@@ -42,9 +43,17 @@ function openArtist() {
          Windows/Linux 右侧自绘窗口控制按钮，macOS 用原生红绿灯（左侧留出约 76px 偏移） -->
     <header
       data-tauri-drag-region
-      class="np-fade flex h-14 shrink-0 items-center justify-end"
-      :class="IS_MAC ? 'pl-[76px] pr-4' : 'pr-0'"
+      class="np-fade flex h-14 shrink-0 items-center justify-between"
+      :class="IS_MAC ? 'pl-[76px] pr-4' : 'pl-4 pr-0'"
     >
+      <!-- 左：关闭播放页（其余空白仍为拖拽区） -->
+      <button
+        class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-white/70 transition hover:bg-white/10 hover:text-white"
+        title="收起播放页 (Esc)"
+        @click="emit('close')"
+      >
+        <ChevronDown class="h-5 w-5" />
+      </button>
       <WindowControls v-if="CUSTOM_WINDOW_CONTROLS" ambient />
     </header>
 
