@@ -10,6 +10,7 @@ import LyricsPanel from '@/components/LyricsPanel.vue'
 import WindowControls from '@/components/WindowControls.vue'
 
 const emit = defineEmits<{ close: [] }>()
+const props = defineProps<{ focusHidden?: boolean }>()
 const player = usePlayerStore()
 const nav = useNav()
 
@@ -43,8 +44,8 @@ function openArtist() {
          Windows/Linux 右侧自绘窗口控制按钮，macOS 用原生红绿灯（左侧留出约 76px 偏移） -->
     <header
       data-tauri-drag-region
-      class="np-fade flex h-14 shrink-0 items-center justify-between"
-      :class="IS_MAC ? 'pl-[76px] pr-4' : 'pl-4 pr-0'"
+      class="np-fade flex h-14 shrink-0 items-center justify-between transition-transform duration-500 ease-out will-change-transform"
+      :class="[IS_MAC ? 'pl-[76px] pr-4' : 'pl-4 pr-0', props.focusHidden ? '-translate-y-full' : 'translate-y-0']"
     >
       <!-- 左：关闭播放页（其余空白仍为拖拽区） -->
       <button

@@ -24,7 +24,7 @@ import { activeLineIndex } from '@/utils/lrc'
 import CoverImg from '@/components/CoverImg.vue'
 import MarqueeText from '@/components/MarqueeText.vue'
 
-const props = defineProps<{ nowPlayingOpen?: boolean }>()
+const props = defineProps<{ nowPlayingOpen?: boolean; focusHidden?: boolean }>()
 const emit = defineEmits<{ toggleQueue: []; toggleNowPlaying: [] }>()
 
 const player = usePlayerStore()
@@ -201,8 +201,8 @@ const theme = computed(() =>
 
 <template>
   <footer
-    class="relative z-20 flex h-20 shrink-0 items-center gap-4 border-t px-4 transition-colors duration-500"
-    :class="theme.bar"
+    class="relative z-20 h-20 shrink-0 items-center gap-4 border-t px-4 transition-[transform,color,background-color,border-color] duration-500 will-change-transform"
+    :class="[theme.bar, props.focusHidden ? 'flex translate-y-full' : 'flex translate-y-0']"
     :style="accentVarStyle"
   >
     <!-- 左：当前曲目 -->

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import gsap from 'gsap'
 import Sidebar from '@/components/Sidebar.vue'
 import TopBar from '@/components/TopBar.vue'
@@ -26,6 +26,41 @@ const { palette } = useAmbient()
 
 const queueOpen = ref(false)
 const nowPlaying = ref(false)
+
+/** 播放页专注模式：鼠标不在底部/顶栏控制区，5s 无移动则隐藏控制，移动鼠标恢复 */
+const npFocus = ref(false)
+const PLAYER_BAR_H = 80 // 播放条 h-20
+const HEADER_H = 56 // 顶栏 h-14
+let focusTimer: ReturnType<typeof setTimeout> | undefined
+window.addEventListener(
+  'mousemove',
+  (e) => {
+    if (!nowPlaying.value) return
+    const inBarZone = e.clientY >= window.innerHeight - PLAYER_BAR_H
+    const inHeaderZone = e.clientY <= HEADER_H
+    if (inBarZone || inHeaderZone) {
+      // 鼠标在底部播放条 / 顶部控制区：保持控制可见
+      clearTimeout(focusTimer)
+      if (npFocus.value) npFocus.value = false
+      return
+    }
+    // 内容区移动：恢复显示并重置 5s 无操作计时
+    if (npFocus.value) npFocus.value = false
+    clearTimeout(focusTimer)
+    focusTimer = setTimeout(() => (npFocus.value = true), 5000)
+  },
+  { passive: true },
+)
+watch(nowPlaying, (v) => {
+  if (!v) {
+    npFocus.value = false
+    clearTimeout(focusTimer)
+  } else {
+    // 打开播放页即启动 5s 无操作计时（鼠标在控制区会被 mousemove 逻辑打断）
+    clearTimeout(focusTimer)
+    focusTimer = setTimeout(() => (npFocus.value = true), 5000)
+  }
+})
 
 /** 播放页环境渐变：铺满全窗（含播放条背后），歌词强调色变量也从这里下发 */
 const npAccent = computed(() => palette.value?.accent ?? '#a78bfa')
@@ -147,6 +182,7 @@ window.addEventListener('keydown', (e) => {
     </div>
     <PlayerBar
       :now-playing-open="nowPlaying"
+      :focus-hidden="npFocus"
       @toggle-queue="queueOpen = !queueOpen"
       @toggle-now-playing="nowPlaying = !nowPlaying"
     />
@@ -159,7 +195,7 @@ window.addEventListener('keydown', (e) => {
       </Transition>
       <Transition :css="false" @enter="nowPlayingEnter" @leave="nowPlayingLeave">
         <div v-if="nowPlaying" class="pointer-events-auto absolute inset-x-0 top-0 bottom-20 overflow-hidden">
-          <NowPlayingView @close="nowPlaying = false" />
+          <NowPlayingView :focus-hidden="npFocus" @close="nowPlaying = false" />
         </div>
       </Transition>
     </div>
