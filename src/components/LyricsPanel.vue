@@ -64,25 +64,30 @@ onMounted(() => void nextTick(scrollToActive))
         v-for="(line, i) in player.lyricsLines"
         :key="i"
         :data-idx="i"
-        class="group relative flex cursor-pointer transition-[color,transform] duration-300 ease-out"
+        class="group relative flex items-center"
         :class="line.text ? 'py-2.5' : 'py-0.5'"
-        @click="player.seek(line.time)"
       >
-        <!-- 悬停指示器：左侧时间戳文字 + 横线 + 圆点，仅当前行 hover 时可见 -->
-        <span
-          class="pointer-events-none absolute top-1/2 left-0 hidden -translate-y-1/2 items-center gap-1.5 group-hover:flex"
+        <!-- 左侧跳转入口：跳转 文字 + 时间，点击才跳转到该句（歌词文字本身不响应点击） -->
+        <button
+          class="flex h-7 w-16 shrink-0 items-center justify-end gap-1 rounded-md pr-1 font-mono text-[11px] leading-none transition-colors duration-300 ease-out"
+          :class="[
+            i === player.activeLyricIndex
+              ? 'text-[var(--np-accent,#fff)]'
+              : 'text-zinc-400/70 group-hover:text-[var(--np-accent,#fff)] dark:text-zinc-500',
+          ]"
+          :title="line.text ? `跳转到 ${fmt(line.time)}：${line.text}` : `跳转到 ${fmt(line.time)}（间奏）`"
+          @click="player.seek(line.time)"
         >
-          <span class="font-mono text-[11px] font-medium text-[var(--np-accent,#fff)] opacity-90">{{ fmt(line.time) }}</span>
-          <span class="h-[3px] w-6 rounded-full bg-[var(--np-accent,#fff)]"></span>
-          <span class="h-2 w-2 rounded-full bg-[var(--np-accent,#fff)] shadow-[0_0_10px_var(--np-accent,#fff)]"></span>
-        </span>
+          <span class="font-sans">跳转</span>
+          {{ fmt(line.time) }}
+        </button>
         <p
-          class="flex-1 text-center transition-[color,transform,text-shadow] duration-300 ease-out"
+          class="min-w-0 flex-1 text-center transition-[color,transform,text-shadow] duration-300 ease-out"
           :class="[
             line.text ? 'text-base' : 'text-xs leading-none',
             i === player.activeLyricIndex
               ? 'scale-[1.07] font-semibold'
-              : 'text-zinc-400/80 hover:text-zinc-600 dark:text-zinc-500 dark:hover:text-zinc-300',
+              : 'text-zinc-400/80 dark:text-zinc-500',
           ]"
           :style="
             i === player.activeLyricIndex
