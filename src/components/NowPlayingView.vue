@@ -53,7 +53,7 @@ function openArtist() {
       <div class="np-cover flex h-full min-w-0 flex-1 basis-1/2 items-center justify-center">
         <CoverImg
           :album-id="player.current?.albumId ?? null"
-          class="aspect-square max-h-full w-full rounded-2xl"
+          class="aspect-square max-h-full w-full max-w-[340px] rounded-2xl"
           rounded="rounded-2xl"
           :style="coverStyle"
         />
