@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
+import gsap from 'gsap'
 import { ChevronDown } from '@lucide/vue'
 import { usePlayerStore } from '@/stores/player'
 import { useNav } from '@/composables/useNav'
@@ -13,6 +14,22 @@ const emit = defineEmits<{ close: [] }>()
 const props = defineProps<{ focusHidden?: boolean }>()
 const player = usePlayerStore()
 const nav = useNav()
+
+const headerEl = ref<HTMLElement | null>(null)
+/** 专注模式：顶部控制栏上滑隐藏 / 鼠标移动时滑回 */
+watch(
+  () => props.focusHidden,
+  (hidden, prev) => {
+    if (prev === undefined) return // 初始渲染不做动画
+    if (!headerEl.value) return
+    gsap.to(headerEl.value, {
+      yPercent: hidden ? -100 : 0,
+      duration: 0.45,
+      ease: 'power3.out',
+      overwrite: 'auto',
+    })
+  },
+)
 
 // ---- 环境色：跟随专辑封面主色（提取结果全局共享，播放条也使用；页面背景由 App 渲染）----
 const { palette, setAlbum } = useAmbient()
@@ -43,9 +60,10 @@ function openArtist() {
     <!-- 顶栏：自定义标题栏，空白处可拖拽移动窗口（播放页遮住了 TopBar 的拖拽区，这里补上）；
          Windows/Linux 右侧自绘窗口控制按钮，macOS 用原生红绿灯（左侧留出约 76px 偏移） -->
     <header
+      ref="headerEl"
       data-tauri-drag-region
-      class="np-fade flex h-14 shrink-0 items-center justify-between transition-transform duration-500 ease-out will-change-transform"
-      :class="[IS_MAC ? 'pl-[76px] pr-4' : 'pl-4 pr-0', props.focusHidden ? '-translate-y-full' : 'translate-y-0']"
+      class="np-fade flex h-14 shrink-0 items-center justify-between"
+      :class="IS_MAC ? 'pl-[76px] pr-4' : 'pl-4 pr-0'"
     >
       <!-- 左：关闭播放页（其余空白仍为拖拽区） -->
       <button
@@ -100,3 +118,5 @@ function openArtist() {
     </div>
   </div>
 </template>
+
+

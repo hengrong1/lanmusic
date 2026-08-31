@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
+import gsap from 'gsap'
 import {
   ChevronDown,
   ChevronUp,
@@ -26,6 +27,22 @@ import MarqueeText from '@/components/MarqueeText.vue'
 
 const props = defineProps<{ nowPlayingOpen?: boolean; focusHidden?: boolean }>()
 const emit = defineEmits<{ toggleQueue: []; toggleNowPlaying: [] }>()
+
+const footerEl = ref<HTMLElement | null>(null)
+/** 专注模式：底部播放条下滑隐藏 / 鼠标移动时滑回 */
+watch(
+  () => props.focusHidden,
+  (hidden, prev) => {
+    if (prev === undefined) return // 初始渲染不做动画
+    if (!footerEl.value) return
+    gsap.to(footerEl.value, {
+      yPercent: hidden ? 100 : 0,
+      duration: 0.45,
+      ease: 'power3.out',
+      overwrite: 'auto',
+    })
+  },
+)
 
 const player = usePlayerStore()
 const nav = useNav()
@@ -201,8 +218,9 @@ const theme = computed(() =>
 
 <template>
   <footer
-    class="relative z-20 h-20 shrink-0 items-center gap-4 border-t px-4 transition-[transform,color,background-color,border-color] duration-500 will-change-transform"
-    :class="[theme.bar, props.focusHidden ? 'flex translate-y-full' : 'flex translate-y-0']"
+    ref="footerEl"
+    class="relative z-20 flex h-20 shrink-0 items-center gap-4 border-t px-4 transition-colors duration-500"
+    :class="theme.bar"
     :style="accentVarStyle"
   >
     <!-- 左：当前曲目 -->
