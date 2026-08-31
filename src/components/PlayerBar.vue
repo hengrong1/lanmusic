@@ -5,7 +5,6 @@ import {
   ChevronUp,
   Heart,
   ListMusic,
-  MicVocal,
   Pause,
   Play,
   Repeat,
@@ -114,7 +113,6 @@ const theme = computed(() =>
         iconBtn: 'text-white/70 hover:bg-white/10 hover:text-white',
         plainBtn: 'text-white/80 hover:bg-white/10',
         playBtn: 'bg-violet-500 text-white hover:bg-violet-400',
-        lyricBtn: props.nowPlayingOpen ? 'text-violet-400' : '',
         trackRow: '',
       }
     : {
@@ -126,7 +124,6 @@ const theme = computed(() =>
           'text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100',
         plainBtn: 'text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800',
         playBtn: 'bg-violet-500 text-white hover:bg-violet-400',
-        lyricBtn: '',
         trackRow: '',
       },
 )
@@ -246,7 +243,15 @@ const theme = computed(() =>
         >
           <SkipForward class="h-4.5 w-4.5" fill="currentColor" stroke="none" />
         </button>
-        <div class="w-8"></div>
+        <button
+          class="flex h-9 w-9 items-center justify-center rounded-full transition-colors duration-500"
+          :class="player.current?.fav ? 'text-red-500 hover:bg-red-500/10' : theme.plainBtn"
+          :title="player.current?.fav ? '取消喜欢' : '喜欢'"
+          :disabled="!player.current"
+          @click="player.toggleFav()"
+        >
+          <Heart class="h-4.5 w-4.5" :fill="player.current?.fav ? 'currentColor' : 'none'" />
+        </button>
       </div>
       <div class="flex w-full max-w-xl items-center gap-2">
         <span class="w-10 text-right font-mono text-[11px] tabular-nums transition-colors duration-500" :class="theme.time">{{ fmt(player.position) }}</span>
@@ -265,7 +270,7 @@ const theme = computed(() =>
       </div>
     </div>
 
-    <!-- 右：音量 / 播放页 / 队列 -->
+    <!-- 右：音量 / 队列 -->
     <div class="flex w-56 items-center justify-end gap-1">
       <button
         class="flex h-8 w-8 items-center justify-center rounded-full transition-colors duration-500"
@@ -288,27 +293,8 @@ const theme = computed(() =>
         @input="player.setVolume(Number(($event.target as HTMLInputElement).value))"
       />
       <button
-        class="ml-2 flex h-8 w-8 items-center justify-center rounded-full transition-colors duration-500 disabled:opacity-30"
-        :class="[theme.iconBtn]"
-        :style="accent ? { color: accent } : undefined"
-        :title="props.nowPlayingOpen ? '收起播放页' : '播放页 / 歌词'"
-        :disabled="!player.current"
-        @click="$emit('toggleNowPlaying')"
-      >
-        <MicVocal class="h-4 w-4" />
-      </button>
-      <button
-        v-if="player.current"
-        class="flex h-8 w-8 items-center justify-center rounded-full transition-colors duration-500"
-        :class="player.current.fav ? 'text-red-500 hover:bg-red-500/10' : theme.iconBtn"
-        :title="player.current.fav ? '取消喜欢' : '喜欢'"
-        @click="player.toggleFav()"
-      >
-        <Heart class="h-4 w-4" :fill="player.current.fav ? 'currentColor' : 'none'" />
-      </button>
-      <button
         data-queue-toggle
-        class="flex h-8 w-8 items-center justify-center rounded-full transition-colors duration-500"
+        class="ml-2 flex h-8 w-8 items-center justify-center rounded-full transition-colors duration-500"
         :class="theme.iconBtn"
         title="播放队列"
         @click="$emit('toggleQueue')"
