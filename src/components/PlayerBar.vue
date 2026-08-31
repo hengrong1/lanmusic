@@ -86,6 +86,25 @@ const volDisplay = computed(() => Math.round(player.volume * 100))
 /** 音量条/图标悬停时显示音量数字气泡 */
 const volHover = ref(false)
 
+// ---- 音量条悬停气泡：跟随鼠标位置显示音量数字 ----
+const volBubbleLeftPx = ref(48)
+/** 鼠标悬停位置对应的音量百分比（0-100） */
+const volPreview = ref(player.volume * 100)
+/** 气泡显示的文本：悬停时用悬停位置的预览值，否则用当前音量 */
+const volBubbleText = computed(() => (volHover ? Math.round(volPreview.value) : volDisplay.value))
+const volBubbleStyle = computed(() => ({
+  left: `${volBubbleLeftPx.value}px`,
+  transform: 'translateX(-50%)',
+}))
+function onVolMove(e: MouseEvent) {
+  const el = e.currentTarget as HTMLInputElement
+  const rect = el.getBoundingClientRect()
+  if (rect.width <= 0) return
+  const local = e.clientX - rect.left
+  volPreview.value = Math.min(100, Math.max(0, (local / rect.width) * 100))
+  volBubbleLeftPx.value = Math.min(Math.max(28, local), rect.width - 28)
+}
+
 // ---- 进度条悬停气泡：时间 + 对应歌词 ----
 const progressHover = ref(false)
 const hoverPct = ref(0)
@@ -342,25 +361,24 @@ const theme = computed(() =>
         class="flex h-8 w-8 items-center justify-center rounded-full transition-colors duration-500"
         :class="theme.iconBtn"
         :title="player.muted ? `已静音（音量 ${volDisplay}%）` : `音量 ${volDisplay}%`"
-        @mouseenter="volHover = true"
-        @mouseleave="volHover = false"
         @click="player.toggleMute()"
       >
         <VolumeX v-if="player.muted" class="h-4 w-4" />
         <Volume1 v-else-if="player.volume < 0.5" class="h-4 w-4" />
         <Volume2 v-else class="h-4 w-4" />
       </button>
-      <div class="relative flex items-center">
-        <!-- 音量数字气泡：悬停音量条时显示，拖动时实时跟随 -->
+      <div class="relative flex w-24 items-center">
+        <!-- 音量数字气泡：跟随鼠标位置显示音量数字 -->
         <div
-          class="pointer-events-none absolute -top-8 left-1/2 -translate-x-1/2 rounded-md bg-zinc-800 px-2 py-1 font-mono text-[11px] leading-none text-white opacity-0 shadow-lg transition-opacity duration-150 dark:bg-zinc-700"
+          class="pointer-events-none absolute -top-8 z-10 rounded-md bg-zinc-800 px-2 py-1 font-mono text-[11px] leading-none text-white opacity-0 shadow-lg transition-opacity duration-150 dark:bg-zinc-700"
           :class="{ 'opacity-100': volHover }"
+          :style="volBubbleStyle"
         >
-          {{ volDisplay }}%
+          {{ volBubbleText }}%
         </div>
         <input
           type="range"
-          class="slider w-24"
+          class="slider w-full"
           min="0"
           max="1"
           step="0.01"
@@ -368,6 +386,7 @@ const theme = computed(() =>
           :style="{ '--fill': volPct + '%' }"
           @mouseenter="volHover = true"
           @mouseleave="volHover = false"
+          @mousemove="onVolMove"
           @input="player.setVolume(Number(($event.target as HTMLInputElement).value))"
         />
       </div>
