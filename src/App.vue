@@ -27,11 +27,14 @@ const { palette } = useAmbient()
 const queueOpen = ref(false)
 const nowPlaying = ref(false)
 
-/** 播放页专注模式：鼠标不在底部/顶栏控制区，5s 无移动则隐藏控制，移动鼠标恢复 */
+/** 播放页专注模式：仅当正在播放且播放页打开时启用；鼠标不在底部/顶栏控制区，5s 无移动则隐藏控制 */
 const npFocus = ref(false)
 const PLAYER_BAR_H = 80 // 播放条 h-20
 const HEADER_H = 56 // 顶栏 h-14
 let focusTimer: ReturnType<typeof setTimeout> | undefined
+
+/** 专注模式启用条件：播放页打开 且 正在播放（暂停时不做专注隐藏） */
+const focusActive = computed(() => nowPlaying.value && player.playing)
 
 /** 启动/重置专注计时（5s 后隐藏控制） */
 function armFocusTimer() {
@@ -47,7 +50,7 @@ function clearFocus() {
 window.addEventListener(
   'mousemove',
   (e) => {
-    if (!nowPlaying.value) return
+    if (!focusActive.value) return
     // 鼠标已移出窗口范围：启动专注计时（窗口中不再有 mousemove，需在此兜底）
     if (e.clientX < 0 || e.clientX >= window.innerWidth || e.clientY < 0 || e.clientY >= window.innerHeight) {
       armFocusTimer()
@@ -69,17 +72,17 @@ window.addEventListener(
 )
 // 鼠标完全离开窗口（移出 document 边界）即启动 5s 计时
 document.addEventListener('mouseleave', () => {
-  if (nowPlaying.value) armFocusTimer()
+  if (focusActive.value) armFocusTimer()
 })
 // 窗口失焦（切到别的窗口）也当作鼠标离开
 window.addEventListener('blur', () => {
-  if (nowPlaying.value && !npFocus.value) armFocusTimer()
+  if (focusActive.value && !npFocus.value) armFocusTimer()
 })
-watch(nowPlaying, (v) => {
-  if (!v) {
+watch(focusActive, (active) => {
+  if (!active) {
     clearFocus()
   } else {
-    // 打开播放页即启动 5s 无操作计时（鼠标在控制区会被 mousemove 逻辑打断）
+    // 恢复播放/打开播放页时启动 5s 无操作计时
     armFocusTimer()
   }
 })
