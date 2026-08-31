@@ -8,9 +8,9 @@
 ## 快速开始
 
 ```bash
-npm install          # 前端依赖
-npm run tauri dev    # 开发模式（首次需编译 Rust，约 2-3 分钟）
-npm run tauri build  # 打包安装程序
+pnpm install          # 前端依赖
+pnpm tauri dev        # 开发模式（首次需编译 Rust，约 2-3 分钟）
+pnpm tauri build      # 打包安装程序
 ```
 
 环境要求：Node 20+、Rust 1.85+（含各平台 WebView 运行时）。
