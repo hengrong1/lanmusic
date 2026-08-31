@@ -81,6 +81,9 @@ function seekLyric() {
 
 const pct = computed(() => (player.duration > 0 ? (player.position / player.duration) * 100 : 0))
 const volPct = computed(() => (player.muted ? 0 : player.volume * 100))
+const volDisplay = computed(() => Math.round(player.volume * 100))
+/** 音量条/图标悬停时显示音量数字气泡 */
+const volHover = ref(false)
 
 const modeMeta: Record<PlayMode, { label: string; icon: typeof Repeat }> = {
   order: { label: '顺序播放', icon: Repeat },
@@ -292,23 +295,36 @@ const theme = computed(() =>
       <button
         class="flex h-8 w-8 items-center justify-center rounded-full transition-colors duration-500"
         :class="theme.iconBtn"
-        :title="player.muted ? '取消静音' : '静音'"
+        :title="player.muted ? `已静音（音量 ${volDisplay}%）` : `音量 ${volDisplay}%`"
+        @mouseenter="volHover = true"
+        @mouseleave="volHover = false"
         @click="player.toggleMute()"
       >
         <VolumeX v-if="player.muted" class="h-4 w-4" />
         <Volume1 v-else-if="player.volume < 0.5" class="h-4 w-4" />
         <Volume2 v-else class="h-4 w-4" />
       </button>
-      <input
-        type="range"
-        class="slider w-24"
-        min="0"
-        max="1"
-        step="0.01"
-        :value="player.muted ? 0 : player.volume"
-        :style="{ '--fill': volPct + '%' }"
-        @input="player.setVolume(Number(($event.target as HTMLInputElement).value))"
-      />
+      <div class="relative flex items-center">
+        <!-- 音量数字气泡：悬停音量条时显示，拖动时实时跟随 -->
+        <div
+          class="pointer-events-none absolute -top-8 left-1/2 -translate-x-1/2 rounded-md bg-zinc-800 px-2 py-1 font-mono text-[11px] leading-none text-white opacity-0 shadow-lg transition-opacity duration-150 dark:bg-zinc-700"
+          :class="{ 'opacity-100': volHover }"
+        >
+          {{ volDisplay }}%
+        </div>
+        <input
+          type="range"
+          class="slider w-24"
+          min="0"
+          max="1"
+          step="0.01"
+          :value="player.muted ? 0 : player.volume"
+          :style="{ '--fill': volPct + '%' }"
+          @mouseenter="volHover = true"
+          @mouseleave="volHover = false"
+          @input="player.setVolume(Number(($event.target as HTMLInputElement).value))"
+        />
+      </div>
       <button
         data-queue-toggle
         class="ml-2 flex h-8 w-8 items-center justify-center rounded-full transition-colors duration-500"
