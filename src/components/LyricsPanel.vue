@@ -7,6 +7,14 @@ const container = ref<HTMLElement | null>(null)
 
 const hasSynced = computed(() => !!player.lyricsLines?.length)
 
+/** 时间戳文字：秒 → m:ss（与播放条时间显示一致） */
+function fmt(s: number) {
+  if (!Number.isFinite(s) || s < 0) return '0:00'
+  const m = Math.floor(s / 60)
+  const sec = Math.floor(s % 60)
+  return `${m}:${String(sec).padStart(2, '0')}`
+}
+
 /** 上下留白 = 容器半高：首行歌词正好从垂直中心开始，滚动连续无跳变 */
 const pad = ref(0)
 let resizeObserver: ResizeObserver | null = null
@@ -60,10 +68,11 @@ onMounted(() => void nextTick(scrollToActive))
         :class="line.text ? 'py-2.5' : 'py-0.5'"
         @click="player.seek(line.time)"
       >
-        <!-- 悬停指示器：左侧横线 + 圆点，仅当前行 hover 时可见 -->
+        <!-- 悬停指示器：左侧时间戳文字 + 横线 + 圆点，仅当前行 hover 时可见 -->
         <span
           class="pointer-events-none absolute top-1/2 left-0 hidden -translate-y-1/2 items-center gap-1.5 group-hover:flex"
         >
+          <span class="font-mono text-[11px] font-medium text-[var(--np-accent,#fff)] opacity-90">{{ fmt(line.time) }}</span>
           <span class="h-[3px] w-6 rounded-full bg-[var(--np-accent,#fff)]"></span>
           <span class="h-2 w-2 rounded-full bg-[var(--np-accent,#fff)] shadow-[0_0_10px_var(--np-accent,#fff)]"></span>
         </span>
