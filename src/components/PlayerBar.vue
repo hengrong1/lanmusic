@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
 import {
   ChevronDown,
   ChevronUp,
@@ -94,6 +94,21 @@ function cycleMode() {
   const i = order.indexOf(player.mode)
   player.mode = order[(i + 1) % order.length]
 }
+
+/** 添加喜欢成功（fav false → true，后端确认后）触发心形弹跳 + 扩散光环动画 */
+const favPop = ref(false)
+let favPopTimer: ReturnType<typeof setTimeout> | undefined
+watch(
+  () => player.current?.fav,
+  (fav, old) => {
+    if (!fav || old) return
+    favPop.value = false
+    void nextTick(() => (favPop.value = true)) // 先移除类再挂回，保证连续触发时动画重放
+    clearTimeout(favPopTimer)
+    favPopTimer = setTimeout(() => (favPop.value = false), 600)
+  },
+)
+onUnmounted(() => clearTimeout(favPopTimer))
 
 function fmt(s: number) {
   if (!Number.isFinite(s) || s < 0) return '0:00'
@@ -244,13 +259,15 @@ const theme = computed(() =>
           <SkipForward class="h-4.5 w-4.5" fill="currentColor" stroke="none" />
         </button>
         <button
-          class="flex h-9 w-9 items-center justify-center rounded-full transition-colors duration-500"
+          class="relative flex h-9 w-9 items-center justify-center rounded-full transition-colors duration-500"
           :class="player.current?.fav ? 'text-red-500 hover:bg-red-500/10' : theme.plainBtn"
           :title="player.current?.fav ? '取消喜欢' : '喜欢'"
           :disabled="!player.current"
           @click="player.toggleFav()"
         >
-          <Heart class="h-4.5 w-4.5" :fill="player.current?.fav ? 'currentColor' : 'none'" />
+          <!-- 添加喜欢成功时的扩散光环 -->
+          <span v-if="favPop" class="heart-burst pointer-events-none absolute inset-0 rounded-full bg-red-500/40"></span>
+          <Heart class="h-4.5 w-4.5" :class="favPop ? 'heart-pop' : ''" :fill="player.current?.fav ? 'currentColor' : 'none'" />
         </button>
       </div>
       <div class="flex w-full max-w-xl items-center gap-2">
@@ -304,3 +321,38 @@ const theme = computed(() =>
     </div>
   </footer>
 </template>
+
+<style scoped>
+/* 添加喜欢成功：心形弹跳（scale 过冲回弹） */
+.heart-pop {
+  animation: heart-pop 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+}
+@keyframes heart-pop {
+  0% {
+    transform: scale(0.4);
+  }
+  45% {
+    transform: scale(1.4);
+  }
+  70% {
+    transform: scale(0.9);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+/* 同步的扩散光环，播完自动消失（forwards） */
+.heart-burst {
+  animation: heart-burst 0.5s ease-out forwards;
+}
+@keyframes heart-burst {
+  from {
+    transform: scale(0.5);
+    opacity: 0.7;
+  }
+  to {
+    transform: scale(1.9);
+    opacity: 0;
+  }
+}
+</style>
