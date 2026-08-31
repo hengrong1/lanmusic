@@ -61,9 +61,11 @@ function openArtist() {
 
       <!-- 右：曲目信息 + 歌词（约 60% 宽） -->
       <div class="np-fade flex h-full min-w-0 flex-1 basis-3/5 flex-col">
-        <div class="shrink-0 pb-4 pt-6 text-center">
-          <h1 class="truncate text-2xl font-bold text-white">{{ player.current?.title ?? '未在播放' }}</h1>
-          <p class="mt-1 truncate text-sm text-white/60">
+        <div
+          class="flex shrink-0 flex-col items-center pb-4 pt-6 text-center"
+        >
+          <h1 class="max-w-full truncate text-2xl font-bold text-white">{{ player.current?.title ?? '未在播放' }}</h1>
+          <p class="mt-1 max-w-full truncate text-sm text-white/60">
             <button
               v-if="player.current?.artistId != null"
               class="transition hover:text-white hover:underline"
