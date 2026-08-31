@@ -32,10 +32,27 @@ const npFocus = ref(false)
 const PLAYER_BAR_H = 80 // 播放条 h-20
 const HEADER_H = 56 // 顶栏 h-14
 let focusTimer: ReturnType<typeof setTimeout> | undefined
+
+/** 启动/重置专注计时（5s 后隐藏控制） */
+function armFocusTimer() {
+  clearTimeout(focusTimer)
+  focusTimer = setTimeout(() => (npFocus.value = true), 5000)
+}
+/** 取消专注并清掉计时 */
+function clearFocus() {
+  npFocus.value = false
+  clearTimeout(focusTimer)
+}
+
 window.addEventListener(
   'mousemove',
   (e) => {
     if (!nowPlaying.value) return
+    // 鼠标已移出窗口范围：启动专注计时（窗口中不再有 mousemove，需在此兜底）
+    if (e.clientX < 0 || e.clientX >= window.innerWidth || e.clientY < 0 || e.clientY >= window.innerHeight) {
+      armFocusTimer()
+      return
+    }
     const inBarZone = e.clientY >= window.innerHeight - PLAYER_BAR_H
     const inHeaderZone = e.clientY <= HEADER_H
     if (inBarZone || inHeaderZone) {
@@ -46,19 +63,24 @@ window.addEventListener(
     }
     // 内容区移动：恢复显示并重置 5s 无操作计时
     if (npFocus.value) npFocus.value = false
-    clearTimeout(focusTimer)
-    focusTimer = setTimeout(() => (npFocus.value = true), 5000)
+    armFocusTimer()
   },
   { passive: true },
 )
+// 鼠标完全离开窗口（移出 document 边界）即启动 5s 计时
+document.addEventListener('mouseleave', () => {
+  if (nowPlaying.value) armFocusTimer()
+})
+// 窗口失焦（切到别的窗口）也当作鼠标离开
+window.addEventListener('blur', () => {
+  if (nowPlaying.value && !npFocus.value) armFocusTimer()
+})
 watch(nowPlaying, (v) => {
   if (!v) {
-    npFocus.value = false
-    clearTimeout(focusTimer)
+    clearFocus()
   } else {
     // 打开播放页即启动 5s 无操作计时（鼠标在控制区会被 mousemove 逻辑打断）
-    clearTimeout(focusTimer)
-    focusTimer = setTimeout(() => (npFocus.value = true), 5000)
+    armFocusTimer()
   }
 })
 
