@@ -1,0 +1,133 @@
+mod commands;
+mod covers;
+mod db;
+mod lyrics;
+mod metadata;
+mod network;
+mod scanner;
+mod scheme;
+mod state;
+
+use tauri::menu::{Menu, MenuItem};
+use tauri::tray::TrayIconBuilder;
+use tauri::{Emitter, Manager};
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    tauri::Builder::default()
+        .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
+        .setup(|app| {
+            let data_dir = app.path().app_data_dir().expect("无法获取应用数据目录");
+            std::fs::create_dir_all(&data_dir)?;
+            let covers_dir = data_dir.join("covers");
+            std::fs::create_dir_all(&covers_dir)?;
+            let db_path = data_dir.join("library.db");
+            let conn = db::open(&db_path).expect("无法打开数据库");
+
+            // 一次性自愈：旧版本删除专辑时未清理 covers/{id}.jpg，而 SQLite 会复用已删除
+            // 专辑的 rowid，导致新专辑命中旧封面（表现为部分歌曲显示别人的封面）。
+            // 存量缓存已被污染且无法与专辑一一对应，启动时清空一次，之后惰性重建。
+            let covers_selfheal: Option<String> = conn
+                .query_row(
+                    "SELECT value FROM app_settings WHERE key = 'covers.selfheal.v1'",
+                    [],
+                    |r| r.get(0),
+                )
+                .ok();
+            if covers_selfheal.is_none() {
+                let _ = std::fs::remove_dir_all(&covers_dir);
+                std::fs::create_dir_all(&covers_dir)?;
+                let _ = conn.execute(
+                    "INSERT OR REPLACE INTO app_settings (key, value) VALUES ('covers.selfheal.v1', '1')",
+                    [],
+                );
+            }
+
+            app.manage(state::AppState {
+                db: std::sync::Mutex::new(conn),
+                db_path,
+                covers_dir,
+                scanning: std::sync::Mutex::new(std::collections::HashSet::new()),
+                cover_extract: std::sync::Mutex::new(()),
+                mdns_daemon: std::sync::Mutex::new(None),
+                share: std::sync::Mutex::new(None),
+                browsing: std::sync::Mutex::new(false),
+            });
+
+            // 系统托盘（M2）
+            let show = MenuItem::with_id(app, "show", "显示主窗口", true, None::<&str>)?;
+            let toggle = MenuItem::with_id(app, "toggle", "播放 / 暂停", true, None::<&str>)?;
+            let prev = MenuItem::with_id(app, "prev", "上一首", true, None::<&str>)?;
+            let next = MenuItem::with_id(app, "next", "下一首", true, None::<&str>)?;
+            let quit = MenuItem::with_id(app, "quit", "退出 LanMusic", true, None::<&str>)?;
+            let menu = Menu::with_items(app, &[&show, &toggle, &prev, &next, &quit])?;
+            TrayIconBuilder::with_id("main-tray")
+                .icon(app.default_window_icon().expect("缺少应用图标").clone())
+                .tooltip("LanMusic")
+                .menu(&menu)
+                .show_menu_on_left_click(false)
+                .on_menu_event(|app, event| match event.id().as_ref() {
+                    "show" => {
+                        if let Some(w) = app.get_webview_window("main") {
+                            let _ = w.show();
+                            let _ = w.unminimize();
+                            let _ = w.set_focus();
+                        }
+                    }
+                    "toggle" => {
+                        let _ = app.emit("tray", "toggle");
+                    }
+                    "prev" => {
+                        let _ = app.emit("tray", "prev");
+                    }
+                    "next" => {
+                        let _ = app.emit("tray", "next");
+                    }
+                    "quit" => app.exit(0),
+                    _ => {}
+                })
+                .build(app)?;
+            Ok(())
+        })
+        // 音频流协议：music://track/{id}（Windows 上为 http://music.localhost/track/{id}）
+        .register_asynchronous_uri_scheme_protocol("music", scheme::music_protocol)
+        // 封面协议：cover://album/{album_id}
+        .register_asynchronous_uri_scheme_protocol("cover", scheme::cover_protocol)
+        .invoke_handler(tauri::generate_handler![
+            commands::add_local_source,
+            commands::list_sources,
+            commands::remove_source,
+            commands::rescan_source,
+            commands::set_source_fast_import,
+            commands::query_tracks,
+            commands::query_albums,
+            commands::query_artists,
+            commands::get_track,
+            commands::get_tracks_by_ids,
+            commands::get_stream_url,
+            commands::library_stats,
+            commands::reveal_track,
+            commands::playlist_list,
+            commands::playlist_create,
+            commands::playlist_rename,
+            commands::playlist_delete,
+            commands::playlist_get_items,
+            commands::playlist_add_tracks,
+            commands::playlist_remove_track,
+            commands::playlist_reorder,
+            commands::report_play,
+            commands::get_lyrics,
+            commands::favorite_toggle,
+            commands::get_setting,
+            commands::set_setting,
+            commands::share_get_status,
+            commands::share_set_enabled,
+            commands::net_discover_start,
+            commands::net_discover_stop,
+            commands::lan_add_source,
+            commands::webdav_add_source
+        ])
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
+}
