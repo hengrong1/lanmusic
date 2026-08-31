@@ -49,18 +49,18 @@ function openArtist() {
     </header>
 
     <div class="flex min-h-0 flex-1 gap-12 px-10 pb-8">
-      <!-- 左：仅封面（垂直居中），辉光随主色 -->
-      <div class="np-cover flex h-full w-[30%] max-w-[340px] shrink-0 items-center justify-center">
+      <!-- 左：封面（与右侧歌词各占一半，垂直居中），辉光随主色 -->
+      <div class="np-cover flex h-full min-w-0 flex-1 basis-1/2 items-center justify-center">
         <CoverImg
           :album-id="player.current?.albumId ?? null"
-          class="aspect-square w-full rounded-2xl"
+          class="aspect-square max-h-full w-full rounded-2xl"
           rounded="rounded-2xl"
           :style="coverStyle"
         />
       </div>
 
-      <!-- 右：曲目信息 + 歌词 -->
-      <div class="np-fade flex h-full min-w-0 flex-1 flex-col">
+      <!-- 右：曲目信息 + 歌词（与封面各占一半） -->
+      <div class="np-fade flex h-full min-w-0 flex-1 basis-1/2 flex-col">
         <div class="shrink-0 pb-4 pt-6 text-center">
           <h1 class="truncate text-2xl font-bold text-white">{{ player.current?.title ?? '未在播放' }}</h1>
           <p class="mt-1 truncate text-sm text-white/60">
