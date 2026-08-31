@@ -10,16 +10,7 @@
     "frontendDist": "../dist"
   },
   "app": {
-    "windows": [
-      {
-        "title": "LanMusic",
-        "width": 1280,
-        "height": 820,
-        "minWidth": 980,
-        "minHeight": 640,
-        "center": true
-      }
-    ],
+    "windows": [],
     "security": {
       "csp": "default-src 'self'; img-src 'self' data: cover: http://cover.localhost; media-src 'self' music: http://music.localhost blob:; style-src 'self' 'unsafe-inline'"
     }

@@ -18,6 +18,30 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
+            // 主窗口：在 Rust 侧按平台创建（官方《窗口自定义》推荐做法）
+            // - macOS：保留原生红绿灯，仅透明化标题栏（fullSizeContentView），内容延伸到标题栏下方
+            // - Windows/Linux：完全无边框（decorations: false），由前端自绘控制按钮
+            let win_builder = tauri::WebviewWindowBuilder::new(app, "main", tauri::WebviewUrl::default())
+                .title("LanMusic")
+                .inner_size(1280.0, 820.0)
+                .min_inner_size(980.0, 640.0)
+                .center();
+            #[cfg(target_os = "macos")]
+            let win_builder = win_builder.title_bar_style(tauri::TitleBarStyle::Transparent);
+            #[cfg(not(target_os = "macos"))]
+            let win_builder = win_builder.decorations(false);
+            let window = win_builder.build().map_err(|e| e.to_string())?;
+
+            // macOS：设置原生窗口背景色（跟随系统深浅色外观），
+            // 避免启动首帧白闪，以及窗口圆角处露出默认底色
+            #[cfg(target_os = "macos")]
+            {
+                use objc2_app_kit::{NSColor, NSWindow};
+                let ns_window_ptr = window.ns_window().unwrap() as *mut NSWindow;
+                let ns_window = unsafe { &*ns_window_ptr };
+                ns_window.setBackgroundColor(Some(&NSColor::windowBackgroundColor()));
+            }
+
             let data_dir = app.path().app_data_dir().expect("无法获取应用数据目录");
             std::fs::create_dir_all(&data_dir)?;
             let covers_dir = data_dir.join("covers");
