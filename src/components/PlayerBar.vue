@@ -5,6 +5,7 @@ import {
   ChevronUp,
   Heart,
   ListMusic,
+  LoaderCircle,
   Pause,
   Play,
   Repeat,
@@ -284,12 +285,12 @@ const theme = computed(() =>
           class="relative flex h-10 w-10 items-center justify-center rounded-full shadow-lg shadow-violet-500/30 transition duration-200 hover:scale-110 active:scale-90"
           :class="theme.playBtn"
           :style="playBtnStyle"
-          title="播放/暂停 (空格)"
+          :title="player.buffering ? '缓冲中…' : '播放/暂停 (空格)'"
           @click="player.toggle()"
         >
           <!-- 播放中的脉冲光环 -->
           <span
-            v-if="player.playing"
+            v-if="player.playing && !player.buffering"
             class="absolute inset-0 rounded-full bg-violet-400/50 animate-ping [animation-duration:1.8s]"
             :style="pingStyle"
           ></span>
@@ -300,8 +301,26 @@ const theme = computed(() =>
             leave-active-class="transition duration-100 ease-in"
             leave-to-class="scale-0 opacity-0"
           >
-            <Pause v-if="player.playing" key="pause" class="relative h-4.5 w-4.5" fill="currentColor" stroke="none" />
-            <Play v-else key="play" class="relative ml-0.5 h-4.5 w-4.5" fill="currentColor" stroke="none" />
+            <!-- 加载中：旋转的圆环 spinner（不显示播放/暂停图标） -->
+            <LoaderCircle
+              v-if="player.buffering"
+              key="buffering"
+              class="relative h-5 w-5 animate-spin text-white"
+            />
+            <Pause
+              v-else-if="player.playing"
+              key="pause"
+              class="relative h-4.5 w-4.5"
+              fill="currentColor"
+              stroke="none"
+            />
+            <Play
+              v-else
+              key="play"
+              class="relative ml-0.5 h-4.5 w-4.5"
+              fill="currentColor"
+              stroke="none"
+            />
           </Transition>
         </button>
         <button

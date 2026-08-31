@@ -127,6 +127,8 @@ export const usePlayerStore = defineStore('player', () => {
     audio.src = trackStreamUrl(t.id)
     position.value = 0
     duration.value = t.duration ?? 0
+    // 切换新歌立即进入加载态，直到 canplay/playing 事件清除
+    buffering.value = true
     localStorage.setItem(LS.lastPos, '0')
     void loadLyrics(t)
     if (autoplay) {
