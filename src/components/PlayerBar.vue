@@ -101,16 +101,20 @@ const hoverLyric = computed(() => {
   if (i < 0) return lines[0]?.text || '···'
   return lines[i].text || '···'
 })
-/** 气泡相对进度条的水平位置（左右收边避免溢出到时间文字上） */
+/** 气泡水平位置（像素，相对滑条容器左边），跟随鼠标；两端收边避免溢出到时间文字上 */
+const bubbleLeftPx = ref(48)
 const bubblePosStyle = computed(() => ({
-  left: `clamp(3.5rem, ${hoverPct}%, calc(100% - 3.5rem))`,
+  left: `${bubbleLeftPx.value}px`,
   transform: 'translateX(-50%)',
 }))
 function onProgressMove(e: MouseEvent) {
   const el = e.currentTarget as HTMLInputElement
   const rect = el.getBoundingClientRect()
   if (rect.width <= 0) return
-  hoverPct.value = Math.min(100, Math.max(0, ((e.clientX - rect.left) / rect.width) * 100))
+  const local = e.clientX - rect.left
+  hoverPct.value = Math.min(100, Math.max(0, (local / rect.width) * 100))
+  // clamp 到 [60, 宽-60]，让气泡完整留在滑条内
+  bubbleLeftPx.value = Math.min(Math.max(60, local), rect.width - 60)
 }
 
 const modeMeta: Record<PlayMode, { label: string; icon: typeof Repeat }> = {
