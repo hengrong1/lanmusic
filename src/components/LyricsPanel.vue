@@ -67,14 +67,9 @@ onMounted(() => void nextTick(scrollToActive))
         class="group relative flex items-center"
         :class="line.text ? 'py-2.5' : 'py-0.5'"
       >
-        <!-- 左侧跳转入口：跳转 文字 + 时间，点击才跳转到该句（歌词文字本身不响应点击） -->
+        <!-- 左侧跳转入口：悬停到该行时才显示（淡入 + 右滑入），点击跳转；歌词文字本身不响应点击 -->
         <button
-          class="flex h-7 w-16 shrink-0 items-center justify-end gap-1 rounded-md pr-1 font-mono text-[11px] leading-none transition-colors duration-300 ease-out"
-          :class="[
-            i === player.activeLyricIndex
-              ? 'text-[var(--np-accent,#fff)]'
-              : 'text-zinc-400/70 group-hover:text-[var(--np-accent,#fff)] dark:text-zinc-500',
-          ]"
+          class="pointer-events-none flex h-7 w-16 shrink-0 translate-x-2 items-center justify-end gap-1 rounded-md pr-1 font-mono text-[11px] leading-none text-[var(--np-accent,#fff)] opacity-0 transition-[opacity,transform] duration-200 ease-out group-hover:pointer-events-auto group-hover:translate-x-0 group-hover:opacity-100"
           :title="line.text ? `跳转到 ${fmt(line.time)}：${line.text}` : `跳转到 ${fmt(line.time)}（间奏）`"
           @click="player.seek(line.time)"
         >
