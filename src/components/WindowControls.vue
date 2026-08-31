@@ -23,28 +23,54 @@ onUnmounted(() => unlisten?.())
 <template>
   <div class="flex h-full items-stretch">
     <button
-      class="flex w-11 items-center justify-center transition"
-      :class="ambient ? 'text-white/70 hover:bg-white/10 hover:text-white' : 'text-zinc-500 hover:bg-zinc-200/80 dark:text-zinc-400 dark:hover:bg-zinc-700/80'"
+      class="group flex w-11 items-center justify-center transition"
       title="最小化"
       @click="appWindow.minimize()"
     >
-      <Minus class="h-4 w-4" />
+      <span
+        class="flex h-7 w-8 items-center justify-center rounded-md transition"
+        :class="
+          ambient
+            ? 'text-white/70 group-hover:bg-white/10 group-hover:text-white'
+            : 'text-zinc-500 group-hover:bg-zinc-200/80 dark:text-zinc-400 dark:group-hover:bg-zinc-700/80'
+        "
+      >
+        <Minus class="h-4 w-4" />
+      </span>
     </button>
     <button
-      class="flex w-11 items-center justify-center transition"
-      :class="ambient ? 'text-white/70 hover:bg-white/10 hover:text-white' : 'text-zinc-500 hover:bg-zinc-200/80 dark:text-zinc-400 dark:hover:bg-zinc-700/80'"
+      class="group flex w-11 items-center justify-center transition"
       :title="maximized ? '还原' : '最大化'"
       @click="appWindow.toggleMaximize()"
     >
-      <Copy v-if="maximized" class="h-3.5 w-3.5" />
-      <Square v-else class="h-3 w-3" />
+      <span
+        class="flex h-7 w-8 items-center justify-center rounded-md transition"
+        :class="
+          ambient
+            ? 'text-white/70 group-hover:bg-white/10 group-hover:text-white'
+            : 'text-zinc-500 group-hover:bg-zinc-200/80 dark:text-zinc-400 dark:group-hover:bg-zinc-700/80'
+        "
+      >
+        <Copy v-if="maximized" class="h-3.5 w-3.5" />
+        <Square v-else class="h-3 w-3" />
+      </span>
     </button>
     <button
-      class="flex w-11 items-center justify-center text-zinc-500 transition hover:bg-red-500 hover:text-white dark:text-zinc-400"
+      class="group flex w-11 items-center justify-center transition"
       title="关闭"
       @click="appWindow.close()"
     >
-      <X class="h-4 w-4" />
+      <span
+        class="flex h-7 w-8 items-center justify-center rounded-md transition"
+        :class="
+          ambient
+            ? 'text-white/70 group-hover:bg-white/10 group-hover:text-white'
+            : 'text-zinc-500 group-hover:bg-red-500 group-hover:text-white dark:text-zinc-400'
+        "
+      >
+        <X class="h-4 w-4" />
+      </span>
     </button>
   </div>
 </template>
+
