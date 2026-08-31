@@ -52,28 +52,52 @@ onMounted(() => void nextTick(scrollToActive))
 
     <!-- 时间轴歌词 -->
     <template v-else-if="player.lyricsLines?.length">
-      <p
-        v-for="(line, i) in player.lyricsLines"
-        :key="i"
-        :data-idx="i"
-        class="cursor-pointer text-center transition-[color,transform,text-shadow] duration-300 ease-out"
-        :class="[
-          line.text ? 'py-2.5 text-base' : 'py-0.5 text-xs leading-none',
-          i === player.activeLyricIndex
-            ? 'scale-[1.07] font-semibold'
-            : 'text-zinc-400/80 hover:text-zinc-600 dark:text-zinc-500 dark:hover:text-zinc-300',
-        ]"
-        :style="
-          i === player.activeLyricIndex
-            ? { color: 'var(--np-accent, #ffffff)', textShadow: '0 0 22px var(--np-accent, #ffffff)' }
-            : undefined
-        "
-        @click="player.seek(line.time)"
-      >
-        <template v-if="line.text">{{ line.text }}</template>
-        <!-- 间奏占位：折叠后的一行，极简 -->
-        <span v-else class="tracking-[0.5em] opacity-30">···</span>
-      </p>
+      <div class="relative">
+        <!-- 左侧时间轴虚线：贯穿整个歌词列表，圆点按钮浮于其上 -->
+        <div class="absolute top-0 bottom-0 left-[11px] border-l-2 border-dashed border-zinc-300/60 dark:border-zinc-600/40"></div>
+        <div
+          v-for="(line, i) in player.lyricsLines"
+          :key="i"
+          :data-idx="i"
+          class="relative flex"
+          :class="line.text ? 'py-2.5' : 'py-0.5'"
+        >
+          <!-- 虚线左侧的跳转按钮（圆点居中于虚线上，hover 放大便于点按） -->
+          <button
+            class="absolute top-1/2 left-0 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full transition-transform hover:scale-125"
+            :title="line.text ? `跳到：${line.text}` : '跳转到间奏'"
+            @click="player.seek(line.time)"
+          >
+            <span
+              class="block rounded-full transition-[background-color,box-shadow]"
+              :class="[
+                i === player.activeLyricIndex
+                  ? 'h-2 w-2 bg-[var(--np-accent,#fff)] shadow-[0_0_10px_var(--np-accent,#fff)]'
+                  : 'bg-zinc-400/80 hover:bg-zinc-600 dark:bg-zinc-500 dark:hover:bg-zinc-300',
+                !line.text ? '!bg-zinc-300/40 dark:!bg-zinc-700/40' : '',
+              ]"
+            ></span>
+          </button>
+          <p
+            class="flex-1 text-center transition-[color,transform,text-shadow] duration-300 ease-out"
+            :class="[
+              line.text ? 'text-base' : 'text-xs leading-none',
+              i === player.activeLyricIndex
+                ? 'scale-[1.07] font-semibold'
+                : 'text-zinc-400/80 dark:text-zinc-500',
+            ]"
+            :style="
+              i === player.activeLyricIndex
+                ? { color: 'var(--np-accent, #ffffff)', textShadow: '0 0 22px var(--np-accent, #ffffff)' }
+                : undefined
+            "
+          >
+            <template v-if="line.text">{{ line.text }}</template>
+            <!-- 间奏占位：折叠后的一行，极简 -->
+            <span v-else class="tracking-[0.5em] opacity-30">···</span>
+          </p>
+        </div>
+      </div>
     </template>
 
     <!-- 纯文本歌词 -->
