@@ -4,6 +4,8 @@
 
 > 产品设计文档见 [docs/产品设计文档.md](docs/产品设计文档.md)。
 > 当前进度：**M0-M3 已完成**（本地播放闭环 / 歌单 / 歌词 / 最近播放 / 托盘 / WebDAV 源）。
+>
+> 最新功能：歌单升级（添加歌曲面板、封面、简介、批量操作）、侧栏动画优化、主题图标优化。
 
 ## 技术栈
 
@@ -26,11 +28,18 @@
 
 ### M2 库体验
 
-- **歌单**：新建/重命名/删除、右键加入、拖拽排序、播放全部
+- **歌单**：
+  - 基本信息：名称、简介、创建时间、歌曲数量
+  - 歌单封面：自动使用最新加入歌曲的专辑封面
+  - 添加歌曲：搜索勾选面板（支持"全部/已选"视图切换、全选/清空、已在歌单禁选）
+  - 排序：按加入时间倒序（新添加的歌曲在最前面）
+  - 批量操作：多选模式支持播放/加入队列/移出歌单
+  - 编辑集中化：通过统一弹层管理名称、简介、删除
 - **歌词**：`.lrc` 同名文件 + 内嵌歌词（USLT/LYRICS）；播放页大封面 + 时间轴滚动歌词（点击行跳转）；间奏空行折叠
 - **最近播放**（`play_count` / `last_played_at` 统计）
 - **喜欢**（收藏）
 - **系统托盘**：播放暂停/切曲/显示窗口/退出
+- **侧栏**：可收起/展开（GSAP 宽度动画 + 文字淡入淡出 + 图标尺寸过渡），歌单显示封面缩略图
 
 ### M3 局域网
 
@@ -81,7 +90,7 @@ src/                       # Vue 3 前端
 ├── stores/
 │   ├── player.ts          # 播放状态机：队列/模式/歌词/恢复/错误重试
 │   └── library.ts         # 库数据：来源/扫描进度/歌单/分页查询
-├── components/            # PlayerBar / TrackTable(虚拟滚动) / QueuePanel / NowPlayingView ...
+├── components/            # PlayerBar / TrackTable(虚拟滚动) / TrackPicker(选歌面板) / PlaylistEditDialog / Tooltip / QueuePanel / NowPlayingView ...
 ├── views/                 # Tracks / Albums / Artists / Playlist / Settings
 ├── composables/           # useNav / useTheme / useSkin / useSpectrum / useAmbient / useToast ...
 ├── utils/                 # lrc 解析 / 取色 / 平台判断
@@ -151,7 +160,7 @@ src-tauri/                 # Rust 后端
 |---|---|
 | 来源管理 | `add_local_source(path)` · `list_sources()` · `remove_source(id)` · `rescan_source(id, mode: auto\|full)` · `set_source_fast_import(id, enabled)` · `webdav_add_source(url, username, password, name?)` |
 | 曲库查询 | `query_tracks({view, refId, search, sort, page, pageSize})` · `query_albums(search, page, pageSize)` · `query_artists(search, page, pageSize)` · `get_track(id)` · `get_tracks_by_ids(ids)` · `get_stream_url(id)` · `library_stats()` · `reveal_track(id)` |
-| 歌单 | `playlist_list` · `playlist_create(name)` · `playlist_rename(id, name)` · `playlist_delete(id)` · `playlist_get_items(id)` · `playlist_add_tracks(id, trackIds)` · `playlist_remove_track(id, trackId)` · `playlist_reorder(id, trackIds)` |
+| 歌单 | `playlist_list` · `playlist_create(name)` · `playlist_rename(id, name)` · `playlist_delete(id)` · `playlist_get_items(id)` · `playlist_add_tracks(id, trackIds)` · `playlist_remove_track(id, trackId)` · `playlist_remove_tracks(id, trackIds)` · `playlist_set_description(id, description)` · `playlist_cover(id)` · `playlist_reorder(id, trackIds)` |
 | 播放/歌词/喜欢 | `report_play(id)` · `get_lyrics(id)` · `favorite_toggle(id, fav)` |
 | 设置 | `get_setting(key)` · `set_setting(key, value)` |
 
@@ -176,7 +185,7 @@ SQLite（WAL 模式，外键开启），建表与列迁移见 `src-tauri/src/db.
 | `artists` | 艺人（名称唯一，不分大小写） |
 | `albums` | 专辑：`key` 唯一键（`标题\|合辑艺人\|年份` 小写）、`has_cover`、`cover_url`(WebDAV) |
 | `tracks` | 曲目：`path`(来源内唯一)、标签/音频属性、`fav`、`play_count`/`last_played_at`、`meta_state`(0=快速导入待补全) |
-| `playlists` / `playlist_items` | 歌单与条目（`position` 排序，级联删除） |
+| `playlists` / `playlist_items` | 歌单与条目（`playlists` 新增 `description` 简介列；`playlist_items` 新增 `added_at` 时间戳，按加入时间倒序排列，级联删除） |
 | `lrc_files` | 外挂歌词：`track_id` 主键；`path` 为本地路径（local）或完整 URL（webdav） |
 | `app_settings` | KV 设置及内部标记（如封面缓存自愈版本号） |
 
@@ -230,7 +239,8 @@ SQLite（WAL 模式，外键开启），建表与列迁移见 `src-tauri/src/db.
 ## 路线图
 
 - **M4**：系统媒体键（SMTC/MPRIS）、WebDAV 凭证入系统钥匙串、目录监听（notify）、打包签名
-- **后续可能回归**：局域网共享模式与设备发现（已于当前版本移除，历史实现见 git 记录）
+- **已完成（本次）**：歌单升级（添加歌曲面板、封面、简介、批量操作、加入时间排序）、侧栏收起动画优化、主题图标优化（自动=SunMoon/暗=Moon/亮=Sun）
+- **已移除**：局域网共享模式与设备发现（历史实现见 git 记录）
 - 已知取舍：
   - WebDAV 标签解析基于文件头部 1MB（moov 在尾部的 M4A 可能缺时长）
   - 歌词暂存原始文本，编辑器后续提供
