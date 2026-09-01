@@ -51,10 +51,17 @@ const player = usePlayerStore()
 const nav = useNav()
 const { palette } = useAmbient()
 
-// ---- 皮肤：频谱开关 + 样式选择（弹层挂在音量左侧） ----
+// ---- 皮肤：频谱开关 + 样式选择（弹层挂在音量左侧，入口仅在播放页显示） ----
 const skin = useSkin()
 const skinOpen = ref(false)
 const skinPop = ref<HTMLElement | null>(null)
+
+watch(
+  () => props.nowPlayingOpen,
+  (open) => {
+    if (!open) skinOpen.value = false
+  },
+)
 
 function toggleSpectrum() {
   skin.value.on = !skin.value.on
@@ -532,8 +539,8 @@ const theme = computed(() =>
 
     <!-- 右：皮肤 / 音量 / 队列 -->
     <div class="flex w-56 items-center justify-end gap-1">
-      <!-- 皮肤：频谱开关 + 样式选择（位于音量左侧） -->
-      <div ref="skinPop" class="relative">
+      <!-- 皮肤：频谱开关 + 样式选择（音量左侧；入口仅在播放页显示） -->
+      <div v-if="props.nowPlayingOpen" ref="skinPop" class="relative">
         <button
           class="flex h-8 w-8 items-center justify-center rounded-full transition-colors duration-500"
           :class="theme.iconBtn"

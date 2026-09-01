@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { ArrowDown, ArrowUp, ChevronsUpDown, Disc3, FolderOpen, Heart, ListEnd, ListPlus, LocateFixed, Play } from '@lucide/vue'
+import { ArrowDown, ArrowUp, Check, ChevronsUpDown, Disc3, FolderOpen, Heart, ListEnd, ListPlus, LocateFixed, Play } from '@lucide/vue'
 import type { Track } from '@/types'
 import VirtualList from '@/components/VirtualList.vue'
 import ContextMenu from '@/components/ContextMenu.vue'
@@ -11,12 +11,13 @@ import { useNav } from '@/composables/useNav'
 import { api } from '@/api/commands'
 import { toast } from '@/composables/useToast'
 
-const props = defineProps<{ tracks: Track[]; playlistId?: number; favoritesView?: boolean; sort?: string }>()
+const props = defineProps<{ tracks: Track[]; playlistId?: number; favoritesView?: boolean; sort?: string; reorderable?: boolean; batchMode?: boolean }>()
 const emit = defineEmits<{
   nearEnd: []
   refresh: []
   reorder: [from: number, to: number]
   sortChange: [value: string]
+  selection: [ids: number[]]
 }>()
 
 const player = usePlayerStore()
@@ -73,6 +74,37 @@ function rowClick(_t: Track, i: number) {
   selected.value = i
 }
 
+// ---- 批量多选模式 ----
+const selSet = ref<Set<number>>(new Set())
+watch(
+  () => props.batchMode,
+  (m) => {
+    if (!m) selSet.value = new Set()
+  },
+)
+watch(
+  selSet,
+  (s) => emit('selection', [...s]),
+  { deep: true },
+)
+const allSelected = computed(() => props.tracks.length > 0 && props.tracks.every((t) => selSet.value.has(t.id)))
+function toggleAll() {
+  const next = new Set(selSet.value)
+  if (allSelected.value) props.tracks.forEach((t) => next.delete(t.id))
+  else props.tracks.forEach((t) => next.add(t.id))
+  selSet.value = next
+}
+function onRowClick(t: Track, i: number) {
+  if (props.batchMode) {
+    const next = new Set(selSet.value)
+    if (next.has(t.id)) next.delete(t.id)
+    else next.add(t.id)
+    selSet.value = next
+  } else {
+    rowClick(t, i)
+  }
+}
+
 function rowDblClick(_t: Track, i: number) {
   player.playList(props.tracks, i)
 }
@@ -81,6 +113,9 @@ const selected = ref(-1)
 
 /** 正在播放的行：渐变底色 + 左侧紫条 + 标题紫色 + 跳动音条 */
 function rowClass(t: Track, index: number) {
+  if (props.batchMode && selSet.value.has(t.id)) {
+    return 'bg-violet-50 dark:bg-violet-500/10'
+  }
   if (player.current?.id === t.id) {
     return 'bg-gradient-to-r from-violet-100 to-transparent shadow-[inset_2px_0_0_0_#8b5cf6] dark:from-violet-500/15 dark:to-transparent'
   }
@@ -172,12 +207,12 @@ function openAlbum(t: Track) {
   nav.go({ view: 'tracks', albumId: t.albumId, albumTitle: t.album ?? '未知专辑' })
 }
 
-// ---- 拖拽排序（歌单视图）----
+// ---- 拖拽排序（仅传入 reorderable 时启用）----
 const dragIndex = ref(-1)
 const dragOverIndex = ref(-1)
 
 function onDragStart(i: number) {
-  if (props.playlistId == null) return
+  if (!props.reorderable || props.batchMode) return
   dragIndex.value = i
 }
 function onDragOver(e: DragEvent, i: number) {
@@ -204,7 +239,17 @@ function onDragEnd() {
       class="group/th grid h-10 shrink-0 items-center gap-3 border-b border-zinc-200 px-4 pb-0.5 text-xs font-medium text-zinc-500 dark:border-zinc-800 dark:text-zinc-500"
       style="grid-template-columns: 40px minmax(0, 1fr) minmax(0, 220px) minmax(0, 220px) 56px"
     >
-      <span class="text-center">#</span>
+      <span v-if="props.batchMode" class="flex justify-center">
+        <button
+          class="flex h-4 w-4 items-center justify-center rounded border transition"
+          :class="allSelected ? 'border-violet-500 bg-violet-500 text-white' : 'border-zinc-300 dark:border-zinc-600'"
+          title="全选"
+          @click.stop="toggleAll"
+        >
+          <Check v-if="allSelected" class="h-3 w-3" />
+        </button>
+      </span>
+      <span v-else class="text-center">#</span>
       <template v-for="col in sortCols" :key="col.field">
         <button
           v-if="props.sort !== undefined"
@@ -239,8 +284,8 @@ function onDragEnd() {
             ]"
             style="grid-template-columns: 40px minmax(0, 1fr) minmax(0, 220px) minmax(0, 220px) 56px"
             :title="t.path"
-            :draggable="props.playlistId != null"
-            @click="rowClick(t, index)"
+            :draggable="props.reorderable === true && !props.batchMode"
+            @click="onRowClick(t, index)"
             @dblclick="rowDblClick(t, index)"
             @contextmenu="openMenu($event, t)"
             @dragstart="onDragStart(index)"
@@ -248,7 +293,15 @@ function onDragEnd() {
             @drop="onDrop($event, index)"
             @dragend="onDragEnd"
           >
-            <div class="relative flex h-5 items-center justify-center">
+            <div v-if="props.batchMode" class="relative flex h-5 items-center justify-center">
+              <span
+                class="flex h-4 w-4 items-center justify-center rounded border transition"
+                :class="selSet.has(t.id) ? 'border-violet-500 bg-violet-500 text-white' : 'border-zinc-300 dark:border-zinc-600'"
+              >
+                <Check v-if="selSet.has(t.id)" class="h-3 w-3" />
+              </span>
+            </div>
+            <div v-else class="relative flex h-5 items-center justify-center">
               <span
                 v-if="player.current?.id !== t.id"
                 class="text-xs text-zinc-400 group-hover:invisible dark:text-zinc-500"

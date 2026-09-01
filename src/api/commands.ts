@@ -38,14 +38,21 @@ export const api = {
   playlistList: () => invoke<Playlist[]>('playlist_list'),
   playlistCreate: (name: string) => invoke<Playlist>('playlist_create', { name }),
   playlistRename: (id: number, name: string) => invoke<void>('playlist_rename', { id, name }),
+  playlistSetDescription: (id: number, description: string) =>
+    invoke<void>('playlist_set_description', { id, description }),
   playlistDelete: (id: number) => invoke<void>('playlist_delete', { id }),
   playlistGetItems: (id: number) => invoke<Track[]>('playlist_get_items', { id }),
+  /** 返回实际新增数量（同歌单内已存在的曲目会跳过） */
   playlistAddTracks: (id: number, trackIds: number[]) =>
-    invoke<void>('playlist_add_tracks', { id, trackIds }),
+    invoke<number>('playlist_add_tracks', { id, trackIds }),
   playlistRemoveTrack: (id: number, trackId: number) =>
     invoke<void>('playlist_remove_track', { id, trackId }),
+  playlistRemoveTracks: (id: number, trackIds: number[]) =>
+    invoke<void>('playlist_remove_tracks', { id, trackIds }),
   playlistReorder: (id: number, trackIds: number[]) =>
     invoke<void>('playlist_reorder', { id, trackIds }),
+  /** 歌单封面：最新加入歌曲的专辑 id */
+  playlistCover: (id: number) => invoke<number | null>('playlist_cover', { id }),
 
   // 播放统计与歌词（M2）
   reportPlay: (id: number) => invoke<void>('report_play', { id }),

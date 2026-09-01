@@ -117,17 +117,26 @@ export const useLibraryStore = defineStore('library', () => {
     await api.playlistRename(id, name)
     await loadPlaylists()
   }
+  async function setPlaylistDescription(id: number, description: string) {
+    await api.playlistSetDescription(id, description)
+    await loadPlaylists()
+  }
   async function deletePlaylist(id: number) {
     await api.playlistDelete(id)
     await loadPlaylists()
   }
   async function addToPlaylist(playlistId: number, trackIds: number[]) {
-    await api.playlistAddTracks(playlistId, trackIds)
+    const added = await api.playlistAddTracks(playlistId, trackIds)
     await loadPlaylists()
-    toast(`已加入歌单（${trackIds.length} 首）`)
+    toast(added > 0 ? `已加入歌单（${added} 首）` : '所选歌曲已在歌单中')
+    return added
   }
   async function removeFromPlaylist(playlistId: number, trackId: number) {
     await api.playlistRemoveTrack(playlistId, trackId)
+    await loadPlaylists()
+  }
+  async function removeTracksFromPlaylist(playlistId: number, trackIds: number[]) {
+    await api.playlistRemoveTracks(playlistId, trackIds)
     await loadPlaylists()
   }
   async function reorderPlaylist(playlistId: number, trackIds: number[]) {
@@ -182,9 +191,11 @@ export const useLibraryStore = defineStore('library', () => {
     loadPlaylists,
     createPlaylist,
     renamePlaylist,
+    setPlaylistDescription,
     deletePlaylist,
     addToPlaylist,
     removeFromPlaylist,
+    removeTracksFromPlaylist,
     reorderPlaylist,
     init,
   }

@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
-import { ArrowLeft, Moon, PanelLeftClose, PanelLeftOpen, Search, Settings, Sun, X } from '@lucide/vue'
+import { ArrowLeft, Moon, PanelLeftClose, PanelLeftOpen, Search, Settings, Sun, SunMoon, X } from '@lucide/vue'
 import { useNav } from '@/composables/useNav'
 import { useSidebar } from '@/composables/useSidebar'
 import { useTheme } from '@/composables/useTheme'
-import { CUSTOM_WINDOW_CONTROLS, IS_MAC } from '@/utils/platform'
+import { CUSTOM_WINDOW_CONTROLS } from '@/utils/platform'
 import WindowControls from '@/components/WindowControls.vue'
 
 const { collapsed } = useSidebar()
@@ -49,12 +49,12 @@ defineExpose({ focusSearch })
     自定义标题栏：
     - 全平台无边框（macOS Overlay 保留红绿灯并浮于内容上，Windows/Linux 完全自绘）
     - data-tauri-drag-region 只作用于直接命中的元素，空白处可拖拽，交互子元素不受影响
-    - macOS 红绿灯位于左上角，左侧需留出约 76px 偏移；Windows/Linux 右侧自绘控制按钮
+    - macOS 红绿灯位于窗口左上角（侧栏 Logo 行上方），顶栏无需为其预留偏移；Windows/Linux 右侧自绘控制按钮
   -->
   <header
     data-tauri-drag-region
     class="flex h-14 shrink-0 items-center gap-3 border-b border-zinc-200 pl-4 dark:border-zinc-800"
-    :class="IS_MAC ? 'pl-[76px] pr-4' : CUSTOM_WINDOW_CONTROLS ? 'pr-0' : 'pr-4'"
+    :class="CUSTOM_WINDOW_CONTROLS ? 'pr-0' : 'pr-4'"
   >
     <button
       class="flex h-8 w-8 items-center justify-center rounded-full text-zinc-500 transition hover:bg-zinc-100 dark:hover:bg-zinc-800 dark:text-zinc-400"
@@ -98,8 +98,10 @@ defineExpose({ focusSearch })
       :title="`主题：${mode === 'dark' ? '深色' : mode === 'light' ? '浅色' : '跟随系统'}`"
       @click="cycleTheme"
     >
-      <Sun v-if="resolved === 'dark'" class="h-4 w-4" />
-      <Moon v-else class="h-4 w-4" />
+      <!-- 跟随系统显示日月，固定深色/浅色时分别显示月亮/太阳 -->
+      <SunMoon v-if="mode === 'system'" class="h-4 w-4" />
+      <Moon v-else-if="resolved === 'dark'" class="h-4 w-4" />
+      <Sun v-else class="h-4 w-4" />
     </button>
 
     <button

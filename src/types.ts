@@ -1,6 +1,6 @@
 export interface Source {
   id: number
-  kind: 'local' | 'webdav' | 'lan'
+  kind: 'local' | 'webdav'
   name: string
   basePath: string | null
   baseUrl: string | null
@@ -102,4 +102,8 @@ export interface Playlist {
   name: string
   trackCount: number
   createdAt: number | null
+  /** 歌单封面：最新加入歌曲的专辑 id */
+  coverAlbumId: number | null
+  /** 歌单简介 */
+  description: string | null
 }

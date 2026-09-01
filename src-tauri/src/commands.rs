@@ -556,12 +556,28 @@ pub struct Playlist {
     pub name: String,
     pub track_count: i64,
     pub created_at: Option<i64>,
+    /// 歌单封面：最新加入歌曲的专辑 id（空歌单为 None）
+    pub cover_album_id: Option<i64>,
+    pub description: Option<String>,
 }
 
-const PLAYLIST_SELECT: &str = "SELECT p.id, p.name, (SELECT COUNT(*) FROM playlist_items i WHERE i.playlist_id = p.id), p.created_at FROM playlists p";
+const PLAYLIST_SELECT: &str = "SELECT p.id, p.name, \
+     (SELECT COUNT(*) FROM playlist_items i WHERE i.playlist_id = p.id), p.created_at, \
+     (SELECT t.album_id FROM playlist_items i JOIN tracks t ON t.id = i.track_id \
+      WHERE i.playlist_id = p.id AND t.album_id IS NOT NULL \
+      ORDER BY i.added_at DESC, i.id DESC LIMIT 1), \
+     p.description \
+     FROM playlists p";
 
 fn row_playlist(r: &rusqlite::Row) -> rusqlite::Result<Playlist> {
-    Ok(Playlist { id: r.get(0)?, name: r.get(1)?, track_count: r.get(2)?, created_at: r.get(3)? })
+    Ok(Playlist {
+        id: r.get(0)?,
+        name: r.get(1)?,
+        track_count: r.get(2)?,
+        created_at: r.get(3)?,
+        cover_album_id: r.get(4)?,
+        description: r.get(5)?,
+    })
 }
 
 #[tauri::command]
@@ -592,7 +608,7 @@ pub fn playlist_create(state: State<'_, AppState>, name: String) -> Result<Playl
     conn.execute("INSERT INTO playlists (name, created_at) VALUES (?1, ?2)", params![name, now])
         .map_err(|e| e.to_string())?;
     let id = conn.last_insert_rowid();
-    Ok(Playlist { id, name, track_count: 0, created_at: Some(now) })
+    Ok(Playlist { id, name, track_count: 0, created_at: Some(now), cover_album_id: None, description: None })
 }
 
 #[tauri::command]
@@ -603,6 +619,17 @@ pub fn playlist_rename(state: State<'_, AppState>, id: i64, name: String) -> Res
     }
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     conn.execute("UPDATE playlists SET name = ?1 WHERE id = ?2", params![name, id])
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// 设置歌单简介（空字符串视为清除简介）
+#[tauri::command]
+pub fn playlist_set_description(state: State<'_, AppState>, id: i64, description: String) -> Result<(), String> {
+    let trimmed = description.trim().to_string();
+    let value: Option<String> = if trimmed.is_empty() { None } else { Some(trimmed) };
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    conn.execute("UPDATE playlists SET description = ?1 WHERE id = ?2", params![value, id])
         .map_err(|e| e.to_string())?;
     Ok(())
 }
@@ -618,7 +645,8 @@ pub fn playlist_delete(state: State<'_, AppState>, id: i64) -> Result<(), String
 pub fn playlist_get_items(state: State<'_, AppState>, id: i64) -> Result<Vec<Track>, String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     let sql = format!(
-        "{TRACK_SELECT} JOIN playlist_items i ON i.track_id = t.id WHERE i.playlist_id = ?1 ORDER BY i.position, i.id"
+        // 按加入时间倒序：新添加的歌曲排在最前；同时加入的按插入顺序（id）倒序
+        "{TRACK_SELECT} JOIN playlist_items i ON i.track_id = t.id WHERE i.playlist_id = ?1 ORDER BY i.added_at DESC, i.id DESC"
     );
     let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
     let items = stmt
@@ -630,9 +658,13 @@ pub fn playlist_get_items(state: State<'_, AppState>, id: i64) -> Result<Vec<Tra
 }
 
 #[tauri::command]
-pub fn playlist_add_tracks(state: State<'_, AppState>, id: i64, track_ids: Vec<i64>) -> Result<(), String> {
+pub fn playlist_add_tracks(state: State<'_, AppState>, id: i64, track_ids: Vec<i64>) -> Result<usize, String> {
     let mut conn = state.db.lock().map_err(|e| e.to_string())?;
     let tx = conn.transaction().map_err(|e| e.to_string())?;
+    let now: i64 = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as i64;
     let max_pos: i64 = tx
         .query_row(
             "SELECT IFNULL(MAX(position), -1) FROM playlist_items WHERE playlist_id = ?1",
@@ -640,14 +672,28 @@ pub fn playlist_add_tracks(state: State<'_, AppState>, id: i64, track_ids: Vec<i
             |r| r.get(0),
         )
         .map_err(|e| e.to_string())?;
-    for (i, tid) in track_ids.iter().enumerate() {
+    // 同一歌单内去重：已存在的曲目跳过，返回实际新增数量
+    let mut added = 0usize;
+    for tid in track_ids {
+        let exists: i64 = tx
+            .query_row(
+                "SELECT COUNT(*) FROM playlist_items WHERE playlist_id = ?1 AND track_id = ?2",
+                params![id, tid],
+                |r| r.get(0),
+            )
+            .map_err(|e| e.to_string())?;
+        if exists > 0 {
+            continue;
+        }
+        added += 1;
         tx.execute(
-            "INSERT INTO playlist_items (playlist_id, track_id, position) VALUES (?1, ?2, ?3)",
-            params![id, tid, max_pos + 1 + i as i64],
+            "INSERT INTO playlist_items (playlist_id, track_id, position, added_at) VALUES (?1, ?2, ?3, ?4)",
+            params![id, tid, max_pos + added as i64, now],
         )
         .map_err(|e| e.to_string())?;
     }
-    tx.commit().map_err(|e| e.to_string())
+    tx.commit().map_err(|e| e.to_string())?;
+    Ok(added)
 }
 
 #[tauri::command]
@@ -661,19 +707,70 @@ pub fn playlist_remove_track(state: State<'_, AppState>, id: i64, track_id: i64)
     Ok(())
 }
 
+/// 批量移除歌单中的多首歌曲
 #[tauri::command]
-pub fn playlist_reorder(state: State<'_, AppState>, id: i64, track_ids: Vec<i64>) -> Result<(), String> {
+pub fn playlist_remove_tracks(state: State<'_, AppState>, id: i64, track_ids: Vec<i64>) -> Result<(), String> {
     let mut conn = state.db.lock().map_err(|e| e.to_string())?;
     let tx = conn.transaction().map_err(|e| e.to_string())?;
-    tx.execute("DELETE FROM playlist_items WHERE playlist_id = ?1", [id]).map_err(|e| e.to_string())?;
-    for (i, tid) in track_ids.iter().enumerate() {
+    for tid in track_ids {
         tx.execute(
-            "INSERT INTO playlist_items (playlist_id, track_id, position) VALUES (?1, ?2, ?3)",
-            params![id, tid, i as i64],
+            "DELETE FROM playlist_items WHERE playlist_id = ?1 AND track_id = ?2",
+            params![id, tid],
         )
         .map_err(|e| e.to_string())?;
     }
     tx.commit().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn playlist_reorder(state: State<'_, AppState>, id: i64, track_ids: Vec<i64>) -> Result<(), String> {
+    use std::collections::HashMap;
+    let mut conn = state.db.lock().map_err(|e| e.to_string())?;
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    // 保留原加入时间：重排只改变 position，不影响“按加入时间倒序”的展示
+    let old_added_at: HashMap<i64, i64> = {
+        let mut stmt = tx
+            .prepare("SELECT track_id, added_at FROM playlist_items WHERE playlist_id = ?1")
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([id], |r| {
+                Ok((r.get::<_, i64>(0)?, r.get::<_, Option<i64>>(1)?.unwrap_or(0)))
+            })
+            .map_err(|e| e.to_string())?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())?;
+        rows.into_iter().collect()
+    };
+    tx.execute("DELETE FROM playlist_items WHERE playlist_id = ?1", [id])
+        .map_err(|e| e.to_string())?;
+    let now: i64 = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as i64;
+    for (i, tid) in track_ids.iter().enumerate() {
+        let added_at = old_added_at.get(tid).copied().unwrap_or(now);
+        tx.execute(
+            "INSERT INTO playlist_items (playlist_id, track_id, position, added_at) VALUES (?1, ?2, ?3, ?4)",
+            params![id, tid, i as i64, added_at],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+    tx.commit().map_err(|e| e.to_string())
+}
+
+/// 歌单封面：最新加入歌曲的专辑 id（前端经 cover:// 协议惰性加载封面；空歌单返回 None）
+#[tauri::command]
+pub fn playlist_cover(state: State<'_, AppState>, id: i64) -> Result<Option<i64>, String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    conn.query_row(
+        "SELECT t.album_id FROM playlist_items i JOIN tracks t ON t.id = i.track_id
+         WHERE i.playlist_id = ?1 AND t.album_id IS NOT NULL
+         ORDER BY i.added_at DESC, i.id DESC LIMIT 1",
+        [id],
+        |r| r.get::<_, i64>(0),
+    )
+    .optional()
+    .map_err(|e| e.to_string())
 }
 
 // ================================================================ 播放统计与歌词（M2）

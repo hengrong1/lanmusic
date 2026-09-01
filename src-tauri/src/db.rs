@@ -110,6 +110,22 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
     ensure_column(conn, "albums", "cover_url", "TEXT")?;
     ensure_column(conn, "sources", "config", "TEXT")?;
     ensure_column(conn, "tracks", "fav", "INTEGER NOT NULL DEFAULT 0")?;
+    ensure_column(conn, "playlist_items", "added_at", "INTEGER")?;
+    ensure_column(conn, "playlists", "description", "TEXT")?;
+    // 旧数据无加入时间：回填 0 视为最早加入，倒序时排在最前
+    conn.execute("UPDATE playlist_items SET added_at = 0 WHERE added_at IS NULL", [])?;
+
+    // LAN 共享功能已移除：清理遗留的 lan 来源（曲目经外键级联删除），
+    // 并回收因此产生的孤儿专辑/艺人（含仅被专辑引用的归属艺人）
+    let lan_removed = conn.execute("DELETE FROM sources WHERE kind = 'lan'", [])?;
+    if lan_removed > 0 {
+        conn.execute("DELETE FROM albums WHERE id NOT IN (SELECT DISTINCT album_id FROM tracks)", [])?;
+        conn.execute(
+            "DELETE FROM artists WHERE id NOT IN (SELECT DISTINCT artist_id FROM tracks)
+             AND id NOT IN (SELECT DISTINCT artist_id FROM albums)",
+            [],
+        )?;
+    }
     Ok(())
 }
 
