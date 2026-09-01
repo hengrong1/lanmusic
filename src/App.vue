@@ -203,7 +203,7 @@ window.addEventListener('keydown', (e) => {
           </Transition>
         </main>
       </div>
-      <QueuePanel v-if="queueOpen" @close="queueOpen = false" />
+      <QueuePanel :open="queueOpen" @close="queueOpen = false" />
     </div>
     <PlayerBar
       :now-playing-open="nowPlaying"

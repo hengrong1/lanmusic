@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
-import { ArrowLeft, Moon, Search, Sun, X } from '@lucide/vue'
+import { ArrowLeft, Moon, Search, Settings, Sun, X } from '@lucide/vue'
 import { useNav } from '@/composables/useNav'
 import { useTheme } from '@/composables/useTheme'
 import { CUSTOM_WINDOW_CONTROLS, IS_MAC } from '@/utils/platform'
 import WindowControls from '@/components/WindowControls.vue'
 
-const { current, back, replaceSearch, canBack } = useNav()
+const { current, back, replaceSearch, canBack, go } = useNav()
 const { mode, resolved, setTheme } = useTheme()
 
 const input = ref(current.value.search ?? '')
@@ -85,6 +85,15 @@ defineExpose({ focusSearch })
     >
       <Sun v-if="resolved === 'dark'" class="h-4 w-4" />
       <Moon v-else class="h-4 w-4" />
+    </button>
+
+    <button
+      class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition hover:bg-zinc-100 dark:hover:bg-zinc-800"
+      :class="current.view === 'settings' ? 'text-violet-500' : 'text-zinc-500 dark:text-zinc-400'"
+      title="设置"
+      @click="go({ view: 'settings' })"
+    >
+      <Settings class="h-4 w-4" />
     </button>
 
     <WindowControls v-if="CUSTOM_WINDOW_CONTROLS" />

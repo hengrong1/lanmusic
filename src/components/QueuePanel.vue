@@ -5,6 +5,7 @@ import { usePlayerStore } from '@/stores/player'
 
 const player = usePlayerStore()
 
+const props = defineProps<{ open?: boolean }>()
 const emit = defineEmits<{ close: [] }>()
 
 // 点击面板外部 / 按 Esc 关闭
@@ -62,9 +63,9 @@ watch(
   () => player.index,
   () => void nextTick(checkVisible),
 )
-onMounted(() => {
-  listEl.value?.addEventListener('scroll', checkVisible, { passive: true })
-  // 打开面板时：当前播放不在可视区就直接滚过去
+
+// 每次打开面板：当前播放不在可视区就直接滚过去
+function locateOnOpen() {
   void nextTick(() => {
     checkVisible()
     if (!activeVisible.value) {
@@ -75,21 +76,27 @@ onMounted(() => {
       checkVisible()
     }
   })
-})
+}
+watch(
+  () => props.open,
+  (v) => {
+    if (v) locateOnOpen()
+  },
+)
 </script>
 
 <template>
   <Teleport to="body">
     <Transition
       enter-active-class="transition duration-200 ease-out"
-      enter-from-class="translate-x-full"
+      enter-from-class="translate-y-3 scale-[0.97] opacity-0"
       leave-active-class="transition duration-150 ease-in"
-      leave-to-class="translate-x-full"
+      leave-to-class="translate-y-3 scale-[0.97] opacity-0"
     >
       <aside
-        v-if="player.queue.length"
+        v-if="open && player.queue.length"
         ref="panel"
-        class="fixed top-0 right-0 z-50 flex h-full w-80 flex-col border-l border-zinc-200 bg-white/98 shadow-2xl dark:border-zinc-800 dark:bg-zinc-900/98"
+        class="fixed right-2 bottom-[88px] z-50 flex max-h-[calc(100vh-120px)] w-80 origin-bottom-right flex-col overflow-hidden rounded-xl border border-zinc-200 bg-white/98 shadow-2xl dark:border-zinc-800 dark:bg-zinc-900/98"
       >
         <header class="flex shrink-0 items-center justify-between border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
           <div>
@@ -114,7 +121,7 @@ onMounted(() => {
           </div>
         </header>
 
-        <div ref="listEl" class="relative min-h-0 flex-1 overflow-y-auto py-1">
+        <div ref="listEl" class="relative min-h-0 flex-1 overflow-y-auto py-1" @scroll.passive="checkVisible">
           <div
             v-for="(t, i) in player.queue"
             :key="`${t.id}-${i}`"

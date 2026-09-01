@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { nextTick, ref } from 'vue'
-import { Disc3, Heart, History, Mic, Music, Plus, Settings, Wifi, X } from '@lucide/vue'
+import { Disc3, Heart, History, Mic, Music, Plus, Wifi, X } from '@lucide/vue'
 import { useLibraryStore } from '@/stores/library'
 import { useNav } from '@/composables/useNav'
 import { toast } from '@/composables/useToast'
@@ -199,21 +199,6 @@ function openPlaylistMenu(e: MouseEvent, p: { id: number; name: string }) {
       <p v-if="!library.playlists.length && !editing" class="px-2.5 py-2 text-sm text-zinc-400 dark:text-zinc-600">
         暂无歌单，点 + 新建
       </p>
-    </div>
-
-    <div class="px-3 pb-4 pt-2">
-      <button
-        class="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm transition"
-        :class="
-          current.view === 'settings'
-            ? 'bg-violet-100 font-medium text-violet-700 dark:bg-violet-500/15 dark:text-violet-300'
-            : 'text-zinc-600 hover:bg-zinc-200/60 dark:text-zinc-300 dark:hover:bg-zinc-800/60'
-        "
-        @click="go({ view: 'settings' })"
-      >
-        <Settings class="h-4 w-4" :class="current.view === 'settings' ? 'text-violet-500' : 'text-zinc-400'" />
-        设置
-      </button>
     </div>
 
     <ContextMenu

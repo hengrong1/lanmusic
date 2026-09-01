@@ -31,6 +31,8 @@ export const usePlayerStore = defineStore('player', () => {
   // 单例 audio 元素（非响应式）
   const audio = markRaw(new Audio())
   audio.preload = 'auto'
+  // 频谱用 captureStream 复制音频流，需要 CORS 干净的媒体源（流协议响应带 ACAO:*）
+  audio.crossOrigin = 'anonymous'
 
   // ---------- 状态 ----------
   const queue = ref<Track[]>([])
