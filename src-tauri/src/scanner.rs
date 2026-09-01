@@ -23,7 +23,7 @@ use walkdir::WalkDir;
 use crate::covers::COVER_NAMES;
 use crate::db;
 use crate::metadata::{self, TrackMeta, HEAD_FETCH_SIZE};
-use crate::network::{self, webdav};
+use crate::network::webdav;
 use crate::state::AppState;
 
 const AUDIO_EXTS: &[&str] = &[
@@ -84,10 +84,6 @@ struct ParsedTrack {
     size: i64,
     /// 0 = 快速导入（仅文件名，待补全解析），1 = 完整解析
     meta_state: i64,
-    /// LAN 共享源的远端曲目 id
-    remote_id: Option<i64>,
-    /// 远端确认存在歌词（lan）
-    has_lrc: bool,
 }
 
 /// 在后台线程中调用（见 commands::add_local_source / rescan_source 等）
@@ -102,7 +98,6 @@ pub fn scan_source(app: AppHandle, source_id: i64, full_rescan: bool) {
                 full_rescan,
             ),
             "webdav" => run_webdav_scan(&app, source_id, base_url, config, full_rescan),
-            "lan" => run_lan_scan(&app, source_id, base_url, config, full_rescan),
             other => Err(format!("未知来源类型：{other}")),
         }
     });
@@ -181,15 +176,20 @@ fn run_local_scan(
     // ---- 1. 枚举目录 + 收集 .lrc ----
     let mut files: Vec<(String, i64, i64)> = Vec::new();
     let mut lrc_map: HashMap<String, String> = HashMap::new(); // rel 去扩展名 → 本地 .lrc 绝对路径
+    let mut seen = 0usize; // 遍历的文件总数（含非音频文件，进度按此上报更平滑）
     for entry in WalkDir::new(&base).follow_links(false).into_iter().filter_map(|e| e.ok()) {
         if !entry.file_type().is_file() {
             continue;
+        }
+        let rel = rel_path(&base, entry.path());
+        seen += 1;
+        if seen.is_multiple_of(1000) {
+            emit_enumerate(app, source_id, files.len(), file_name_of(&rel));
         }
         let Some(ext) = entry.path().extension().and_then(|e| e.to_str()).map(|s| s.to_ascii_lowercase())
         else {
             continue;
         };
-        let rel = rel_path(&base, entry.path());
         if ext == "lrc" {
             lrc_map.insert(stem_key(&rel), base.join(&rel).to_string_lossy().to_string());
             continue;
@@ -205,9 +205,6 @@ fn run_local_scan(
             .map(|d| d.as_secs() as i64)
             .unwrap_or(0);
         let size = md.map(|m| m.len() as i64).unwrap_or(0);
-        if files.len() % 500 == 0 && files.len() > 0 {
-            emit_enumerate(app, source_id, files.len(), file_name_of(&rel));
-        }
         files.push((rel, mtime, size));
     }
     let total = files.len();
@@ -397,124 +394,12 @@ fn run_webdav_scan(
     Ok((added, updated, removed))
 }
 
-// ================================================================ LAN 扫描
-
-fn run_lan_scan(
-    app: &AppHandle,
-    source_id: i64,
-    base_url: Option<String>,
-    config: Option<String>,
-    _full_rescan: bool,
-) -> Result<(usize, usize, usize), String> {
-    let Some(base) = base_url else { return Err("设备地址缺失".into()) };
-    let base = base.trim_end_matches('/').to_string();
-    let token = network::config_field(config.as_deref(), "token").unwrap_or_default();
-
-    // ---- 1. 分页拉取全部元数据 ----
-    let mut all: Vec<network::RemoteTrack> = Vec::new();
-    let mut offset = 0i64;
-    loop {
-        let page = network::lan::tracks_page(&base, &token, offset, 500)
-            .map_err(|e| format!("拉取设备曲库失败：{e}"))?;
-        let n = page.len() as i64;
-        all.extend(page);
-        emit_enumerate(app, source_id, all.len(), String::new());
-        if n < 500 || all.len() > 500_000 {
-            break;
-        }
-        offset += n;
-    }
-    let total = all.len();
-    emit_parse(app, source_id, 0, total);
-
-    // ---- 2. 转 ParsedTrack（path = rt/{remote_id}），全量 upsert ----
-    let rows: Vec<ParsedTrack> = all
-        .iter()
-        .map(|rt| ParsedTrack {
-            rel: format!("rt/{}", rt.id),
-            title: rt.title.clone(),
-            artist: rt.artist.clone().unwrap_or_else(|| "未知艺人".into()),
-            album_title: rt.album.clone().unwrap_or_else(|| "未知专辑".into()),
-            album_artist: rt
-                .album_artist
-                .clone()
-                .or_else(|| rt.artist.clone())
-                .unwrap_or_else(|| "未知艺人".into()),
-            genre: None,
-            year: rt.year,
-            track_no: rt.track_no,
-            disc_no: None,
-            duration: rt.duration,
-            bitrate: None,
-            sample_rate: None,
-            channels: None,
-            bit_depth: None,
-            has_lyrics: false,
-            format: rt.format.clone(),
-            mtime: 0,
-            size: 0,
-            meta_state: 1,
-            remote_id: Some(rt.id),
-            has_lrc: rt.has_lrc,
-        })
-        .collect();
-
-    let existing = {
-        let state = app.state::<AppState>();
-        let conn = db::open_conn(&state.db_path, false).map_err(|e| e.to_string())?;
-        load_existing(&conn, source_id)?
-    };
-    let state = app.state::<AppState>();
-    let mut conn = db::open_conn(&state.db_path, false).map_err(|e| e.to_string())?;
-    let (added, updated) = consume_and_write(&mut conn, app, source_id, rows.into_iter(), &existing, None, None, total)?;
-
-    // ---- 3. 删除 + 扫描时间 ----
-    let walked: HashSet<String> = all.iter().map(|rt| format!("rt/{}", rt.id)).collect();
-    let removed = delete_missing(app, &mut conn, source_id, &existing, &walked)?;
-    let now = now_secs();
-    conn.execute("UPDATE sources SET last_scan_at = ?1 WHERE id = ?2", params![now, source_id])
-        .map_err(|e| e.to_string())?;
-
-    // ---- 4. 下载缺失的远程封面 ----
-    let state = app.state::<AppState>();
-    let covers_dir = state.covers_dir.clone();
-    let mut cover_count = 0usize;
-    {
-        let mut stmt = conn
-            .prepare(
-                "SELECT al.id, al.remote_id FROM albums al
-                 WHERE al.remote_id IS NOT NULL
-                   AND al.id IN (SELECT DISTINCT album_id FROM tracks WHERE source_id = ?1)",
-            )
-            .map_err(|e| e.to_string())?;
-        let rows = stmt
-            .query_map([source_id], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?)))
-            .map_err(|e| e.to_string())?;
-        for row in rows.flatten() {
-            let (album_id, remote_id) = row;
-            let jpg = covers_dir.join(format!("{album_id}.jpg"));
-            let none = covers_dir.join(format!("{album_id}.none"));
-            if jpg.is_file() || none.is_file() {
-                continue;
-            }
-            if let Ok(bytes) = network::lan::download_cover(&base, &token, remote_id) {
-                if crate::covers::save_cover(&covers_dir, album_id, &bytes).is_ok() {
-                    let _ = conn.execute("UPDATE albums SET has_cover = 1 WHERE id = ?1", [album_id]);
-                    cover_count += 1;
-                }
-            }
-        }
-    }
-
-    Ok((added, updated, removed + cover_count))
-}
-
 // ================================================================ 共用写入管线
 
 struct ScanCaches {
     artists: HashMap<String, i64>,
-    /// key → (本地专辑 id, 远端专辑 id)
-    albums: HashMap<String, (i64, Option<i64>)>,
+    /// key → 本地专辑 id
+    albums: HashMap<String, i64>,
 }
 
 fn now_secs() -> i64 {
@@ -535,15 +420,13 @@ fn load_caches(conn: &rusqlite::Connection) -> Result<ScanCaches, String> {
     }
     let mut albums = HashMap::new();
     {
-        let mut stmt = conn.prepare("SELECT id, key, remote_id FROM albums").map_err(|e| e.to_string())?;
+        let mut stmt = conn.prepare("SELECT id, key FROM albums").map_err(|e| e.to_string())?;
         let rows = stmt
-            .query_map([], |r| {
-                Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?, r.get::<_, Option<i64>>(2)?))
-            })
+            .query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?)))
             .map_err(|e| e.to_string())?;
         for row in rows {
-            let (id, key, rid) = row.map_err(|e| e.to_string())?;
-            albums.insert(key, (id, rid));
+            let (id, key) = row.map_err(|e| e.to_string())?;
+            albums.insert(key, id);
         }
     }
     Ok(ScanCaches { artists, albums })
@@ -637,6 +520,8 @@ fn write_batch(
     let tx = conn.transaction().map_err(|e| e.to_string())?;
     for row in batch.drain(..) {
         let artist_id = get_or_create_artist(&tx, &mut caches.artists, &row.artist)?;
+        // 专辑归属按合辑艺人（album_artist）入库，艺人/专辑归类才与标签语义一致
+        let album_artist_id = get_or_create_artist(&tx, &mut caches.artists, &row.album_artist)?;
 
         let album_key = format!(
             "{}|{}|{}",
@@ -645,15 +530,15 @@ fn write_batch(
             row.year.unwrap_or(0)
         );
         let album_id = match caches.albums.get(&album_key) {
-            Some((id, _)) => *id,
+            Some(id) => *id,
             None => {
                 tx.execute(
-                    "INSERT INTO albums (title, artist_id, year, key, remote_id) VALUES (?1, ?2, ?3, ?4, ?5)",
-                    params![row.album_title, artist_id, row.year, album_key, row.remote_id],
+                    "INSERT INTO albums (title, artist_id, year, key) VALUES (?1, ?2, ?3, ?4)",
+                    params![row.album_title, album_artist_id, row.year, album_key],
                 )
                 .map_err(|e| e.to_string())?;
                 let id = tx.last_insert_rowid();
-                caches.albums.insert(album_key, (id, row.remote_id));
+                caches.albums.insert(album_key, id);
                 id
             }
         };
@@ -661,16 +546,15 @@ fn write_batch(
         tx.execute(
             "INSERT INTO tracks (source_id, path, title, artist_id, album_id, genre, track_no, disc_no,
                                   year, duration, bitrate, sample_rate, channels, bit_depth,
-                                  has_embedded_lyrics, mtime, file_size, format, added_at, meta_state, remote_id)
-             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21)
+                                  has_embedded_lyrics, mtime, file_size, format, added_at, meta_state)
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20)
              ON CONFLICT(source_id, path) DO UPDATE SET
                 title=excluded.title, artist_id=excluded.artist_id, album_id=excluded.album_id,
                 genre=excluded.genre, track_no=excluded.track_no, disc_no=excluded.disc_no,
                 year=excluded.year, duration=excluded.duration, bitrate=excluded.bitrate,
                 sample_rate=excluded.sample_rate, channels=excluded.channels, bit_depth=excluded.bit_depth,
                 has_embedded_lyrics=excluded.has_embedded_lyrics, mtime=excluded.mtime,
-                file_size=excluded.file_size, format=excluded.format, meta_state=excluded.meta_state,
-                remote_id=excluded.remote_id",
+                file_size=excluded.file_size, format=excluded.format, meta_state=excluded.meta_state",
             params![
                 source_id,
                 row.rel,
@@ -692,18 +576,13 @@ fn write_batch(
                 row.format,
                 now,
                 row.meta_state,
-                row.remote_id,
             ],
         )
         .map_err(|e| e.to_string())?;
         let track_id = tx.last_insert_rowid();
 
-        // 歌词关联：lan 用 NULL 标记（播放时走远程接口）；local/webdav 存路径或 URL
-        let lrc_target: Option<String> = if row.has_lrc {
-            Some(String::new())
-        } else {
-            lrc_map.and_then(|m| m.get(&stem_key(&row.rel)).cloned())
-        };
+        // 歌词关联：local/webdav 存同名 .lrc 的本地路径或完整 URL
+        let lrc_target = lrc_map.and_then(|m| m.get(&stem_key(&row.rel)).cloned());
         if let Some(target) = lrc_target {
             let p = if target.is_empty() { None } else { Some(target) };
             tx.execute(
@@ -784,8 +663,13 @@ fn delete_missing(
         };
         tx.execute("DELETE FROM albums WHERE id NOT IN (SELECT DISTINCT album_id FROM tracks)", [])
             .map_err(|e| e.to_string())?;
-        tx.execute("DELETE FROM artists WHERE id NOT IN (SELECT DISTINCT artist_id FROM tracks)", [])
-            .map_err(|e| e.to_string())?;
+        // 保留仍被专辑引用的艺人（专辑归属艺人可能没有直接归属的曲目）
+        tx.execute(
+            "DELETE FROM artists WHERE id NOT IN (SELECT DISTINCT artist_id FROM tracks)
+             AND id NOT IN (SELECT DISTINCT artist_id FROM albums)",
+            [],
+        )
+        .map_err(|e| e.to_string())?;
         tx.commit().map_err(|e| e.to_string())?;
         if !orphan_albums.is_empty() {
             crate::covers::purge(&app.state::<AppState>().covers_dir, &orphan_albums);
@@ -796,35 +680,40 @@ fn delete_missing(
 
 // ================================================================ 并发工作线程
 
-/// 将 items 均分后在多个线程中并发执行 f，结果经 channel 返回主线程
+/// 多线程并发执行 f：任务逐条从共享队列领取（避免静态均分导致大文件集中在
+/// 单个分片时拖尾），结果经 channel 返回主线程
 fn run_concurrent<TIn, TOut>(
-    mut items: Vec<TIn>,
+    items: Vec<TIn>,
     f: impl Fn(TIn) -> Option<TOut> + Send + Sync + Clone + 'static,
 ) -> mpsc::Receiver<TOut>
 where
     TIn: Send + 'static,
     TOut: Send + 'static,
 {
+    use std::sync::{Arc, Mutex};
+
     let (tx, rx) = mpsc::channel::<TOut>();
     let workers = thread::available_parallelism()
         .map(|n| n.get())
         .unwrap_or(4)
         .clamp(2, MAX_WORKERS);
-    let chunk_size = items.len().div_ceil(workers).max(1);
+    let queue = Arc::new(Mutex::new(items.into_iter()));
     for _ in 0..workers {
-        let take = chunk_size.min(items.len());
-        if take == 0 {
-            break;
-        }
-        let part: Vec<TIn> = items.drain(..take).collect();
         let tx = tx.clone();
         let f = f.clone();
-        thread::spawn(move || {
-            for item in part {
-                if let Some(out) = f(item) {
-                    if tx.send(out).is_err() {
-                        break;
-                    }
+        let queue = queue.clone();
+        thread::spawn(move || loop {
+            let item = {
+                let mut q = match queue.lock() {
+                    Ok(q) => q,
+                    Err(_) => return, // 锁中毒：其他线程 panic，直接退出
+                };
+                q.next()
+            };
+            let Some(item) = item else { break };
+            if let Some(out) = f(item) {
+                if tx.send(out).is_err() {
+                    break;
                 }
             }
         });
@@ -904,8 +793,6 @@ fn fast_track(rel: &str, mtime: i64, size: i64) -> ParsedTrack {
         mtime,
         size,
         meta_state: 0,
-        remote_id: None,
-        has_lrc: false,
     }
 }
 
@@ -931,8 +818,6 @@ fn fallback_track(rel: &str, mtime: i64, size: i64) -> ParsedTrack {
         mtime,
         size,
         meta_state: 1,
-        remote_id: None,
-        has_lrc: false,
     }
 }
 
@@ -965,7 +850,5 @@ fn parsed_from_meta(rel: &str, meta: TrackMeta, mtime: i64, size: i64) -> Parsed
         mtime,
         size,
         meta_state: 1,
-        remote_id: None,
-        has_lrc: false,
     }
 }

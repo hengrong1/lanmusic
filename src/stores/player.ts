@@ -80,6 +80,9 @@ export const usePlayerStore = defineStore('player', () => {
   audio.volume = muted.value ? 0 : volume.value
   audio.muted = muted.value
 
+  // 连续播放失败计数：整轮队列都失败则停止跳歌（见 error 监听器），成功播放即归零
+  let errorStreak = 0
+
   audio.addEventListener('timeupdate', () => {
     position.value = audio.currentTime
     if (audio.currentTime > 0) localStorage.setItem(LS.lastPos, String(audio.currentTime))
@@ -90,6 +93,7 @@ export const usePlayerStore = defineStore('player', () => {
   audio.addEventListener('playing', () => {
     playing.value = true
     buffering.value = false
+    errorStreak = 0
   })
   audio.addEventListener('pause', () => {
     playing.value = false
@@ -122,8 +126,6 @@ export const usePlayerStore = defineStore('player', () => {
     }
   })
 
-  let errorStreak = 0
-
   // ---------- 控制 ----------
   function load(t: Track, autoplay = true) {
     audio.src = trackStreamUrl(t.id)
@@ -150,8 +152,8 @@ export const usePlayerStore = defineStore('player', () => {
   function playAt(i: number) {
     if (i < 0 || i >= queue.value.length) return
     index.value = i
-    errorStreak = 0
     load(queue.value[i])
+    snapshotQueue()
   }
 
   function toggle() {
@@ -222,6 +224,7 @@ export const usePlayerStore = defineStore('player', () => {
       return
     }
     queue.value.splice(index.value + 1, 0, t)
+    snapshotQueue()
     toast(`将在「${current.value?.title ?? ''}」后播放`)
   }
 
@@ -231,6 +234,7 @@ export const usePlayerStore = defineStore('player', () => {
       return
     }
     queue.value.push(t)
+    snapshotQueue()
     toast('已加入队列')
   }
 
@@ -244,6 +248,7 @@ export const usePlayerStore = defineStore('player', () => {
       if (index.value >= queue.value.length) index.value = queue.value.length - 1
       playing.value = false
     }
+    snapshotQueue()
   }
 
   function clearQueue() {
@@ -254,6 +259,7 @@ export const usePlayerStore = defineStore('player', () => {
     playing.value = false
     position.value = 0
     duration.value = 0
+    snapshotQueue()
   }
 
   // ---------- 持久化 ----------
@@ -269,11 +275,10 @@ export const usePlayerStore = defineStore('player', () => {
   watch(current, (t) => {
     if (t) localStorage.setItem(LS.lastTrack, String(t.id))
   })
-  // 队列快照：内容或当前索引变化即保存
-  watch(
-    () => `${queue.value.map((t) => t.id).join(',')}#${index.value}`,
-    () => saveQueueSnapshot(queue.value, index.value),
-  )
+  // 队列快照：在各变更点显式保存（避免 watch 里对大队列反复 map/join 的开销）
+  function snapshotQueue() {
+    saveQueueSnapshot(queue.value, index.value)
+  }
 
   // 系统托盘控制（M2）
   void listen<string>('tray', (e) => {

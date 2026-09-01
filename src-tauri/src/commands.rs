@@ -1,6 +1,6 @@
 //! IPC 命令层：薄封装，参数校验后操作数据库 / 触发扫描。
 
-use rusqlite::{params, params_from_iter, OptionalExtension, ToSql};
+use rusqlite::{params, params_from_iter, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State};
 
@@ -215,8 +215,13 @@ pub fn remove_source(app: AppHandle, state: State<'_, AppState>, id: i64) -> Res
     conn.execute("DELETE FROM sources WHERE id = ?1", params![id]).map_err(|e| e.to_string())?;
     conn.execute("DELETE FROM albums WHERE id NOT IN (SELECT DISTINCT album_id FROM tracks)", [])
         .map_err(|e| e.to_string())?;
-    conn.execute("DELETE FROM artists WHERE id NOT IN (SELECT DISTINCT artist_id FROM tracks)", [])
-        .map_err(|e| e.to_string())?;
+    // 专辑归属艺人（albums.artist_id）可能没有直接归属的曲目，删除时需一并排除
+    conn.execute(
+        "DELETE FROM artists WHERE id NOT IN (SELECT DISTINCT artist_id FROM tracks)
+         AND id NOT IN (SELECT DISTINCT artist_id FROM albums)",
+        [],
+    )
+    .map_err(|e| e.to_string())?;
     drop(conn);
     crate::covers::purge(&state.covers_dir, &orphan_albums);
     Ok(())
@@ -421,13 +426,19 @@ pub fn query_artists(
         .map(str::trim)
         .filter(|s| !s.is_empty())
         .map(|s| format!("%{s}%"));
-    let where_sql = if like.is_some() { "WHERE ar.name LIKE ?1" } else { "" };
+    // 只展示有曲目的艺人：albums.artist_id 现在可指向纯合辑/专辑归属艺人（无直接曲目），不进列表
+    let base_where = "ar.id IN (SELECT DISTINCT artist_id FROM tracks)";
+    let where_sql = if like.is_some() {
+        format!("WHERE {base_where} AND ar.name LIKE ?1")
+    } else {
+        format!("WHERE {base_where}")
+    };
 
     let total: i64 = if like.is_some() {
         conn.query_row(&format!("SELECT COUNT(*) FROM artists ar {where_sql}"), params![like], |r| r.get(0))
             .map_err(|e| e.to_string())?
     } else {
-        conn.query_row("SELECT COUNT(*) FROM artists ar", [], |r| r.get(0))
+        conn.query_row(&format!("SELECT COUNT(*) FROM artists ar {where_sql}"), [], |r| r.get(0))
             .map_err(|e| e.to_string())?
     };
 
@@ -456,14 +467,20 @@ pub fn get_tracks_by_ids(state: State<'_, AppState>, ids: Vec<i64>) -> Result<Ve
         return Ok(vec![]);
     }
     let conn = state.db.lock().map_err(|e| e.to_string())?;
-    let placeholders = ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
-    let sql = format!("{TRACK_SELECT} WHERE t.id IN ({placeholders})");
-    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
-    let items = stmt
-        .query_map(params_from_iter(ids.iter()), row_track)
-        .map_err(|e| e.to_string())?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| e.to_string())?;
+    // 分批 IN 查询：SQLite 绑定变量有上限，超大队列快照一次性展开会报错
+    const CHUNK_SIZE: usize = 900;
+    let mut items = Vec::with_capacity(ids.len());
+    for chunk in ids.chunks(CHUNK_SIZE) {
+        let placeholders = chunk.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+        let sql = format!("{TRACK_SELECT} WHERE t.id IN ({placeholders})");
+        let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(params_from_iter(chunk.iter()), row_track)
+            .map_err(|e| e.to_string())?;
+        for r in rows {
+            items.push(r.map_err(|e| e.to_string())?);
+        }
+    }
     Ok(items)
 }
 
@@ -614,8 +631,9 @@ pub fn playlist_get_items(state: State<'_, AppState>, id: i64) -> Result<Vec<Tra
 
 #[tauri::command]
 pub fn playlist_add_tracks(state: State<'_, AppState>, id: i64, track_ids: Vec<i64>) -> Result<(), String> {
-    let conn = state.db.lock().map_err(|e| e.to_string())?;
-    let max_pos: i64 = conn
+    let mut conn = state.db.lock().map_err(|e| e.to_string())?;
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    let max_pos: i64 = tx
         .query_row(
             "SELECT IFNULL(MAX(position), -1) FROM playlist_items WHERE playlist_id = ?1",
             [id],
@@ -623,13 +641,13 @@ pub fn playlist_add_tracks(state: State<'_, AppState>, id: i64, track_ids: Vec<i
         )
         .map_err(|e| e.to_string())?;
     for (i, tid) in track_ids.iter().enumerate() {
-        conn.execute(
+        tx.execute(
             "INSERT INTO playlist_items (playlist_id, track_id, position) VALUES (?1, ?2, ?3)",
             params![id, tid, max_pos + 1 + i as i64],
         )
         .map_err(|e| e.to_string())?;
     }
-    Ok(())
+    tx.commit().map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -695,86 +713,7 @@ pub fn set_setting(state: State<'_, AppState>, key: String, value: String) -> Re
     Ok(())
 }
 
-// ================================================================ 局域网共享与发现（M3）
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ShareStatus {
-    pub running: bool,
-    pub port: u16,
-    pub token: Option<String>,
-    pub name: String,
-}
-
-#[tauri::command]
-pub fn share_get_status(app: AppHandle, state: State<'_, AppState>) -> Result<ShareStatus, String> {
-    let running = crate::network::share::is_running(&app);
-    let port = crate::network::share::running_port(&app).unwrap_or(
-        crate::network::get_setting(&app, "share_port")
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(crate::network::share_default_port()),
-    );
-    let token = crate::network::get_setting(&app, "share_token");
-    let name = crate::network::get_setting(&app, "share_name").unwrap_or_else(|| "LanMusic".into());
-    let _ = state;
-    Ok(ShareStatus { running, port, token, name })
-}
-
-#[tauri::command]
-pub fn share_set_enabled(app: AppHandle, enabled: bool) -> Result<(), String> {
-    if enabled {
-        crate::network::share::start(&app)
-    } else {
-        crate::network::share::stop(&app);
-        Ok(())
-    }
-}
-
-#[tauri::command]
-pub fn net_discover_start(app: AppHandle) -> Result<(), String> {
-    crate::network::mdns::browse_start(&app)
-}
-
-#[tauri::command]
-pub fn net_discover_stop(app: AppHandle) -> Result<(), String> {
-    crate::network::mdns::browse_stop(&app);
-    Ok(())
-}
-
-/// 连接发现的设备（或手动输入地址），验证配对码后创建 LAN 来源并扫描
-#[tauri::command]
-pub fn lan_add_source(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    addr: String,
-    token: String,
-    name: Option<String>,
-) -> Result<Source, String> {
-    let addr = addr.trim().to_string();
-    let (dev_name, _) = crate::network::lan::hello(&addr, &token)?;
-    let base = if addr.starts_with("http") { addr.trim_end_matches('/').to_string() } else { format!("http://{}", addr.trim_end_matches('/')) };
-    let config = serde_json::json!({ "token": token }).to_string();
-
-    let conn = state.db.lock().map_err(|e| e.to_string())?;
-    let exists: Option<i64> = conn
-        .query_row("SELECT id FROM sources WHERE kind = 'lan' AND base_url = ?1", params![base], |r| r.get(0))
-        .ok();
-    if exists.is_some() {
-        return Err("该设备已添加过".into());
-    }
-    conn.execute(
-        "INSERT INTO sources (kind, name, base_url, config) VALUES ('lan', ?1, ?2, ?3)",
-        params![name.unwrap_or(dev_name), base, config],
-    )
-    .map_err(|e| e.to_string())?;
-    let id = conn.last_insert_rowid();
-    drop(conn);
-
-    spawn_scan(&app, &state, id, false)?;
-    let conn = state.db.lock().map_err(|e| e.to_string())?;
-    conn.query_row(&format!("{SOURCE_SELECT} WHERE s.id = ?1"), params![id], row_source)
-        .map_err(|e| e.to_string())
-}
+// ================================================================ WebDAV 来源（M3）
 
 /// 添加 WebDAV 来源（NAS），验证连通性后扫描
 #[tauri::command]

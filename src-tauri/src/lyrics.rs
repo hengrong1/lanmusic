@@ -10,7 +10,6 @@ use crate::state::AppState;
 pub struct SourceRef {
     pub kind: String,
     pub base_path: Option<String>,
-    pub base_url: Option<String>,
     pub config: Option<String>,
 }
 
@@ -18,14 +17,13 @@ pub fn source_ref(app: &AppHandle, source_id: i64) -> Result<SourceRef, String> 
     let state = app.state::<AppState>();
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     conn.query_row(
-        "SELECT kind, base_path, base_url, config FROM sources WHERE id = ?1",
+        "SELECT kind, base_path, config FROM sources WHERE id = ?1",
         params![source_id],
         |r| {
             Ok(SourceRef {
                 kind: r.get(0)?,
                 base_path: r.get(1)?,
-                base_url: r.get(2)?,
-                config: r.get(3)?,
+                config: r.get(2)?,
             })
         },
     )
@@ -38,7 +36,7 @@ pub fn fetch(app: &AppHandle, track_id: i64) -> Result<Option<String>, String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     let row = conn
         .query_row(
-            "SELECT t.source_id, t.path, t.remote_id, l.path
+            "SELECT t.source_id, t.path, l.path
              FROM tracks t
              JOIN sources s ON s.id = t.source_id
              LEFT JOIN lrc_files l ON l.track_id = t.id
@@ -48,8 +46,7 @@ pub fn fetch(app: &AppHandle, track_id: i64) -> Result<Option<String>, String> {
                 Ok((
                     r.get::<_, i64>(0)?,
                     r.get::<_, String>(1)?,
-                    r.get::<_, Option<i64>>(2)?,
-                    r.get::<_, Option<String>>(3)?,
+                    r.get::<_, Option<String>>(2)?,
                 ))
             },
         )
@@ -57,7 +54,7 @@ pub fn fetch(app: &AppHandle, track_id: i64) -> Result<Option<String>, String> {
         .map_err(|e| e.to_string())?;
     drop(conn);
 
-    let Some((source_id, rel, remote_id, lrc_path)) = row else {
+    let Some((source_id, rel, lrc_path)) = row else {
         return Ok(None);
     };
     let src = source_ref(app, source_id)?;
@@ -66,8 +63,10 @@ pub fn fetch(app: &AppHandle, track_id: i64) -> Result<Option<String>, String> {
         // 本地：外挂 .lrc（扫描记录或同名懒检查）→ 内嵌歌词
         "local" => {
             if let Some(p) = lrc_path {
-                let bytes = std::fs::read(PathBuf::from(&p)).map_err(|e| e.to_string())?;
-                return Ok(Some(String::from_utf8_lossy(&bytes).into_owned()));
+                // 外挂文件可能已被移动/删除：读取失败时降级到内嵌歌词，而不是整体报错
+                if let Ok(bytes) = std::fs::read(PathBuf::from(&p)) {
+                    return Ok(Some(String::from_utf8_lossy(&bytes).into_owned()));
+                }
             }
             let Some(base) = src.base_path else { return Ok(None) };
             let full = PathBuf::from(base).join(&rel);
@@ -86,13 +85,6 @@ pub fn fetch(app: &AppHandle, track_id: i64) -> Result<Option<String>, String> {
             let parsed = url::Url::parse(&u).map_err(|e| e.to_string())?;
             let auth = crate::network::webdav::Auth::from_config(src.config.as_deref());
             crate::network::webdav::download_text(&parsed, auth.as_ref())
-        }
-        // 局域网共享源：调对方设备的 /api/lrc
-        "lan" => {
-            let Some(remote_id) = remote_id else { return Ok(None) };
-            let Some(base) = src.base_url else { return Ok(None) };
-            let token = crate::network::config_field(src.config.as_deref(), "token").unwrap_or_default();
-            crate::network::lan::get_lrc(&base, &token, remote_id)
         }
         _ => Ok(None),
     }

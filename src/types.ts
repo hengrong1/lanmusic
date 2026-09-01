@@ -82,7 +82,7 @@ export interface TrackQuery {
   pageSize?: number
 }
 
-export type ViewName = 'tracks' | 'albums' | 'artists' | 'playlist' | 'network' | 'settings'
+export type ViewName = 'tracks' | 'albums' | 'artists' | 'playlist' | 'settings'
 
 export interface NavRoute {
   view: ViewName
@@ -102,18 +102,4 @@ export interface Playlist {
   name: string
   trackCount: number
   createdAt: number | null
-}
-
-export interface LanDevice {
-  id: string
-  name: string
-  host: string
-  port: number
-}
-
-export interface ShareStatus {
-  running: boolean
-  port: number
-  token: string | null
-  name: string
 }

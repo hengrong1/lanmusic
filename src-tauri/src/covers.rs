@@ -1,7 +1,7 @@
 //! 专辑封面的惰性提取与缓存。
 //!
-//! 提取优先级：本地缓存 → WebDAV 目录约定文件（cover_url）→ 本地文件内嵌/同级封面
-//! → LAN 共享端 /api/cover。失败的专辑写入 `{id}.none` 哨兵，避免重复网络 I/O。
+//! 提取优先级：本地缓存 → WebDAV 目录约定文件（cover_url）→ 本地文件内嵌/同级封面。
+//! 失败的专辑写入 `{id}.none` 哨兵，避免重复网络 I/O。
 
 use std::path::{Path, PathBuf};
 
@@ -37,13 +37,13 @@ pub fn ensure_cover<R: Runtime>(app: &AppHandle<R>, album_id: i64) -> Result<Opt
     }
 
     // 专辑信息与候选来源
-    let (cover_url, remote_id, local_candidates, lan_source) = {
+    let (cover_url, local_candidates) = {
         let conn = state.db.lock().map_err(|e| e.to_string())?;
-        let (cover_url, remote_id) = conn
-            .query_row("SELECT cover_url, remote_id FROM albums WHERE id = ?1", [album_id], |r| {
-                Ok((r.get::<_, Option<String>>(0)?, r.get::<_, Option<i64>>(1)?))
+        let cover_url = conn
+            .query_row("SELECT cover_url FROM albums WHERE id = ?1", [album_id], |r| {
+                r.get::<_, Option<String>>(0)
             })
-            .unwrap_or((None, None));
+            .unwrap_or(None);
 
         let mut locals = Vec::new();
         {
@@ -63,17 +63,7 @@ pub fn ensure_cover<R: Runtime>(app: &AppHandle<R>, album_id: i64) -> Result<Opt
             }
         }
 
-        let lan = conn
-            .query_row(
-                "SELECT s.base_url, s.config FROM tracks t
-                 JOIN sources s ON s.id = t.source_id
-                 WHERE t.album_id = ?1 AND s.kind = 'lan' LIMIT 1",
-                [album_id],
-                |r| Ok((r.get::<_, Option<String>>(0)?, r.get::<_, Option<String>>(1)?)),
-            )
-            .ok();
-
-        (cover_url, remote_id, locals, lan)
+        (cover_url, locals)
     };
 
     let save = |bytes: &[u8]| -> Result<(), String> { save_cover(&state.covers_dir, album_id, bytes) };
@@ -109,18 +99,6 @@ pub fn ensure_cover<R: Runtime>(app: &AppHandle<R>, album_id: i64) -> Result<Opt
             }
         }
         if let Some(bytes) = find_sibling_cover(&full) {
-            if save(&bytes).is_ok() {
-                mark_cover(app, album_id)?;
-                return Ok(Some(jpg));
-            }
-        }
-    }
-
-    // 3) LAN 共享端封面接口（需要对方缓存中的专辑 remote_id）
-    if let (Some(rid), Some((Some(base), Some(config)))) = (remote_id, lan_source) {
-        attempted = true;
-        let token = crate::network::config_field(Some(config.as_str()), "token").unwrap_or_default();
-        if let Ok(bytes) = crate::network::lan::download_cover(base.trim_end_matches('/'), &token, rid) {
             if save(&bytes).is_ok() {
                 mark_cover(app, album_id)?;
                 return Ok(Some(jpg));

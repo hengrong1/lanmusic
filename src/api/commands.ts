@@ -5,7 +5,6 @@ import type {
   LibraryStats,
   Page,
   Playlist,
-  ShareStatus,
   Source,
   Track,
   TrackQuery,
@@ -57,13 +56,7 @@ export const api = {
   getSetting: (key: string) => invoke<string | null>('get_setting', { key }),
   setSetting: (key: string, value: string) => invoke<void>('set_setting', { key, value }),
 
-  // 局域网（M3）
-  shareGetStatus: () => invoke<ShareStatus>('share_get_status'),
-  shareSetEnabled: (enabled: boolean) => invoke<void>('share_set_enabled', { enabled }),
-  netDiscoverStart: () => invoke<void>('net_discover_start'),
-  netDiscoverStop: () => invoke<void>('net_discover_stop'),
-  lanAddSource: (addr: string, token: string, name?: string) =>
-    invoke<Source>('lan_add_source', { addr, token, name }),
+  // WebDAV（M3）
   webdavAddSource: (url: string, username: string, password: string, name?: string) =>
     invoke<Source>('webdav_add_source', { url, username, password, name }),
 }

@@ -30,6 +30,7 @@ pub fn run() {
             let win_builder = win_builder.title_bar_style(tauri::TitleBarStyle::Transparent);
             #[cfg(not(target_os = "macos"))]
             let win_builder = win_builder.decorations(false);
+            #[cfg_attr(not(target_os = "macos"), allow(unused_variables))]
             let window = win_builder.build().map_err(|e| e.to_string())?;
 
             // macOS：设置原生窗口背景色（跟随系统深浅色外观），
@@ -74,9 +75,6 @@ pub fn run() {
                 covers_dir,
                 scanning: std::sync::Mutex::new(std::collections::HashSet::new()),
                 cover_extract: std::sync::Mutex::new(()),
-                mdns_daemon: std::sync::Mutex::new(None),
-                share: std::sync::Mutex::new(None),
-                browsing: std::sync::Mutex::new(false),
             });
 
             // 系统托盘（M2）
@@ -145,11 +143,6 @@ pub fn run() {
             commands::favorite_toggle,
             commands::get_setting,
             commands::set_setting,
-            commands::share_get_status,
-            commands::share_set_enabled,
-            commands::net_discover_start,
-            commands::net_discover_stop,
-            commands::lan_add_source,
             commands::webdav_add_source
         ])
         .run(tauri::generate_context!())

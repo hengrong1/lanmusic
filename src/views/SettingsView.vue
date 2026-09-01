@@ -3,11 +3,12 @@ import { computed, onMounted, ref } from 'vue'
 import { open as openDialog } from '@tauri-apps/plugin-dialog'
 import { getVersion } from '@tauri-apps/api/app'
 import {
+  Check,
   FolderOpen,
+  Globe,
   HardDrive,
   LoaderCircle,
   RefreshCw,
-  Share2,
   Trash2,
 } from '@lucide/vue'
 import { useLibraryStore } from '@/stores/library'
@@ -42,6 +43,24 @@ async function addFolder() {
     toast(String(e), 'error')
   } finally {
     adding.value = false
+  }
+}
+
+// ---- WebDAV 来源 ----
+const showWebdav = ref(false)
+const webdav = ref({ url: '', username: '', password: '', name: '' })
+const webdavBusy = ref(false)
+async function submitWebdav() {
+  if (webdavBusy.value) return
+  webdavBusy.value = true
+  try {
+    await library.addWebDav(webdav.value.url.trim(), webdav.value.username, webdav.value.password, webdav.value.name.trim() || undefined)
+    showWebdav.value = false
+    webdav.value = { url: '', username: '', password: '', name: '' }
+  } catch (e) {
+    toast(String(e), 'error')
+  } finally {
+    webdavBusy.value = false
   }
 }
 
@@ -126,11 +145,11 @@ const scannedSourceIds = computed(() => new Set(Object.keys(library.scanProgress
           >
             <div class="flex items-center gap-3">
               <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">
-                <HardDrive class="h-4.5 w-4.5" />
+                <component :is="s.kind === 'webdav' ? Globe : HardDrive" class="h-4.5 w-4.5" />
               </div>
               <div class="min-w-0 flex-1">
                 <p class="truncate text-sm font-medium text-zinc-800 dark:text-zinc-100">{{ s.name }}</p>
-                <p class="truncate text-xs text-zinc-500" :title="s.basePath ?? ''">{{ s.basePath }}</p>
+                <p class="truncate text-xs text-zinc-500" :title="s.basePath ?? s.baseUrl ?? ''">{{ s.basePath ?? s.baseUrl }}</p>
               </div>
               <span class="shrink-0 text-xs text-zinc-400">{{ s.trackCount }} 首 · {{ fmtTime(s.lastScanAt) }}</span>
               <label
@@ -211,26 +230,63 @@ const scannedSourceIds = computed(() => new Set(Object.keys(library.scanProgress
         </div>
       </section>
 
-      <!-- 局域网共享 -->
+      <!-- WebDAV 音乐源 -->
       <section data-stagger>
-        <h2 class="mb-3 text-sm font-semibold text-zinc-800 dark:text-zinc-100">局域网共享</h2>
-        <div class="rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
+        <div class="mb-3 flex items-center justify-between">
+          <h2 class="text-sm font-semibold text-zinc-800 dark:text-zinc-100">WebDAV 音乐源</h2>
+          <button
+            class="flex items-center gap-1.5 rounded-full bg-violet-500 px-3.5 py-1.5 text-xs font-medium text-white transition hover:bg-violet-400"
+            @click="showWebdav = !showWebdav"
+          >
+            <Globe class="h-3.5 w-3.5" />
+            {{ showWebdav ? '收起' : '添加 WebDAV' }}
+          </button>
+        </div>
+        <form
+          v-if="showWebdav"
+          class="mb-4 space-y-3 rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900"
+          @submit.prevent="submitWebdav"
+        >
+          <p class="flex items-center gap-1.5 text-xs text-zinc-400">
+            <Globe class="h-3.5 w-3.5" /> 支持 https://nas.local:5006 或 http://192.168.1.2:5005
+          </p>
+          <div class="grid gap-3" style="grid-template-columns: 2fr 1fr 1fr">
+            <input
+              v-model="webdav.url"
+              class="h-9 rounded-lg border border-zinc-200 bg-transparent px-3 text-sm outline-none focus:border-violet-400 dark:border-zinc-700"
+              placeholder="WebDAV 地址"
+              required
+            />
+            <input
+              v-model="webdav.username"
+              class="h-9 rounded-lg border border-zinc-200 bg-transparent px-3 text-sm outline-none focus:border-violet-400 dark:border-zinc-700"
+              placeholder="账号"
+              autocomplete="off"
+            />
+            <input
+              v-model="webdav.password"
+              type="password"
+              class="h-9 rounded-lg border border-zinc-200 bg-transparent px-3 text-sm outline-none focus:border-violet-400 dark:border-zinc-700"
+              placeholder="密码"
+              autocomplete="off"
+            />
+          </div>
           <div class="flex items-center gap-3">
-            <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">
-              <Share2 class="h-4.5 w-4.5" />
-            </div>
-            <div class="flex-1">
-              <p class="text-sm font-medium text-zinc-800 dark:text-zinc-100">在局域网共享我的音乐库</p>
-              <p class="text-xs text-zinc-500">允许同一网络内的设备浏览并播放（M3 里程碑提供，当前不可用）</p>
-            </div>
+            <input
+              v-model="webdav.name"
+              class="h-9 w-56 rounded-lg border border-zinc-200 bg-transparent px-3 text-sm outline-none focus:border-violet-400 dark:border-zinc-700"
+              placeholder="备注名（可选）"
+            />
             <button
-              class="relative h-6 w-11 shrink-0 cursor-not-allowed rounded-full bg-zinc-200 opacity-60 dark:bg-zinc-700"
-              disabled
+              class="flex items-center gap-2 rounded-full bg-violet-500 px-4 py-1.5 text-sm font-medium text-white hover:bg-violet-400"
+              :disabled="webdavBusy"
             >
-              <span class="absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow"></span>
+              <LoaderCircle v-if="webdavBusy" class="h-4 w-4 animate-spin" />
+              <Check v-else class="h-4 w-4" />
+              添加并扫描
             </button>
           </div>
-        </div>
+        </form>
       </section>
 
       <!-- 外观 -->

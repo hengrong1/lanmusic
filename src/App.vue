@@ -12,7 +12,6 @@ import TracksView from '@/views/TracksView.vue'
 import AlbumsView from '@/views/AlbumsView.vue'
 import ArtistsView from '@/views/ArtistsView.vue'
 import PlaylistView from '@/views/PlaylistView.vue'
-import NetworkView from '@/views/NetworkView.vue'
 import SettingsView from '@/views/SettingsView.vue'
 import { useLibraryStore } from '@/stores/library'
 import { usePlayerStore } from '@/stores/player'
@@ -106,8 +105,6 @@ const viewComponent = computed(() => {
       return ArtistsView
     case 'playlist':
       return PlaylistView
-    case 'network':
-      return NetworkView
     case 'settings':
       return SettingsView
     default:
@@ -183,9 +180,9 @@ window.addEventListener('keydown', (e) => {
   } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'f') {
     e.preventDefault()
     document.getElementById('search-input')?.focus()
-  } else if (!typing && e.key.toLowerCase() === 'n') {
+  } else if (!typing && !e.metaKey && !e.ctrlKey && !e.altKey && e.key.toLowerCase() === 'n') {
     player.next()
-  } else if (!typing && e.key.toLowerCase() === 'p') {
+  } else if (!typing && !e.metaKey && !e.ctrlKey && !e.altKey && e.key.toLowerCase() === 'p') {
     player.prev()
   }
 })

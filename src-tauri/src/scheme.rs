@@ -1,12 +1,11 @@
 //! `music://` 与 `cover://` 自定义协议。
 //!
 //! 前端 <audio> 的 src 指向 music://track/{id}（Windows 上为 http://music.localhost/track/{id}）。
-//! 支持三类来源的统一路由：
+//! 支持两类来源的统一路由：
 //! - local  → 直接读本地文件流
 //! - webdav → reqwest 代理转发（附带 Basic 认证，规避 WebView 跨域/凭证暴露）
-//! - lan    → 代理转发对方设备的 /api/stream/{remote_id}（Bearer 配对码）
 //!
-//! 共享服务端（network::share）复用 serve_local_track_response 提供本机曲库。
+//! WebDAV 下载复用 network::webdav 的 HTTP 客户端。
 
 use std::io::{Read, Seek, SeekFrom};
 use std::path::PathBuf;
@@ -72,7 +71,7 @@ pub(crate) fn route_track<R: Runtime>(
         return server_error();
     };
     let row = conn.query_row(
-        "SELECT t.path, t.format, t.file_size, t.remote_id, s.kind, s.base_path, s.base_url, s.config
+        "SELECT t.path, t.format, t.file_size, s.kind, s.base_path, s.base_url, s.config
          FROM tracks t JOIN sources s ON s.id = t.source_id
          WHERE t.id = ?1",
         [id],
@@ -81,15 +80,14 @@ pub(crate) fn route_track<R: Runtime>(
                 r.get::<_, String>(0)?,
                 r.get::<_, Option<String>>(1)?,
                 r.get::<_, i64>(2)?,
-                r.get::<_, Option<i64>>(3)?,
-                r.get::<_, String>(4)?,
+                r.get::<_, String>(3)?,
+                r.get::<_, Option<String>>(4)?,
                 r.get::<_, Option<String>>(5)?,
                 r.get::<_, Option<String>>(6)?,
-                r.get::<_, Option<String>>(7)?,
             ))
         },
     );
-    let (rel, format, size, remote_id, kind, base_path, base_url, config) = match row {
+    let (rel, format, size, kind, base_path, base_url, config) = match row {
         Ok(v) => v,
         Err(_) => return not_found(),
     };
@@ -116,51 +114,8 @@ pub(crate) fn route_track<R: Runtime>(
             };
             proxy_response(&url, range, auth)
         }
-        "lan" => {
-            let (Some(base), Some(rid)) = (base_url, remote_id) else { return not_found() };
-            let token = network::config_field(config.as_deref(), "token").unwrap_or_default();
-            let url = format!("{}/api/stream/{}", base.trim_end_matches('/'), rid);
-            proxy_response(&url, range, ProxyAuth::Bearer(token))
-        }
         _ => not_found(),
     }
-}
-
-/// 共享服务端用：只允许本地来源（远程源不被二次共享）
-pub(crate) fn serve_local_track_response<R: Runtime>(
-    app: &AppHandle<R>,
-    track_id: i64,
-    range: Option<&str>,
-) -> Response<Vec<u8>> {
-    let state = app.state::<crate::state::AppState>();
-    let Ok(conn) = state.db.lock() else {
-        return server_error();
-    };
-    let row = conn.query_row(
-        "SELECT t.path, t.format, t.file_size, s.base_path
-         FROM tracks t JOIN sources s ON s.id = t.source_id
-         WHERE t.id = ?1 AND s.kind = 'local' AND s.enabled = 1",
-        [track_id],
-        |r| {
-            Ok((
-                r.get::<_, String>(0)?,
-                r.get::<_, Option<String>>(1)?,
-                r.get::<_, i64>(2)?,
-                r.get::<_, Option<String>>(3)?,
-            ))
-        },
-    );
-    let (rel, format, size, base_path) = match row {
-        Ok(v) => v,
-        Err(_) => return not_found(),
-    };
-    drop(conn);
-
-    let Some(base) = base_path else { return not_found() };
-    let full = PathBuf::from(base).join(&rel);
-    let Ok(file) = std::fs::File::open(&full) else { return not_found() };
-    let size = if size > 0 { size as u64 } else { file.metadata().map(|m| m.len()).unwrap_or(0) };
-    serve_file_response(file, mime_of(format.as_deref()), size, range)
 }
 
 /// 带本地文件流响应（支持 Range，2MB 分块封顶）
@@ -211,7 +166,6 @@ pub(crate) fn serve_file_response(
 
 pub(crate) enum ProxyAuth {
     None,
-    Bearer(String),
     Basic(String, String),
 }
 
@@ -228,12 +182,33 @@ fn client() -> &'static reqwest::blocking::Client {
 }
 
 fn cap_open_range(r: &str) -> String {
-    // bytes=N- → bytes=N-{N+CHUNK-1}；显式结尾与后缀范围原样转发
+    // 所有范围形态统一封顶到 CHUNK，避免远端按原始 Range 返回 Content-Range
+    // 而本地 take(CHUNK) 截断后 Content-Length 与之矛盾：
+    // - bytes=N-   → bytes=N-{N+CHUNK-1}
+    // - bytes=N-M  → bytes=N-{min(M, N+CHUNK-1)}
+    // - bytes=-N   → bytes=-{min(N, CHUNK)}（后缀范围取末尾更少字节，Content-Range 会如实回告）
+    // 无法解析/非法的范围原样转发（远端会返回 416，代理降级为 not_found）
     if let Some(rest) = r.strip_prefix("bytes=") {
         if let Some((start, end)) = rest.split_once('-') {
-            if end.trim().is_empty() {
-                if let Ok(n) = start.trim().parse::<u64>() {
-                    return format!("bytes={}-{}", n, n.saturating_add(CHUNK - 1));
+            if start.trim().is_empty() {
+                // 后缀范围：限制请求的末尾字节数
+                if let Ok(n) = end.trim().parse::<u64>() {
+                    let capped = n.min(CHUNK);
+                    if capped > 0 {
+                        return format!("bytes=-{capped}");
+                    }
+                }
+            } else if let Ok(s) = start.trim().parse::<u64>() {
+                let limit = s.saturating_add(CHUNK - 1);
+                let capped_end = if end.trim().is_empty() {
+                    Some(limit)
+                } else {
+                    end.trim().parse::<u64>().ok().map(|m| m.min(limit))
+                };
+                if let Some(e) = capped_end {
+                    if e >= s {
+                        return format!("bytes={s}-{e}");
+                    }
                 }
             }
         }
@@ -249,7 +224,6 @@ pub(crate) fn proxy_response(
     let mut req = client().get(url);
     req = match &auth {
         ProxyAuth::None => req,
-        ProxyAuth::Bearer(t) => req.bearer_auth(t),
         ProxyAuth::Basic(u, p) => req.basic_auth(u, Some(p)),
     };
     if let Some(r) = client_range {
@@ -298,8 +272,10 @@ fn cover_handle<R: Runtime>(app: AppHandle<R>, req: Request<Vec<u8>>) -> Respons
         Ok(Some(file)) => match std::fs::read(&file) {
             Ok(bytes) => Response::builder()
                 .status(StatusCode::OK)
-                .header(CONTENT_TYPE, "image/jpeg")
-                .header(CACHE_CONTROL, "public, max-age=31536000, immutable")
+                // 缓存有效期不可过长：专辑重解析/删除后 rowid 会被复用，同名 URL
+                // 可能指向新封面，immutable 长缓存会让旧图一直存活
+                .header(CONTENT_TYPE, sniff_image_mime(&bytes))
+                .header(CACHE_CONTROL, "public, max-age=3600")
                 .header("Access-Control-Allow-Origin", "*")
                 .body(bytes)
                 .unwrap_or_else(|_| server_error()),
@@ -401,8 +377,17 @@ pub(crate) fn mime_of(format: Option<&str>) -> &'static str {
     }
 }
 
-pub(crate) fn error_response() -> Response<Vec<u8>> {
-    server_error()
+/// 按魔数嗅探图片类型（封面缓存文件统一存 .jpg 扩展名，但内容可能是 PNG/WebP 原样字节）
+pub(crate) fn sniff_image_mime(bytes: &[u8]) -> &'static str {
+    if bytes.starts_with(&[0xFF, 0xD8]) {
+        "image/jpeg"
+    } else if bytes.starts_with(&[0x89, b'P', b'N', b'G']) {
+        "image/png"
+    } else if bytes.len() > 12 && bytes.starts_with(b"RIFF") && &bytes[8..12] == b"WEBP" {
+        "image/webp"
+    } else {
+        "application/octet-stream"
+    }
 }
 
 fn not_found() -> Response<Vec<u8>> {

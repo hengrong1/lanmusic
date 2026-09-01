@@ -1,10 +1,16 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
-import { ArrowLeft, Moon, Search, Settings, Sun, X } from '@lucide/vue'
+import { ArrowLeft, Moon, PanelLeftClose, PanelLeftOpen, Search, Settings, Sun, X } from '@lucide/vue'
 import { useNav } from '@/composables/useNav'
+import { useSidebar } from '@/composables/useSidebar'
 import { useTheme } from '@/composables/useTheme'
 import { CUSTOM_WINDOW_CONTROLS, IS_MAC } from '@/utils/platform'
 import WindowControls from '@/components/WindowControls.vue'
+
+const { collapsed } = useSidebar()
+function toggleSidebar() {
+  collapsed.value = !collapsed.value
+}
 
 const { current, back, replaceSearch, canBack, go } = useNav()
 const { mode, resolved, setTheme } = useTheme()
@@ -50,6 +56,15 @@ defineExpose({ focusSearch })
     class="flex h-14 shrink-0 items-center gap-3 border-b border-zinc-200 pl-4 dark:border-zinc-800"
     :class="IS_MAC ? 'pl-[76px] pr-4' : CUSTOM_WINDOW_CONTROLS ? 'pr-0' : 'pr-4'"
   >
+    <button
+      class="flex h-8 w-8 items-center justify-center rounded-full text-zinc-500 transition hover:bg-zinc-100 dark:hover:bg-zinc-800 dark:text-zinc-400"
+      :title="collapsed ? '展开侧栏' : '收起侧栏'"
+      @click="toggleSidebar"
+    >
+      <PanelLeftOpen v-if="!collapsed" class="h-4 w-4" />
+      <PanelLeftClose v-else class="h-4 w-4" />
+    </button>
+
     <button
       class="flex h-8 w-8 items-center justify-center rounded-full text-zinc-500 transition hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-30 dark:text-zinc-400"
       :disabled="!canBack"

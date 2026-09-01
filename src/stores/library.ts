@@ -85,6 +85,11 @@ export const useLibraryStore = defineStore('library', () => {
     await Promise.all([loadSources(), loadStats()])
   }
 
+  async function addWebDav(url: string, username: string, password: string, name?: string) {
+    await api.webdavAddSource(url, username, password, name)
+    await Promise.all([loadSources(), loadStats()])
+  }
+
   async function removeSource(id: number) {
     await api.removeSource(id)
     await Promise.all([loadSources(), loadStats(), loadTracks()])
@@ -170,6 +175,7 @@ export const useLibraryStore = defineStore('library', () => {
     setQuery,
     loadMore,
     addFolder,
+    addWebDav,
     removeSource,
     rescan,
     setFastImport,

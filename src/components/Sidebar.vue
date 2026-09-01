@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import { nextTick, ref } from 'vue'
-import { Disc3, Heart, History, Mic, Music, Plus, Wifi, X } from '@lucide/vue'
+import { nextTick, onMounted, ref, watch } from 'vue'
+import { Disc3, Heart, History, Mic, Music, Plus, X } from '@lucide/vue'
+import gsap from 'gsap'
 import { useLibraryStore } from '@/stores/library'
 import { useNav } from '@/composables/useNav'
+import { useSidebar } from '@/composables/useSidebar'
 import { toast } from '@/composables/useToast'
 import { confirmDialog } from '@/composables/useConfirm'
 import { IS_WIN } from '@/utils/platform'
@@ -12,6 +14,30 @@ import type { NavRoute } from '@/types'
 
 const library = useLibraryStore()
 const { current, go } = useNav()
+const { collapsed } = useSidebar()
+const navEl = ref<HTMLElement | null>(null)
+
+watch(collapsed, () => animateSidebar())
+
+function animateSidebar() {
+  if (!navEl.value) return
+  const targets = navEl.value.querySelectorAll<HTMLElement>('.sidebar-fade')
+  const collapsing = collapsed.value
+
+  if (collapsing) {
+    gsap.to(targets, { opacity: 0, duration: 0.15, ease: 'power2.out' })
+    gsap.to(navEl.value, { width: 60, duration: 0.3, ease: 'power3.inOut' })
+  } else {
+    gsap.to(navEl.value, { width: 220, duration: 0.3, ease: 'power3.inOut' })
+    gsap.fromTo(targets, { opacity: 0 }, { opacity: 1, duration: 0.2, delay: 0.15, ease: 'power2.out' })
+  }
+}
+
+onMounted(() => {
+  if (collapsed.value && navEl.value) {
+    navEl.value.querySelectorAll<HTMLElement>('.sidebar-fade').forEach((el) => (el.style.opacity = '0'))
+  }
+})
 
 interface NavEntry {
   route: NavRoute
@@ -26,7 +52,6 @@ const entries: NavEntry[] = [
   { route: { view: 'albums' }, label: '专辑', icon: Disc3, count: () => library.stats.albums },
   { route: { view: 'artists' }, label: '艺人', icon: Mic, count: () => library.stats.artists },
   { route: { view: 'tracks', recent: true }, label: '最近播放', icon: History },
-  { route: { view: 'network' }, label: '局域网', icon: Wifi },
 ]
 
 function isActive(e: NavEntry) {
@@ -43,7 +68,7 @@ function isActive(e: NavEntry) {
     if (e.route.recent) return r.view === 'tracks' && !!r.recent && !r.search
     return r.view === 'tracks' && !r.albumId && !r.artistId && !r.recent && !r.favorites && !r.search
   }
-  if (e.route.view === 'network' || e.route.view === 'settings') {
+  if (e.route.view === 'settings') {
     return r.view === e.route.view
   }
   return false
@@ -115,48 +140,58 @@ function openPlaylistMenu(e: MouseEvent, p: { id: number; name: string }) {
 </script>
 
 <template>
-  <nav class="flex w-60 shrink-0 flex-col border-r border-zinc-200 bg-zinc-50/80 dark:border-zinc-800 dark:bg-zinc-900/60">
-    <!-- 仅 Windows：logo 区补上拖拽区（该区域不与 TopBar 的标题栏重叠），macOS 保持原样 -->
-    <div class="flex h-14 items-center gap-2 px-5" :data-tauri-drag-region="IS_WIN ? '' : undefined">
+  <nav
+    ref="navEl"
+    class="flex shrink-0 flex-col overflow-hidden border-r border-zinc-200 bg-zinc-50/80 transition-[width] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] dark:border-zinc-800 dark:bg-zinc-900/60"
+    :style="{ width: collapsed ? '60px' : '240px' }"
+  >
+    <!-- Logo -->
+    <div class="flex h-14 shrink-0 items-center gap-2 px-3" :data-tauri-drag-region="IS_WIN ? '' : undefined">
       <div
-        class="flex h-7 w-7 items-center justify-center rounded-lg bg-violet-500 text-white shadow-sm"
+        class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-violet-500 text-white shadow-sm"
         :data-tauri-drag-region="IS_WIN ? '' : undefined"
       >
         <Music class="h-4 w-4" fill="currentColor" />
       </div>
       <span
-        class="text-[15px] font-bold tracking-wide text-zinc-800 dark:text-zinc-100"
+        v-if="!collapsed"
+        class="sidebar-fade flex-1 text-[15px] font-bold tracking-wide text-zinc-800 dark:text-zinc-100"
         :data-tauri-drag-region="IS_WIN ? '' : undefined"
       >LanMusic</span>
     </div>
 
     <div class="px-3">
-      <p class="px-2 pb-1 text-[11px] font-semibold tracking-wider text-zinc-400 uppercase dark:text-zinc-600">
+      <p v-if="!collapsed" class="sidebar-fade px-2 pb-1 text-[11px] font-semibold tracking-wider text-zinc-400 uppercase dark:text-zinc-600">
         我的音乐
       </p>
       <button
         v-for="e in entries"
         :key="e.label"
-        class="mb-0.5 flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm transition"
-        :class="
+        class="mb-0.5 flex w-full items-center rounded-lg py-2 text-sm transition"
+        :class="[
+          collapsed ? 'justify-center px-0' : 'gap-2.5 px-2.5',
           isActive(e)
             ? 'bg-violet-100 font-medium text-violet-700 dark:bg-violet-500/15 dark:text-violet-300'
-            : 'text-zinc-600 hover:bg-zinc-200/60 dark:text-zinc-300 dark:hover:bg-zinc-800/60'
-        "
+            : 'text-zinc-600 hover:bg-zinc-200/60 dark:text-zinc-300 dark:hover:bg-zinc-800/60',
+        ]"
+        :title="e.label"
         @click="go(e.route)"
       >
-        <component :is="e.icon" class="h-4 w-4" :class="isActive(e) ? 'text-violet-500' : 'text-zinc-400'" />
-        <span class="flex-1 text-left">{{ e.label }}</span>
-        <span v-if="e.count" class="text-xs tabular-nums text-zinc-400">{{ e.count() }}</span>
+        <component :is="e.icon" class="h-4 w-4 shrink-0" :class="isActive(e) ? 'text-violet-500' : 'text-zinc-400'" />
+        <span v-if="!collapsed" class="sidebar-fade flex-1 text-left">{{ e.label }}</span>
+        <span v-if="!collapsed && e.count" class="sidebar-fade text-xs tabular-nums text-zinc-400">{{ e.count() }}</span>
       </button>
     </div>
 
     <!-- 歌单 -->
-    <div class="mt-3 min-h-0 flex-1 overflow-y-auto px-3">
+    <div
+      class="mt-3 min-h-0 flex-1 overflow-y-auto px-3"
+      :class="{ 'pointer-events-none': collapsed }"
+    >
       <div class="flex items-center justify-between px-2 pb-1">
-        <p class="text-[11px] font-semibold tracking-wider text-zinc-400 uppercase dark:text-zinc-600">歌单</p>
+        <p class="sidebar-fade text-[11px] font-semibold tracking-wider text-zinc-400 uppercase dark:text-zinc-600">歌单</p>
         <button
-          class="flex h-5 w-5 items-center justify-center rounded text-zinc-400 hover:bg-zinc-200 hover:text-zinc-600 dark:hover:bg-zinc-700"
+          class="sidebar-fade flex h-5 w-5 items-center justify-center rounded text-zinc-400 hover:bg-zinc-200 hover:text-zinc-600 dark:hover:bg-zinc-700"
           title="新建歌单"
           @click="startCreate"
         >
@@ -165,7 +200,7 @@ function openPlaylistMenu(e: MouseEvent, p: { id: number; name: string }) {
       </div>
 
       <!-- 新建/重命名输入行 -->
-      <div v-if="editing" class="mb-1 flex items-center gap-1 rounded-lg bg-white px-2 py-1 ring-1 ring-violet-400 dark:bg-zinc-800">
+      <div v-if="editing" class="sidebar-fade mb-1 flex items-center gap-1 rounded-lg bg-white px-2 py-1 ring-1 ring-violet-400 dark:bg-zinc-800">
         <input
           ref="inputEl"
           v-model="editing.value"
@@ -192,11 +227,11 @@ function openPlaylistMenu(e: MouseEvent, p: { id: number; name: string }) {
           @contextmenu="openPlaylistMenu($event, p)"
         >
           <Music class="h-4 w-4 shrink-0 text-zinc-400" />
-          <span class="flex-1 truncate text-left">{{ p.name }}</span>
-          <span class="text-xs tabular-nums text-zinc-400">{{ p.trackCount }}</span>
+          <span class="sidebar-fade flex-1 truncate text-left">{{ p.name }}</span>
+          <span class="sidebar-fade text-xs tabular-nums text-zinc-400">{{ p.trackCount }}</span>
         </button>
       </div>
-      <p v-if="!library.playlists.length && !editing" class="px-2.5 py-2 text-sm text-zinc-400 dark:text-zinc-600">
+      <p v-if="!library.playlists.length && !editing" class="sidebar-fade px-2.5 py-2 text-sm text-zinc-400 dark:text-zinc-600">
         暂无歌单，点 + 新建
       </p>
     </div>

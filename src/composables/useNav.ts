@@ -2,7 +2,7 @@ import { computed, ref, watch } from 'vue'
 import type { NavRoute } from '@/types'
 
 const LS_NAV = 'lm.nav'
-const VALID_VIEWS = ['tracks', 'albums', 'artists', 'playlist', 'network', 'settings']
+const VALID_VIEWS = ['tracks', 'albums', 'artists', 'playlist', 'settings']
 
 /** 启动时恢复上次停留的视图（筛选上下文） */
 function loadRoute(): NavRoute {
