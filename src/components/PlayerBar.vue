@@ -216,12 +216,6 @@ function goArtist() {
   nav.go({ view: 'tracks', artistId: t.artistId, artistName: t.artist ?? '未知艺人' })
   if (props.nowPlayingOpen) emit('toggleNowPlaying')
 }
-function goAlbum() {
-  const t = player.current
-  if (t?.albumId == null) return
-  nav.go({ view: 'tracks', albumId: t.albumId, albumTitle: t.album ?? '未知专辑' })
-  if (props.nowPlayingOpen) emit('toggleNowPlaying')
-}
 
 /** 当前歌词行（无时间轴歌词/无歌词时退化为专辑名） */
 const currentLyricLine = computed(() => {
@@ -231,12 +225,6 @@ const currentLyricLine = computed(() => {
   }
   return player.current?.album ?? 'LanMusic'
 })
-
-function seekLyric() {
-  if (!player.lyricsLines?.length) return
-  const i = player.activeLyricIndex
-  if (i >= 0) player.seek(player.lyricsLines[i].time)
-}
 
 const pct = computed(() => (player.duration > 0 ? (player.position / player.duration) * 100 : 0))
 const volPct = computed(() => (player.muted ? 0 : player.volume * 100))
@@ -390,13 +378,11 @@ const theme = computed(() =>
       <div class="flex min-w-0 flex-col justify-center gap-0.5">
         <!-- 行1：歌名 – 歌手 -->
         <div class="flex min-w-0 items-baseline gap-1.5 text-sm">
-          <button
+          <span
             v-if="player.current"
-            class="max-w-[58%] shrink-0 cursor-pointer truncate font-medium transition-colors duration-500 hover:text-violet-500"
+            class="max-w-[58%] shrink-0 truncate font-medium transition-colors duration-500"
             :class="theme.title"
-            :title="player.current.album ? `查看专辑：${player.current.album}` : ''"
-            @click.stop="goAlbum"
-          >{{ player.current.title }}</button>
+          >{{ player.current.title }}</span>
           <span v-else class="truncate font-medium" :class="theme.title">未在播放</span>
           <span v-if="player.current" class="shrink-0 opacity-40">–</span>
           <button
@@ -410,17 +396,15 @@ const theme = computed(() =>
             {{ player.current.artist ?? '' }}
           </span>
         </div>
-        <!-- 行2：当前歌词（过长滚动），无歌词时显示专辑名；点击跳到该句 -->
-        <button
+        <!-- 行2：当前歌词（过长滚动），无歌词时显示专辑名；纯展示，不响应点击 -->
+        <div
           v-if="player.current"
-          class="w-full cursor-pointer text-left transition-colors duration-500"
-          :class="[theme.artist, player.lyricsLines?.length && !props.nowPlayingOpen ? 'hover:text-violet-500' : 'hover:opacity-80']"
+          class="w-full text-left transition-colors duration-500"
+          :class="theme.artist"
           :style="accent && player.lyricsLines?.length ? { color: accent } : undefined"
-          :title="player.lyricsLines?.length ? '点击跳转到该句' : ''"
-          @click="seekLyric"
         >
           <MarqueeText :text="currentLyricLine" />
-        </button>
+        </div>
         <span v-else class="text-xs" :class="theme.artist">LanMusic</span>
       </div>
     </div>
