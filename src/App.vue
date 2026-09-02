@@ -17,6 +17,7 @@ import { useLibraryStore } from '@/stores/library'
 import { usePlayerStore } from '@/stores/player'
 import { useNav } from '@/composables/useNav'
 import { useAmbient } from '@/composables/useAmbient'
+import { useSkinOpen } from '@/composables/useSkin'
 
 const library = useLibraryStore()
 const player = usePlayerStore()
@@ -32,8 +33,10 @@ const PLAYER_BAR_H = 80 // 播放条 h-20
 const HEADER_H = 56 // 顶栏 h-14
 let focusTimer: ReturnType<typeof setTimeout> | undefined
 
-/** 专注模式启用条件：播放页打开 且 正在播放（暂停时不做专注隐藏） */
-const focusActive = computed(() => nowPlaying.value && player.playing)
+/** 专注模式启用条件：播放页打开 且 正在播放（暂停时不做专注隐藏）；皮肤设置弹层展开时暂停专注，
+ * 避免用户调整皮肤时鼠标移到弹层上超过 5s 被触发隐藏 */
+const skinOpen = useSkinOpen()
+const focusActive = computed(() => nowPlaying.value && player.playing && !skinOpen.value)
 
 /** 启动/重置专注计时（5s 后隐藏控制） */
 function armFocusTimer() {
@@ -184,17 +187,24 @@ window.addEventListener('keydown', (e) => {
     player.next()
   } else if (!typing && !e.metaKey && !e.ctrlKey && !e.altKey && e.key.toLowerCase() === 'p') {
     player.prev()
+  } else if (!typing && !e.metaKey && !e.ctrlKey && !e.altKey && e.key === '[') {
+    // 歌词校准：提前 0.5s（歌词显示慢了按这个）
+    player.setLyricOffset(-0.5)
+  } else if (!typing && !e.metaKey && !e.ctrlKey && !e.altKey && e.key === ']') {
+    // 歌词校准：延后 0.5s（歌词显示快了按这个）
+    player.setLyricOffset(0.5)
   }
 })
 </script>
 
 <template>
-  <div class="relative flex h-screen select-none flex-col overflow-hidden bg-zinc-50 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
+  <div class="relative flex h-screen select-none flex-col overflow-hidden bg-zinc-100 text-zinc-900 dark:bg-zinc-900 dark:text-zinc-100">
     <div class="flex min-h-0 flex-1">
       <Sidebar />
       <div class="flex min-w-0 flex-1 flex-col">
         <TopBar />
-        <main class="min-h-0 flex-1 overflow-hidden">
+        <!-- 内容卡片：白色圆角浮于灰色底框上，与侧栏/顶栏/播放条形成圆角分区；右侧留出灰边距避免顶到窗口边 -->
+        <main class="mr-3 min-h-0 flex-1 overflow-hidden rounded-2xl bg-white dark:bg-zinc-950">
           <Transition :css="false" mode="out-in" @enter="viewEnter" @leave="viewLeave">
             <component :is="viewComponent" :key="viewKey" />
           </Transition>

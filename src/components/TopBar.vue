@@ -1,6 +1,14 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
-import { ArrowLeft, Moon, PanelLeftClose, PanelLeftOpen, Search, Settings, Sun, SunMoon, X } from '@lucide/vue'
+import { ArrowLeftIcon as ArrowLeft } from '@solar-icons/vue/linear/arrow-left'
+import { MoonIcon as Moon } from '@solar-icons/vue/linear/moon'
+import { SidebarIcon as PanelLeftClose } from '@solar-icons/vue/linear/sidebar'
+import { SidebarIcon as PanelLeftOpen } from '@solar-icons/vue/linear/sidebar'
+import { MagnifierIcon as Search } from '@solar-icons/vue/linear/magnifier'
+import { SettingsIcon as Settings } from '@solar-icons/vue/linear/settings'
+import { SunIcon as Sun } from '@solar-icons/vue/linear/sun'
+import { MonitorIcon as SunMoon } from '@solar-icons/vue/linear/monitor'
+import { CloseIcon as X } from '@solar-icons/vue/linear/close'
 import { useNav } from '@/composables/useNav'
 import { useSidebar } from '@/composables/useSidebar'
 import { useTheme } from '@/composables/useTheme'
@@ -53,11 +61,11 @@ defineExpose({ focusSearch })
   -->
   <header
     data-tauri-drag-region
-    class="flex h-14 shrink-0 items-center gap-3 border-b border-zinc-200 pl-4 dark:border-zinc-800"
+    class="flex h-14 shrink-0 items-center gap-3 bg-zinc-100 pl-4 dark:bg-zinc-900"
     :class="CUSTOM_WINDOW_CONTROLS ? 'pr-0' : 'pr-4'"
   >
     <button
-      class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full text-zinc-500 transition hover:bg-zinc-100 dark:hover:bg-zinc-800 dark:text-zinc-400"
+      class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full text-zinc-500 transition hover:bg-zinc-200/70 dark:hover:bg-zinc-800 dark:text-zinc-400"
       :title="collapsed ? '展开侧栏' : '收起侧栏'"
       @click="toggleSidebar"
     >
@@ -66,7 +74,7 @@ defineExpose({ focusSearch })
     </button>
 
     <button
-      class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full text-zinc-500 transition hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-30 dark:text-zinc-400"
+      class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full text-zinc-500 transition hover:bg-zinc-200/70 dark:hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-30 dark:text-zinc-400"
       :disabled="!canBack"
       title="返回"
       @click="back()"
@@ -79,7 +87,7 @@ defineExpose({ focusSearch })
       <input
         id="search-input"
         v-model="input"
-        class="h-9 w-full rounded-full border border-transparent bg-zinc-100 pr-8 pl-9 text-sm text-zinc-800 outline-none transition placeholder:text-zinc-400 focus:border-violet-400 focus:bg-white dark:bg-zinc-800/70 dark:text-zinc-100 dark:focus:bg-zinc-800"
+        class="h-9 w-full rounded-full border border-transparent bg-white/60 pr-8 pl-9 text-sm text-zinc-800 outline-none transition placeholder:text-zinc-400 focus:border-violet-400 focus:bg-white dark:bg-zinc-800/70 dark:text-zinc-100 dark:focus:bg-zinc-800"
         placeholder="搜索歌曲、艺人、专辑 (Ctrl+F)"
         @input="onInput"
         @keydown.esc="clearSearch"
@@ -94,7 +102,7 @@ defineExpose({ focusSearch })
     </div>
 
     <button
-      class="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-full text-zinc-500 transition hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-800"
+      class="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-full text-zinc-500 transition hover:bg-zinc-200/70 dark:text-zinc-400 dark:hover:bg-zinc-800"
       :title="`主题：${mode === 'dark' ? '深色' : mode === 'light' ? '浅色' : '跟随系统'}`"
       @click="cycleTheme"
     >
@@ -105,7 +113,7 @@ defineExpose({ focusSearch })
     </button>
 
     <button
-      class="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-full transition hover:bg-zinc-100 dark:hover:bg-zinc-800"
+      class="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-full transition hover:bg-zinc-200/70 dark:hover:bg-zinc-800"
       :class="current.view === 'settings' ? 'text-violet-500' : 'text-zinc-500 dark:text-zinc-400'"
       title="设置"
       @click="go({ view: 'settings' })"

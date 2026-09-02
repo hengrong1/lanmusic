@@ -19,7 +19,7 @@
     "verify": "pnpm typecheck && pnpm test && pnpm clippy"
   },
   "dependencies": {
-    "@lucide/vue": "^1.38.0",
+    "@solar-icons/vue": "^2.1.0",
     "@tailwindcss/vite": "^4.3.3",
     "@tauri-apps/api": "^2.11.1",
     "@tauri-apps/plugin-dialog": "^2.7.3",

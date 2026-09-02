@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { ChevronRight } from '@lucide/vue'
+import { AltArrowRightIcon as ChevronRight } from '@solar-icons/vue/linear/alt-arrow-right'
 import type { Component } from 'vue'
 
 export interface MenuItem {

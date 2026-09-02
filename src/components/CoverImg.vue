@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { Music } from '@lucide/vue'
+import { MusicNoteIcon as Music } from '@solar-icons/vue/linear/music-note'
 import { coverUrl } from '@/api/scheme'
 
 const props = defineProps<{ albumId: number | null | undefined; rounded?: string }>()

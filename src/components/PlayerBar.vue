@@ -1,28 +1,27 @@
 <script setup lang="ts">
 import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
 import gsap from 'gsap'
-import {
-  ChevronDown,
-  ChevronUp,
-  Heart,
-  ListMusic,
-  LoaderCircle,
-  Palette,
-  Pause,
-  Play,
-  Repeat,
-  Repeat1,
-  Shuffle,
-  SkipBack,
-  SkipForward,
-  Volume1,
-  Volume2,
-  VolumeX,
-} from '@lucide/vue'
+import { AltArrowDownIcon as ChevronDown } from '@solar-icons/vue/linear/alt-arrow-down'
+import { AltArrowUpIcon as ChevronUp } from '@solar-icons/vue/linear/alt-arrow-up'
+import { HeartIcon as Heart } from '@solar-icons/vue/linear/heart'
+import { PlaylistIcon as ListMusic } from '@solar-icons/vue/linear/playlist'
+import { RefreshIcon as LoaderCircle } from '@solar-icons/vue/linear/refresh'
+import { PaletteIcon as Palette } from '@solar-icons/vue/linear/palette'
+import { PauseIcon as Pause } from '@solar-icons/vue/bold/pause'
+import { PlayIcon as Play } from '@solar-icons/vue/bold/play'
+import { RepeatIcon as Repeat } from '@solar-icons/vue/linear/repeat'
+import { RepeatOneIcon as Repeat1 } from '@solar-icons/vue/linear/repeat-one'
+import { ShuffleIcon as Shuffle } from '@solar-icons/vue/linear/shuffle'
+import { SkipPreviousIcon as SkipBack } from '@solar-icons/vue/bold/skip-previous'
+import { SkipNextIcon as SkipForward } from '@solar-icons/vue/bold/skip-next'
+import { HeartIcon as HeartBold } from '@solar-icons/vue/bold/heart'
+import { VolumeSmallIcon as Volume1 } from '@solar-icons/vue/linear/volume-small'
+import { VolumeLoudIcon as Volume2 } from '@solar-icons/vue/linear/volume-loud'
+import { VolumeCrossIcon as VolumeX } from '@solar-icons/vue/linear/volume-cross'
 import { usePlayerStore, type PlayMode } from '@/stores/player'
 import { useNav } from '@/composables/useNav'
 import { useAmbient } from '@/composables/useAmbient'
-import { useSkin } from '@/composables/useSkin'
+import { useSkin, useSkinOpen } from '@/composables/useSkin'
 import { ensureAnalyser, readSpectrum } from '@/composables/useSpectrum'
 import { activeLineIndex } from '@/utils/lrc'
 import CoverImg from '@/components/CoverImg.vue'
@@ -53,7 +52,7 @@ const { palette } = useAmbient()
 
 // ---- 皮肤：频谱开关 + 样式选择（弹层挂在音量左侧，入口仅在播放页显示） ----
 const skin = useSkin()
-const skinOpen = ref(false)
+const skinOpen = useSkinOpen()
 const skinPop = ref<HTMLElement | null>(null)
 
 watch(
@@ -102,8 +101,8 @@ function drawTree() {
   g.clearRect(0, 0, w, h)
 
   const ok = readSpectrum(treeFreq)
-  // 播放页展开时跟随封面主色，平时用主题紫
-  const baseColor = props.nowPlayingOpen ? (palette.value?.accent ?? '#a78bfa') : '#8b5cf6'
+  // 频谱仅在播放页显示，底色固定跟随封面主色
+  const baseColor = palette.value?.accent ?? '#a78bfa'
   // 两端透明渐变：横向线性渐变作为描边色，与 per-bar 的 globalAlpha 相乘生效
   // 注意主色可能是 hsl() 格式，必须先归一化解析，非法 rgba 会让 addColorStop 抛错中断绘制
   const [rr, gg, bb] = colorToRgb(g, baseColor)
@@ -176,10 +175,10 @@ function loopTree() {
 }
 
 watch(
-  [() => skin.value.on, () => skin.value.style, treeCanvas],
-  ([on, style, el]) => {
+  [() => props.nowPlayingOpen, () => skin.value.on, () => skin.value.style, treeCanvas],
+  ([open, on, style, el]) => {
     cancelAnimationFrame(treeRaf)
-    if (on && style === 'tree' && el) {
+    if (open && on && style === 'tree' && el) {
       ensureAnalyser()
       treeRaf = requestAnimationFrame(loopTree)
     }
@@ -262,7 +261,7 @@ const hoverTime = computed(() =>
 const hoverLyric = computed(() => {
   const lines = player.lyricsLines
   if (!lines?.length) return player.current?.album ?? '暂无歌词'
-  const i = activeLineIndex(lines, hoverTime.value)
+  const i = activeLineIndex(lines, hoverTime.value - player.lyricOffset)
   if (i < 0) return lines[0]?.text || '···'
   return lines[i].text || '···'
 })
@@ -321,7 +320,7 @@ function fmt(s: number) {
 const theme = computed(() =>
   props.nowPlayingOpen
     ? {
-        bar: 'border-transparent bg-transparent',
+        bar: 'bg-transparent',
         time: 'text-white/40',
         title: 'text-white',
         artist: 'text-white/50',
@@ -331,13 +330,13 @@ const theme = computed(() =>
         trackRow: '',
       }
     : {
-        bar: 'border-zinc-200 bg-white/80 dark:border-zinc-800 dark:bg-zinc-900/80',
+        bar: 'bg-zinc-100 dark:bg-zinc-900',
         time: 'text-zinc-400',
         title: 'text-zinc-800 dark:text-zinc-100',
         artist: 'text-zinc-500 dark:text-zinc-400',
         iconBtn:
-          'text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100',
-        plainBtn: 'text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800',
+          'text-zinc-500 hover:bg-zinc-200/70 hover:text-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100',
+        plainBtn: 'text-zinc-600 hover:bg-zinc-200/70 dark:text-zinc-300 dark:hover:bg-zinc-800',
         playBtn: 'bg-violet-500 text-white hover:bg-violet-400',
         trackRow: '',
       },
@@ -347,13 +346,13 @@ const theme = computed(() =>
 <template>
   <footer
     ref="footerEl"
-    class="relative z-20 flex h-20 shrink-0 items-center gap-4 border-t px-4 transition-colors duration-500"
+    class="relative z-20 flex h-20 shrink-0 items-center gap-4 px-4 transition-colors duration-500"
     :class="theme.bar"
     :style="accentVarStyle"
   >
     <!-- 树状频谱：悬于播放条上沿，占 2/3 宽并居中（不遮挡播放条内容） -->
     <canvas
-      v-if="skin.on && skin.style === 'tree'"
+      v-if="props.nowPlayingOpen && skin.on && skin.style === 'tree'"
       ref="treeCanvas"
       class="pointer-events-none absolute bottom-full left-1/2 h-10 w-2/3 -translate-x-1/2"
     ></canvas>
@@ -427,7 +426,7 @@ const theme = computed(() =>
           title="上一首 (P)"
           @click="player.prev()"
         >
-          <SkipBack class="h-4.5 w-4.5" fill="currentColor" stroke="none" />
+          <SkipBack class="h-4.5 w-4.5" />
         </button>
         <button
           class="relative flex h-10 w-10 cursor-pointer items-center justify-center rounded-full shadow-lg shadow-violet-500/30 transition duration-200 hover:scale-110 active:scale-90"
@@ -458,15 +457,11 @@ const theme = computed(() =>
               v-else-if="player.playing"
               key="pause"
               class="absolute top-1/2 left-1/2 h-4.5 w-4.5 -translate-x-1/2 -translate-y-1/2"
-              fill="currentColor"
-              stroke="none"
             />
             <Play
               v-else
               key="play"
               class="absolute top-1/2 left-1/2 ml-0.5 h-4.5 w-4.5 -translate-x-1/2 -translate-y-1/2"
-              fill="currentColor"
-              stroke="none"
             />
           </Transition>
         </button>
@@ -476,7 +471,7 @@ const theme = computed(() =>
           title="下一首 (N)"
           @click="player.next()"
         >
-          <SkipForward class="h-4.5 w-4.5" fill="currentColor" stroke="none" />
+          <SkipForward class="h-4.5 w-4.5" />
         </button>
         <button
           class="relative flex h-9 w-9 cursor-pointer items-center justify-center rounded-full transition-colors duration-500 disabled:cursor-not-allowed"
@@ -487,7 +482,8 @@ const theme = computed(() =>
         >
           <!-- 添加喜欢成功时的扩散光环 -->
           <span v-if="favPop" class="heart-burst pointer-events-none absolute inset-0 rounded-full bg-red-500/40"></span>
-          <Heart class="h-4.5 w-4.5" :class="favPop ? 'heart-pop' : ''" :fill="player.current?.fav ? 'currentColor' : 'none'" />
+          <HeartBold v-if="player.current?.fav" class="h-4.5 w-4.5" :class="favPop ? 'heart-pop' : ''" />
+          <Heart v-else class="h-4.5 w-4.5" :class="favPop ? 'heart-pop' : ''" />
         </button>
       </div>
       <div class="flex w-full max-w-xl items-center gap-2">

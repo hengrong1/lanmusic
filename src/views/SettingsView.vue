@@ -2,15 +2,13 @@
 import { computed, onMounted, ref } from 'vue'
 import { open as openDialog } from '@tauri-apps/plugin-dialog'
 import { getVersion } from '@tauri-apps/api/app'
-import {
-  Check,
-  FolderOpen,
-  Globe,
-  HardDrive,
-  LoaderCircle,
-  RefreshCw,
-  Trash2,
-} from '@lucide/vue'
+import { VerifiedCheckIcon as Check } from '@solar-icons/vue/linear/verified-check'
+import { FolderOpenIcon as FolderOpen } from '@solar-icons/vue/linear/folder-open'
+import { GlobeIcon as Globe } from '@solar-icons/vue/linear/globe'
+import { DatabaseIcon as HardDrive } from '@solar-icons/vue/linear/database'
+import { RefreshIcon as LoaderCircle } from '@solar-icons/vue/linear/refresh'
+import { RefreshIcon as RefreshCw } from '@solar-icons/vue/linear/refresh'
+import { TrashBin2Icon as Trash2 } from '@solar-icons/vue/linear/trash-bin-2'
 import { useLibraryStore } from '@/stores/library'
 import { useTheme, type ThemeMode } from '@/composables/useTheme'
 import { toast } from '@/composables/useToast'

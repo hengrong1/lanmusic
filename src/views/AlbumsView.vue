@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { Disc3, LoaderCircle } from '@lucide/vue'
+import { VinylRecordIcon as Disc3 } from '@solar-icons/vue/linear/vinyl-record'
+import { RefreshIcon as LoaderCircle } from '@solar-icons/vue/linear/refresh'
 import AlbumGrid from '@/components/AlbumGrid.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import { useLibraryStore } from '@/stores/library'

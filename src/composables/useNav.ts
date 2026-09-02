@@ -34,9 +34,26 @@ watch(
 )
 
 export function useNav() {
+  /** 路由是否实质相同：仅比较关键参数（view + 各 id + 标记），忽略显示用的 title/name */
+  function sameRoute(a: NavRoute, b: NavRoute): boolean {
+    return (
+      a.view === b.view &&
+      a.albumId === b.albumId &&
+      a.artistId === b.artistId &&
+      a.playlistId === b.playlistId &&
+      a.search === b.search &&
+      a.recent === b.recent &&
+      a.favorites === b.favorites
+    )
+  }
+
   function go(route: NavRoute) {
-    history.value.push({ ...current.value })
-    if (history.value.length > 50) history.value.shift()
+    // 目标与当前路由相同（如艺人页内再次点击同一艺人）：不重复压栈，
+    // 否则返回键会连续弹出相同页面，看起来“返回不生效”
+    if (!sameRoute(route, current.value)) {
+      history.value.push({ ...current.value })
+      if (history.value.length > 50) history.value.shift()
+    }
     current.value = { ...route }
   }
 

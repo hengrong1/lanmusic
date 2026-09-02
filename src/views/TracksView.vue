@@ -1,6 +1,10 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { FolderOpen, Heart, LoaderCircle, Music, SearchX } from '@lucide/vue'
+import { FolderOpenIcon as FolderOpen } from '@solar-icons/vue/linear/folder-open'
+import { HeartIcon as Heart } from '@solar-icons/vue/linear/heart'
+import { RefreshIcon as LoaderCircle } from '@solar-icons/vue/linear/refresh'
+import { MusicNoteIcon as Music } from '@solar-icons/vue/linear/music-note'
+import { EyeClosedIcon as SearchX } from '@solar-icons/vue/linear/eye-closed'
 import { open as openFileDialog } from '@tauri-apps/plugin-dialog'
 import TrackTable from '@/components/TrackTable.vue'
 import EmptyState from '@/components/EmptyState.vue'

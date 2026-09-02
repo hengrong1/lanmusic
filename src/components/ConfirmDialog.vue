@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted } from 'vue'
-import { TriangleAlert } from '@lucide/vue'
+import { DangerTriangleIcon as TriangleAlert } from '@solar-icons/vue/linear/danger-triangle'
 import { useConfirmState } from '@/composables/useConfirm'
 
 const { state, answer } = useConfirmState()

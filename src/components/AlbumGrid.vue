@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Play } from '@lucide/vue'
+import { PlayIcon as Play } from '@solar-icons/vue/bold/play'
 import type { AlbumItem } from '@/types'
 import CoverImg from '@/components/CoverImg.vue'
 
@@ -24,7 +24,7 @@ defineEmits<{ open: [album: AlbumItem]; play: [album: AlbumItem] }>()
           title="播放专辑"
           @click.stop="$emit('play', album)"
         >
-          <Play class="ml-0.5 h-4 w-4" fill="currentColor" />
+          <Play class="ml-0.5 h-4 w-4" />
         </button>
       </div>
       <p class="mt-2 truncate text-sm font-medium text-zinc-800 dark:text-zinc-100" :title="album.title">

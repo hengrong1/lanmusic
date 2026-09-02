@@ -1,6 +1,10 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { Check, LoaderCircle, Music, Search, X } from '@lucide/vue'
+import { VerifiedCheckIcon as Check } from '@solar-icons/vue/linear/verified-check'
+import { RefreshIcon as LoaderCircle } from '@solar-icons/vue/linear/refresh'
+import { MusicNoteIcon as Music } from '@solar-icons/vue/linear/music-note'
+import { MagnifierIcon as Search } from '@solar-icons/vue/linear/magnifier'
+import { CloseIcon as X } from '@solar-icons/vue/linear/close'
 import type { Track } from '@/types'
 import { api } from '@/api/commands'
 import { useLibraryStore } from '@/stores/library'

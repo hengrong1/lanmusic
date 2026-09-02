@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { CircleAlert, Info } from '@lucide/vue'
+import { DangerCircleIcon as CircleAlert } from '@solar-icons/vue/linear/danger-circle'
+import { InfoCircleIcon as Info } from '@solar-icons/vue/linear/info-circle'
 import { useToast } from '@/composables/useToast'
 
 const { toasts } = useToast()

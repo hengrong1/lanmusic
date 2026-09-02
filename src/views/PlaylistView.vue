@@ -1,6 +1,12 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { ListChecks, ListMusic, ListPlus, LoaderCircle, Pencil, Play, Plus } from '@lucide/vue'
+import { ListCheckIcon as ListChecks } from '@solar-icons/vue/linear/list-check'
+import { PlaylistIcon as ListMusic } from '@solar-icons/vue/linear/playlist'
+import { Playlist2Icon as ListPlus } from '@solar-icons/vue/linear/playlist-2'
+import { RefreshIcon as LoaderCircle } from '@solar-icons/vue/linear/refresh'
+import { PenIcon as Pencil } from '@solar-icons/vue/linear/pen'
+import { PlayIcon as Play } from '@solar-icons/vue/bold/play'
+import { AddIcon as Plus } from '@solar-icons/vue/linear/add'
 import TrackTable from '@/components/TrackTable.vue'
 import TrackPicker from '@/components/TrackPicker.vue'
 import PlaylistEditDialog from '@/components/PlaylistEditDialog.vue'
@@ -180,7 +186,7 @@ async function onPickerAdded() {
           class="flex cursor-pointer items-center gap-2 rounded-full bg-violet-500 px-5 py-2 text-sm font-medium text-white shadow transition hover:bg-violet-400"
           @click="playAll"
         >
-          <Play class="h-4 w-4" fill="currentColor" />
+          <Play class="h-4 w-4" />
           播放全部
         </button>
       </div>

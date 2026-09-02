@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { LocateFixed, Trash2, X } from '@lucide/vue'
+import { MapPointIcon as LocateFixed } from '@solar-icons/vue/linear/map-point'
+import { TrashBin2Icon as Trash2 } from '@solar-icons/vue/linear/trash-bin-2'
+import { CloseIcon as X } from '@solar-icons/vue/linear/close'
 import { usePlayerStore } from '@/stores/player'
 
 const player = usePlayerStore()

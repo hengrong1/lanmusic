@@ -29,6 +29,13 @@ function load(): SkinState {
 const skin = ref<SkinState>(load())
 watch(skin, (v) => localStorage.setItem(LS_KEY, JSON.stringify(v)), { deep: true })
 
+/** 皮肤弹层是否展开（UI 临时状态，不持久化）。App 的专注模式据此暂停，避免调整皮肤时被隐藏 */
+const skinOpen = ref(false)
+
 export function useSkin() {
   return skin
+}
+
+export function useSkinOpen() {
+  return skinOpen
 }

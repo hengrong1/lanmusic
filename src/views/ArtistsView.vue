@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { LoaderCircle, Mic } from '@lucide/vue'
+import { RefreshIcon as LoaderCircle } from '@solar-icons/vue/linear/refresh'
+import { MicrophoneIcon as Mic } from '@solar-icons/vue/linear/microphone'
 import EmptyState from '@/components/EmptyState.vue'
 import { useLibraryStore } from '@/stores/library'
 import { useNav } from '@/composables/useNav'

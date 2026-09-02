@@ -1,7 +1,14 @@
 <script setup lang="ts">
 import { nextTick, onMounted, ref, watch } from 'vue'
-import { Disc3, Heart, History, Mic, Music, Plus, X } from '@lucide/vue'
+import { VinylRecordIcon as Disc3 } from '@solar-icons/vue/linear/vinyl-record'
+import { HeartIcon as Heart } from '@solar-icons/vue/linear/heart'
+import { HistoryIcon as History } from '@solar-icons/vue/linear/history'
+import { MicrophoneIcon as Mic } from '@solar-icons/vue/linear/microphone'
+import { MusicNoteIcon as Music } from '@solar-icons/vue/linear/music-note'
+import { AddIcon as Plus } from '@solar-icons/vue/linear/add'
+import { CloseIcon as X } from '@solar-icons/vue/linear/close'
 import gsap from 'gsap'
+import logo from '@/assets/logo.png'
 import { useLibraryStore } from '@/stores/library'
 import { useNav } from '@/composables/useNav'
 import { useSidebar } from '@/composables/useSidebar'
@@ -199,16 +206,16 @@ function openPlaylistMenu(e: MouseEvent, p: { id: number; name: string }) {
 <template>
   <nav
     ref="navEl"
-    class="flex shrink-0 flex-col overflow-hidden border-r border-zinc-200 bg-zinc-50/80 dark:border-zinc-800 dark:bg-zinc-900/60"
+    class="flex shrink-0 flex-col overflow-hidden bg-zinc-100 dark:bg-zinc-900"
   >
     <!-- Logo：固定左内边距 14px，收起态（60px）恰好居中，避免随 collapsed 切换 justify 而左右闪动 -->
     <div class="flex h-14 shrink-0 items-center gap-2 pl-3.5 pr-3" :data-tauri-drag-region="IS_WIN ? '' : undefined">
-      <div
-        class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-violet-500 text-white shadow-sm"
+      <img
+        :src="logo"
+        alt="LanMusic"
+        class="h-8 w-8 shrink-0 rounded-lg shadow-sm"
         :data-tauri-drag-region="IS_WIN ? '' : undefined"
-      >
-        <Music class="nav-icon h-4 w-4 shrink-0" fill="currentColor" />
-      </div>
+      />
       <span
         v-if="showText"
         class="sidebar-fade flex-1 text-[15px] font-bold tracking-wide text-zinc-800 dark:text-zinc-100"
