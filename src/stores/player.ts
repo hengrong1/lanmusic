@@ -49,13 +49,16 @@ export const usePlayerStore = defineStore('player', () => {
   const lyricsLines = ref<LrcLine[] | null>(null)
   const lyricsPlain = ref<string[] | null>(null)
   const lyricsLoading = ref(false)
+  /** 歌词偏移（秒）：>0 歌词延后显示，<0 提前。按曲目持久化，用于校准 LRC 时间轴与音频不同步 */
+  const lyricOffset = ref(0)
   const activeLyricIndex = computed(() =>
-    lyricsLines.value ? activeLineIndex(lyricsLines.value, position.value) : -1,
+    lyricsLines.value ? activeLineIndex(lyricsLines.value, position.value - lyricOffset.value) : -1,
   )
 
   async function loadLyrics(t: Track) {
     lyricsLines.value = null
     lyricsPlain.value = null
+    lyricOffset.value = readLrcOffset(t.id)
     lyricsLoading.value = true
     try {
       // 不以 hasLyrics 标志为前置条件：旧库的标志可能过期（快速导入/旧版本扫描）
@@ -72,6 +75,29 @@ export const usePlayerStore = defineStore('player', () => {
     } finally {
       lyricsLoading.value = false
     }
+  }
+
+  /** 读取某曲目的持久化歌词偏移 */
+  function readLrcOffset(trackId: number): number {
+    const v = Number(localStorage.getItem(`lm.lrcOffset.${trackId}`) ?? 0)
+    return Number.isFinite(v) ? v : 0
+  }
+
+  /** 调整歌词偏移（delta 秒，UI 步进 ±0.5s），clamp 到 ±10s 并按曲目持久化；每次生效后 toast 反馈累计量 */
+  function setLyricOffset(delta: number) {
+    const t = current.value
+    if (!t) return
+    const prev = lyricOffset.value
+    const v = Math.round(Math.min(10, Math.max(-10, prev + delta)) * 10) / 10
+    if (v === prev) return // 无变化（如已还原后再点还原）不反馈
+    lyricOffset.value = v
+    try {
+      localStorage.setItem(`lm.lrcOffset.${t.id}`, String(v))
+    } catch {
+      /* ignore */
+    }
+    // 固定 key：连续校准时提示原地更新，不叠加多个提示框
+    toast(v === 0 ? '歌词时间轴已还原' : `歌词已${v > 0 ? '延后' : '提前'} ${Math.abs(v).toFixed(1)}s`, 'info', 'lyric-offset')
   }
 
   const current = computed<Track | null>(() => queue.value[index.value] ?? null)
@@ -360,6 +386,8 @@ export const usePlayerStore = defineStore('player', () => {
     lyricsLines,
     lyricsPlain,
     lyricsLoading,
+    lyricOffset,
+    setLyricOffset,
     activeLyricIndex,
     playList,
     playAt,

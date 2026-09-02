@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { PlayIcon as Play } from '@solar-icons/vue/bold/play'
 import { usePlayerStore } from '@/stores/player'
 
 const player = usePlayerStore()
@@ -67,17 +68,19 @@ onMounted(() => void nextTick(scrollToActive))
         class="group relative flex items-center"
         :class="line.text ? 'py-2.5' : 'py-0.5'"
       >
-        <!-- 左侧跳转入口：悬停到该行时才显示（淡入 + 右滑入），点击跳转；歌词文字本身不响应点击 -->
+        <!-- 左侧跳转按钮：悬停到该行时才显示（淡入 + 右滑入），点击跳转；歌词文字本身不响应点击。
+             按钮形状底色/描边用歌词强调色半透明，hover 加深，见 .lyric-jump 样式。
+             绝对定位不占布局空间：歌词行真正居中，与上方歌曲名对齐 -->
         <button
-          class="pointer-events-none flex h-7 w-16 shrink-0 cursor-pointer translate-x-2 items-center justify-end gap-1 rounded-md pr-1 font-mono text-[11px] leading-none text-[var(--np-accent,#fff)] opacity-0 transition-[opacity,transform] duration-200 ease-out group-hover:pointer-events-auto group-hover:translate-x-0 group-hover:opacity-100"
-          :title="line.text ? `跳转到 ${fmt(line.time)}：${line.text}` : `跳转到 ${fmt(line.time)}（间奏）`"
-          @click="player.seek(line.time)"
+          class="lyric-jump pointer-events-none absolute top-1/2 left-0 z-10 flex h-7 w-16 -translate-y-1/2 translate-x-2 cursor-pointer items-center justify-center gap-1 rounded-lg border px-1 font-mono text-[11px] leading-none text-[var(--np-accent,#fff)] opacity-0 transition-[opacity,transform,background-color,border-color] duration-200 ease-out group-hover:pointer-events-auto group-hover:translate-x-0 group-hover:opacity-100"
+          :title="line.text ? `跳转到 ${fmt(line.time + player.lyricOffset)}：${line.text}` : `跳转到 ${fmt(line.time + player.lyricOffset)}（间奏）`"
+          @click="player.seek(line.time + player.lyricOffset)"
         >
-          <span class="font-sans">跳转</span>
+          <Play class="h-3 w-3 shrink-0" />
           {{ fmt(line.time) }}
         </button>
         <p
-          class="min-w-0 flex-1 text-center transition-[color,transform,text-shadow] duration-300 ease-out"
+          class="min-w-0 w-full text-center transition-[color,transform,text-shadow] duration-300 ease-out"
           :class="[
             line.text ? 'text-base' : 'text-xs leading-none',
             i === player.activeLyricIndex
@@ -122,5 +125,15 @@ onMounted(() => void nextTick(scrollToActive))
 }
 .no-scrollbar::-webkit-scrollbar {
   display: none;
+}
+
+/* 跳转按钮形状：强调色半透明底 + 描边，hover 加深（色值跟随 --np-accent，与活动歌词行同源） */
+.lyric-jump {
+  background-color: color-mix(in srgb, var(--np-accent, #ffffff) 14%, transparent);
+  border-color: color-mix(in srgb, var(--np-accent, #ffffff) 35%, transparent);
+}
+.lyric-jump:hover {
+  background-color: color-mix(in srgb, var(--np-accent, #ffffff) 26%, transparent);
+  border-color: color-mix(in srgb, var(--np-accent, #ffffff) 60%, transparent);
 }
 </style>

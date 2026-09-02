@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import gsap from 'gsap'
-import { ChevronDown } from '@lucide/vue'
+import { AltArrowDownIcon as ChevronDown } from '@solar-icons/vue/linear/alt-arrow-down'
+import { Rewind5SecondsBackIcon as RewindBack } from '@solar-icons/vue/linear/rewind-5-seconds-back'
+import { Rewind5SecondsForwardIcon as RewindForward } from '@solar-icons/vue/linear/rewind-5-seconds-forward'
+import { RestartIcon as RotateCcw } from '@solar-icons/vue/linear/restart'
 import { usePlayerStore } from '@/stores/player'
 import { useNav } from '@/composables/useNav'
 import { useAmbient } from '@/composables/useAmbient'
@@ -136,6 +139,13 @@ function openArtist() {
   nav.go({ view: 'tracks', artistId: t.artistId, artistName: t.artist ?? '未知艺人' })
   emit('close')
 }
+
+/** 已累计偏移的悬停提示后缀：如「，已累计提前 1.0s」；无偏移时为空串 */
+const offsetTip = computed(() => {
+  const v = player.lyricOffset
+  if (!v) return ''
+  return `，已累计${v > 0 ? '延后' : '提前'} ${Math.abs(v).toFixed(1)}s`
+})
 </script>
 
 <template>
@@ -179,8 +189,8 @@ function openArtist() {
         />
       </div>
 
-      <!-- 右：曲目信息 + 歌词（约 60% 宽） -->
-      <div class="np-fade flex h-full min-w-0 flex-1 basis-3/5 flex-col">
+      <!-- 右：曲目信息 + 歌词（约 60% 宽）；relative 供歌词校准控件固定右上角 -->
+      <div class="np-fade relative flex h-full min-w-0 flex-1 basis-3/5 flex-col">
         <div
           class="flex shrink-0 flex-col items-center pb-4 pt-6 text-center"
         >
@@ -201,6 +211,35 @@ function openArtist() {
             @click="openAlbum"
           >
             {{ player.current?.album }}
+          </button>
+        </div>
+        <!-- 歌词校准：固定在右列右下角（绝对定位不占布局），三个按钮竖排：快退(延后)/还原/快进(提前)，
+             同一首歌内点击累计（按曲目记忆持久化）；已累计量在按钮悬停提示中显示 -->
+        <div
+          v-if="player.lyricsLines?.length"
+          class="absolute right-0 bottom-2 z-10 flex flex-col items-center gap-1 rounded-2xl bg-black/40 px-1.5 py-2 backdrop-blur-sm"
+        >
+          <button
+            class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full text-white/60 transition hover:bg-white/10 hover:text-white"
+            :title="`歌词后退 0.5 秒（延后显示，歌词显示快了用这个，快捷键 ] ）${offsetTip}`"
+            @click="player.setLyricOffset(0.5)"
+          >
+            <RewindBack class="h-5 w-5" />
+          </button>
+          <button
+            class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full transition"
+            :class="player.lyricOffset ? 'text-white/60 hover:bg-white/10 hover:text-white' : 'text-white/25'"
+            :title="player.lyricOffset ? `还原为默认时间轴${offsetTip}` : '当前为默认时间轴，无需还原'"
+            @click="player.setLyricOffset(-player.lyricOffset)"
+          >
+            <RotateCcw class="h-4.5 w-4.5" />
+          </button>
+          <button
+            class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full text-white/60 transition hover:bg-white/10 hover:text-white"
+            :title="`歌词前进 0.5 秒（提前显示，歌词显示慢了用这个，快捷键 [ ）${offsetTip}`"
+            @click="player.setLyricOffset(-0.5)"
+          >
+            <RewindForward class="h-5 w-5" />
           </button>
         </div>
         <div class="min-h-0 flex-1">
