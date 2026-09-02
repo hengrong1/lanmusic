@@ -17,6 +17,9 @@ import type { NavRoute } from '@/types'
 // 侧栏宽度（模板与 GSAP 动画共用，避免两处数值不一致互相覆盖）
 const W_EXPANDED = 240
 const W_COLLAPSED = 60
+// 收起态图标视觉尺寸 = 基础 16px 的 1.25 倍（即原来的 h-5 = 20px）；
+// 基础占位固定为 h-4 w-4，视觉缩放由 GSAP transform 控制，与宽度动画统一调度更顺滑
+const ICON_SCALE_COLLAPSED = 20 / 16
 
 const library = useLibraryStore()
 const { current, go } = useNav()
@@ -41,6 +44,14 @@ function animateSidebar() {
       ease: 'power2.out',
       overwrite: 'auto',
     })
+    // 图标在宽度收拢后段放大（16px → 20px），避开文字/布局位移的前段，观感更从容
+    gsap.to(navEl.value.querySelectorAll<HTMLElement>('.nav-icon'), {
+      scale: ICON_SCALE_COLLAPSED,
+      duration: 0.2,
+      delay: 0.12,
+      ease: 'power3.out',
+      overwrite: 'auto',
+    })
     gsap.to(navEl.value, {
       width: W_COLLAPSED,
       duration: 0.3,
@@ -60,6 +71,14 @@ function animateSidebar() {
         )
       }
     })
+    // 图标在宽度展开前段缩小回 16px，与文字淡入同向衔接
+    gsap.to(navEl.value.querySelectorAll<HTMLElement>('.nav-icon'), {
+      scale: 1,
+      duration: 0.25,
+      delay: 0.05,
+      ease: 'power3.out',
+      overwrite: 'auto',
+    })
     gsap.to(navEl.value, { width: W_EXPANDED, duration: 0.3, ease: 'power3.inOut', overwrite: 'auto' })
   }
 }
@@ -72,6 +91,8 @@ onMounted(() => {
   // 初始即为收起态：常驻的文字元素（歌单名等无 v-if 的）直接置为透明
   if (collapsed.value) {
     navEl.value.querySelectorAll<HTMLElement>('.sidebar-fade').forEach((el) => (el.style.opacity = '0'))
+    // 图标直接定格放大尺寸（无动画），避免首帧闪现 16px
+    gsap.set(navEl.value.querySelectorAll<HTMLElement>('.nav-icon'), { scale: ICON_SCALE_COLLAPSED })
   }
 })
 
@@ -186,11 +207,7 @@ function openPlaylistMenu(e: MouseEvent, p: { id: number; name: string }) {
         class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-violet-500 text-white shadow-sm"
         :data-tauri-drag-region="IS_WIN ? '' : undefined"
       >
-        <Music
-          class="nav-icon shrink-0 transition-[width,height] duration-300 ease-[cubic-bezier(0.65,0,0.35,1)]"
-          :class="collapsed ? 'h-5 w-5' : 'h-4 w-4'"
-          fill="currentColor"
-        />
+        <Music class="nav-icon h-4 w-4 shrink-0" fill="currentColor" />
       </div>
       <span
         v-if="showText"
@@ -222,8 +239,8 @@ function openPlaylistMenu(e: MouseEvent, p: { id: number; name: string }) {
         >
           <component
             :is="e.icon"
-            class="nav-icon shrink-0 transition-[width,height] duration-300 ease-[cubic-bezier(0.65,0,0.35,1)]"
-            :class="[collapsed ? 'h-5 w-5' : 'h-4 w-4', isActive(e) ? 'text-violet-500' : 'text-zinc-400']"
+            class="nav-icon h-4 w-4 shrink-0"
+            :class="isActive(e) ? 'text-violet-500' : 'text-zinc-400'"
           />
           <span v-if="showText" class="sidebar-fade flex-1 text-left">{{ e.label }}</span>
           <span v-if="showText && e.count" class="sidebar-fade text-xs tabular-nums text-zinc-400">{{ e.count() }}</span>
@@ -279,8 +296,7 @@ function openPlaylistMenu(e: MouseEvent, p: { id: number; name: string }) {
             @contextmenu="openPlaylistMenu($event, p)"
           >
             <CoverImg
-              class="nav-icon shrink-0 overflow-hidden transition-[width,height] duration-300 ease-[cubic-bezier(0.65,0,0.35,1)]"
-              :class="collapsed ? 'h-5 w-5' : 'h-4 w-4'"
+              class="nav-icon h-4 w-4 shrink-0 overflow-hidden"
               :album-id="p.coverAlbumId"
               rounded="rounded"
             />
@@ -308,5 +324,10 @@ function openPlaylistMenu(e: MouseEvent, p: { id: number; name: string }) {
 /* 展开动画期间容器仍较窄：文字禁止换行（避免竖排），超出部分被 nav 的 overflow-hidden 裁切 */
 .sidebar-fade {
   white-space: nowrap;
+}
+/* 图标缩放动画：SVG 以自身视觉中心为原点缩放（HTML 元素同样生效），避免从左上角偏移 */
+.nav-icon {
+  transform-box: fill-box;
+  transform-origin: center center;
 }
 </style>
