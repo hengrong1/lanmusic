@@ -372,7 +372,7 @@ const theme = computed(() =>
     <!-- 左：当前曲目 -->
     <div class="flex w-56 min-w-0 items-center gap-3">
       <button
-        class="group relative rounded-lg transition"
+        class="group relative cursor-pointer rounded-lg transition"
         :class="props.nowPlayingOpen ? '' : 'hover:opacity-90'"
         :style="coverRingStyle"
         :title="props.nowPlayingOpen ? '收起播放页' : '展开播放页'"
@@ -392,7 +392,7 @@ const theme = computed(() =>
         <div class="flex min-w-0 items-baseline gap-1.5 text-sm">
           <button
             v-if="player.current"
-            class="max-w-[58%] shrink-0 truncate font-medium transition-colors duration-500 hover:text-violet-500"
+            class="max-w-[58%] shrink-0 cursor-pointer truncate font-medium transition-colors duration-500 hover:text-violet-500"
             :class="theme.title"
             :title="player.current.album ? `查看专辑：${player.current.album}` : ''"
             @click.stop="goAlbum"
@@ -401,7 +401,7 @@ const theme = computed(() =>
           <span v-if="player.current" class="shrink-0 opacity-40">–</span>
           <button
             v-if="player.current && player.current.artistId != null"
-            class="min-w-0 truncate transition hover:text-violet-500 hover:underline"
+            class="min-w-0 cursor-pointer truncate transition hover:text-violet-500 hover:underline"
             :class="theme.artist"
             :title="`查看艺人：${player.current.artist ?? '未知艺人'}`"
             @click.stop="goArtist"
@@ -413,7 +413,7 @@ const theme = computed(() =>
         <!-- 行2：当前歌词（过长滚动），无歌词时显示专辑名；点击跳到该句 -->
         <button
           v-if="player.current"
-          class="w-full text-left transition-colors duration-500"
+          class="w-full cursor-pointer text-left transition-colors duration-500"
           :class="[theme.artist, player.lyricsLines?.length && !props.nowPlayingOpen ? 'hover:text-violet-500' : 'hover:opacity-80']"
           :style="accent && player.lyricsLines?.length ? { color: accent } : undefined"
           :title="player.lyricsLines?.length ? '点击跳转到该句' : ''"
@@ -429,7 +429,7 @@ const theme = computed(() =>
     <div class="flex min-w-0 flex-1 flex-col items-center gap-1">
       <div class="flex items-center gap-2">
         <button
-          class="relative flex h-8 w-8 items-center justify-center rounded-full transition-colors duration-500"
+          class="relative flex h-8 w-8 cursor-pointer items-center justify-center rounded-full transition-colors duration-500"
           :class="[theme.iconBtn, player.mode !== 'order' && !props.nowPlayingOpen ? '!text-violet-500 dark:!text-violet-400' : '']"
           :style="accent && player.mode !== 'order' ? { color: accent } : undefined"
           :title="modeMeta[player.mode].label"
@@ -438,7 +438,7 @@ const theme = computed(() =>
           <component :is="modeMeta[player.mode].icon" class="h-4 w-4" />
         </button>
         <button
-          class="flex h-9 w-9 items-center justify-center rounded-full transition-colors duration-500"
+          class="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full transition-colors duration-500"
           :class="theme.plainBtn"
           title="上一首 (P)"
           @click="player.prev()"
@@ -446,7 +446,7 @@ const theme = computed(() =>
           <SkipBack class="h-4.5 w-4.5" fill="currentColor" stroke="none" />
         </button>
         <button
-          class="relative flex h-10 w-10 items-center justify-center rounded-full shadow-lg shadow-violet-500/30 transition duration-200 hover:scale-110 active:scale-90"
+          class="relative flex h-10 w-10 cursor-pointer items-center justify-center rounded-full shadow-lg shadow-violet-500/30 transition duration-200 hover:scale-110 active:scale-90"
           :class="theme.playBtn"
           :style="playBtnStyle"
           :title="player.buffering ? '缓冲中…' : '播放/暂停 (空格)'"
@@ -487,7 +487,7 @@ const theme = computed(() =>
           </Transition>
         </button>
         <button
-          class="flex h-9 w-9 items-center justify-center rounded-full transition-colors duration-500"
+          class="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full transition-colors duration-500"
           :class="theme.plainBtn"
           title="下一首 (N)"
           @click="player.next()"
@@ -495,7 +495,7 @@ const theme = computed(() =>
           <SkipForward class="h-4.5 w-4.5" fill="currentColor" stroke="none" />
         </button>
         <button
-          class="relative flex h-9 w-9 items-center justify-center rounded-full transition-colors duration-500"
+          class="relative flex h-9 w-9 cursor-pointer items-center justify-center rounded-full transition-colors duration-500 disabled:cursor-not-allowed"
           :class="player.current?.fav ? 'text-red-500 hover:bg-red-500/10' : theme.plainBtn"
           :title="player.current?.fav ? '取消喜欢' : '喜欢'"
           :disabled="!player.current"
@@ -542,7 +542,7 @@ const theme = computed(() =>
       <!-- 皮肤：频谱开关 + 样式选择（音量左侧；入口仅在播放页显示） -->
       <div v-if="props.nowPlayingOpen" ref="skinPop" class="relative">
         <button
-          class="flex h-8 w-8 items-center justify-center rounded-full transition-colors duration-500"
+          class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full transition-colors duration-500"
           :class="theme.iconBtn"
           title="皮肤"
           @click="skinOpen = !skinOpen"
@@ -560,7 +560,7 @@ const theme = computed(() =>
             class="absolute right-0 bottom-full z-40 mb-2 w-44 rounded-xl border border-zinc-200 bg-white p-2 shadow-xl dark:border-zinc-800 dark:bg-zinc-900"
           >
             <button
-              class="flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-sm text-zinc-700 transition hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-zinc-800"
+              class="flex w-full cursor-pointer items-center justify-between rounded-lg px-2 py-1.5 text-sm text-zinc-700 transition hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-zinc-800"
               @click="toggleSpectrum"
             >
               <span>频谱</span>
@@ -577,7 +577,7 @@ const theme = computed(() =>
             <p class="px-2 pt-1 pb-0.5 text-[11px] text-zinc-400">频谱样式</p>
             <div class="grid grid-cols-2 gap-1">
               <button
-                class="rounded-lg px-2 py-1.5 text-xs transition"
+                class="cursor-pointer rounded-lg px-2 py-1.5 text-xs transition"
                 :class="
                   skin.style === 'particles'
                     ? 'bg-violet-100 font-medium text-violet-700 dark:bg-violet-500/15 dark:text-violet-300'
@@ -588,7 +588,7 @@ const theme = computed(() =>
                 圆形粒子
               </button>
               <button
-                class="rounded-lg px-2 py-1.5 text-xs transition"
+                class="cursor-pointer rounded-lg px-2 py-1.5 text-xs transition"
                 :class="
                   skin.style === 'tree'
                     ? 'bg-violet-100 font-medium text-violet-700 dark:bg-violet-500/15 dark:text-violet-300'
@@ -604,7 +604,7 @@ const theme = computed(() =>
       </div>
 
       <button
-        class="flex h-8 w-8 items-center justify-center rounded-full transition-colors duration-500"
+        class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full transition-colors duration-500"
         :class="theme.iconBtn"
         :title="player.muted ? `已静音（音量 ${volDisplay}%）` : `音量 ${volDisplay}%`"
         @click="player.toggleMute()"
@@ -638,7 +638,7 @@ const theme = computed(() =>
       </div>
       <button
         data-queue-toggle
-        class="ml-2 flex h-8 w-8 items-center justify-center rounded-full transition-colors duration-500"
+        class="ml-2 flex h-8 w-8 cursor-pointer items-center justify-center rounded-full transition-colors duration-500"
         :class="theme.iconBtn"
         title="播放队列"
         @click="$emit('toggleQueue')"

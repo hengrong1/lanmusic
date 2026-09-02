@@ -112,7 +112,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
       <div class="flex shrink-0 items-center justify-between border-b border-zinc-200 px-5 py-4 dark:border-zinc-800">
         <h2 class="text-base font-semibold text-zinc-900 dark:text-zinc-50">编辑歌单</h2>
         <button
-          class="flex h-7 w-7 items-center justify-center rounded-full text-zinc-400 transition hover:bg-zinc-100 dark:hover:bg-zinc-800"
+          class="flex h-7 w-7 cursor-pointer items-center justify-center rounded-full text-zinc-400 transition hover:bg-zinc-100 dark:hover:bg-zinc-800"
           title="关闭"
           @click="emit('close')"
         >
@@ -156,7 +156,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 
         <div class="border-t border-zinc-100 pt-3 dark:border-zinc-800">
           <button
-            class="flex items-center gap-1.5 text-xs font-medium text-red-500 transition hover:text-red-600"
+            class="flex cursor-pointer items-center gap-1.5 text-xs font-medium text-red-500 transition hover:text-red-600"
             @click="remove"
           >
             <Trash2 class="h-3.5 w-3.5" />
@@ -168,13 +168,13 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
       <!-- 底部操作 -->
       <div class="flex shrink-0 items-center justify-end gap-2 border-t border-zinc-200 px-5 py-3 dark:border-zinc-800">
         <button
-          class="rounded-full px-3 py-1.5 text-sm text-zinc-500 transition hover:bg-zinc-100 dark:hover:bg-zinc-800"
+          class="cursor-pointer rounded-full px-3 py-1.5 text-sm text-zinc-500 transition hover:bg-zinc-100 dark:hover:bg-zinc-800"
           @click="emit('close')"
         >
           取消
         </button>
         <button
-          class="flex items-center gap-1.5 rounded-full bg-violet-500 px-4 py-1.5 text-sm font-medium text-white transition hover:bg-violet-400 disabled:opacity-40"
+          class="flex cursor-pointer items-center gap-1.5 rounded-full bg-violet-500 px-4 py-1.5 text-sm font-medium text-white transition hover:bg-violet-400 disabled:cursor-not-allowed disabled:opacity-40"
           :disabled="saving || !nameDraft.trim()"
           @click="save"
         >

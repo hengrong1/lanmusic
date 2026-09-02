@@ -69,7 +69,7 @@ onMounted(() => void nextTick(scrollToActive))
       >
         <!-- 左侧跳转入口：悬停到该行时才显示（淡入 + 右滑入），点击跳转；歌词文字本身不响应点击 -->
         <button
-          class="pointer-events-none flex h-7 w-16 shrink-0 translate-x-2 items-center justify-end gap-1 rounded-md pr-1 font-mono text-[11px] leading-none text-[var(--np-accent,#fff)] opacity-0 transition-[opacity,transform] duration-200 ease-out group-hover:pointer-events-auto group-hover:translate-x-0 group-hover:opacity-100"
+          class="pointer-events-none flex h-7 w-16 shrink-0 cursor-pointer translate-x-2 items-center justify-end gap-1 rounded-md pr-1 font-mono text-[11px] leading-none text-[var(--np-accent,#fff)] opacity-0 transition-[opacity,transform] duration-200 ease-out group-hover:pointer-events-auto group-hover:translate-x-0 group-hover:opacity-100"
           :title="line.text ? `跳转到 ${fmt(line.time)}：${line.text}` : `跳转到 ${fmt(line.time)}（间奏）`"
           @click="player.seek(line.time)"
         >

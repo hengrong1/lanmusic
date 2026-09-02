@@ -241,7 +241,7 @@ function onDragEnd() {
     >
       <span v-if="props.batchMode" class="flex justify-center">
         <button
-          class="flex h-4 w-4 items-center justify-center rounded border transition"
+          class="flex h-4 w-4 cursor-pointer items-center justify-center rounded border transition"
           :class="allSelected ? 'border-violet-500 bg-violet-500 text-white' : 'border-zinc-300 dark:border-zinc-600'"
           title="全选"
           @click.stop="toggleAll"
@@ -253,7 +253,7 @@ function onDragEnd() {
       <template v-for="col in sortCols" :key="col.field">
         <button
           v-if="props.sort !== undefined"
-          class="flex items-center gap-1 transition hover:text-zinc-700 dark:hover:text-zinc-200"
+          class="flex cursor-pointer items-center gap-1 transition hover:text-zinc-700 dark:hover:text-zinc-200"
           :class="[col.field === 'duration' ? 'w-full justify-end' : '', (isAsc(col.field) || isDesc(col.field)) ? 'text-violet-500' : '']"
           @click="toggleSort(col.field)"
         >
@@ -277,10 +277,15 @@ function onDragEnd() {
       >
         <template #default="{ item: t, index }">
           <div
-            class="group grid h-full cursor-default items-center gap-3 px-4 text-sm select-none"
+            class="group grid h-full items-center gap-3 px-4 text-sm select-none"
             :class="[
               rowClass(t, index),
               dragOverIndex === index && dragIndex !== index ? 'border-t-2 border-violet-500' : '',
+              props.reorderable && !props.batchMode
+                ? dragIndex === index
+                  ? 'cursor-grabbing'
+                  : 'cursor-grab'
+                : 'cursor-default',
             ]"
             style="grid-template-columns: 40px minmax(0, 1fr) minmax(0, 220px) minmax(0, 220px) 56px"
             :title="t.path"
@@ -326,14 +331,14 @@ function onDragEnd() {
             </div>
             <div class="min-w-0 truncate text-zinc-500 dark:text-zinc-400">
               <button
-                class="max-w-full truncate transition hover:text-violet-600 hover:underline dark:hover:text-violet-400"
+                class="max-w-full cursor-pointer truncate transition hover:text-violet-600 hover:underline dark:hover:text-violet-400"
                 :title="`查看艺人：${t.artist ?? '未知艺人'}`"
                 @click.stop="openArtist(t)"
               >{{ t.artist ?? '未知艺人' }}</button>
             </div>
             <div class="min-w-0 truncate text-zinc-500 dark:text-zinc-400">
               <button
-                class="max-w-full truncate transition hover:text-violet-600 hover:underline dark:hover:text-violet-400"
+                class="max-w-full cursor-pointer truncate transition hover:text-violet-600 hover:underline dark:hover:text-violet-400"
                 :title="`查看专辑：${t.album ?? '未知专辑'}`"
                 @click.stop="openAlbum(t)"
               >{{ t.album ?? '未知专辑' }}</button>
@@ -354,7 +359,7 @@ function onDragEnd() {
       >
         <button
           v-if="showLocate"
-          class="absolute right-6 bottom-5 z-10 flex max-w-[260px] items-center gap-2 rounded-full bg-violet-500 px-4 py-2 text-xs font-medium text-white shadow-lg shadow-violet-500/30 transition hover:bg-violet-400"
+          class="absolute right-6 bottom-5 z-10 flex max-w-[260px] cursor-pointer items-center gap-2 rounded-full bg-violet-500 px-4 py-2 text-xs font-medium text-white shadow-lg shadow-violet-500/30 transition hover:bg-violet-400"
           title="滚动到正在播放的歌曲"
           @click="locatePlaying"
         >

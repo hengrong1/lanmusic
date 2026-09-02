@@ -105,14 +105,14 @@ watch(
           </div>
           <div class="flex items-center gap-1">
             <button
-              class="flex h-8 w-8 items-center justify-center rounded-full text-zinc-500 hover:bg-zinc-100 hover:text-red-500 dark:hover:bg-zinc-800"
+              class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full text-zinc-500 hover:bg-zinc-100 hover:text-red-500 dark:hover:bg-zinc-800"
               title="清空队列"
               @click="player.clearQueue()"
             >
               <Trash2 class="h-4 w-4" />
             </button>
             <button
-              class="flex h-8 w-8 items-center justify-center rounded-full text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+              class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800"
               title="关闭"
               @click="$emit('close')"
             >
@@ -160,7 +160,7 @@ watch(
               :class="i === player.index ? 'text-violet-500' : 'text-zinc-400'"
             >{{ fmt(t.duration) }}</span>
             <button
-              class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-zinc-400 opacity-0 hover:bg-zinc-200 hover:text-zinc-600 group-hover:opacity-100 dark:hover:bg-zinc-700"
+              class="flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-full text-zinc-400 opacity-0 hover:bg-zinc-200 hover:text-zinc-600 group-hover:opacity-100 dark:hover:bg-zinc-700"
               title="移出队列"
               @click="player.removeFromQueue(i)"
             >
@@ -177,7 +177,7 @@ watch(
         >
           <button
             v-if="!activeVisible && player.index >= 0"
-            class="absolute right-4 bottom-4 z-10 flex max-w-[240px] items-center gap-2 rounded-full bg-violet-500 px-4 py-2 text-xs font-medium text-white shadow-lg shadow-violet-500/30 transition hover:bg-violet-400"
+            class="absolute right-4 bottom-4 z-10 flex max-w-[240px] cursor-pointer items-center gap-2 rounded-full bg-violet-500 px-4 py-2 text-xs font-medium text-white shadow-lg shadow-violet-500/30 transition hover:bg-violet-400"
             title="滚动到正在播放的歌曲"
             @click="locateActive"
           >

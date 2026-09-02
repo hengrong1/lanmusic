@@ -66,7 +66,7 @@ function run(item: MenuItem) {
         <!-- 子菜单 -->
         <div v-if="item.children?.length" class="group relative">
           <button
-            class="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-sm text-zinc-700 hover:bg-zinc-100 disabled:opacity-40 dark:text-zinc-200 dark:hover:bg-zinc-700/60"
+            class="flex w-full cursor-pointer items-center gap-2.5 px-3 py-1.5 text-left text-sm text-zinc-700 hover:bg-zinc-100 disabled:opacity-40 dark:text-zinc-200 dark:hover:bg-zinc-700/60"
             @click.stop
           >
             <component :is="item.icon" v-if="item.icon" class="h-4 w-4 opacity-70" />
@@ -79,7 +79,7 @@ function run(item: MenuItem) {
             <button
               v-for="(child, j) in item.children"
               :key="j"
-              class="flex w-full max-w-56 items-center px-3 py-1.5 text-left text-sm text-zinc-700 hover:bg-zinc-100 disabled:opacity-40 dark:text-zinc-200 dark:hover:bg-zinc-700/60"
+              class="flex w-full max-w-56 cursor-pointer items-center px-3 py-1.5 text-left text-sm text-zinc-700 hover:bg-zinc-100 disabled:opacity-40 dark:text-zinc-200 dark:hover:bg-zinc-700/60"
               :disabled="child.disabled"
               @click.stop="run(child)"
             >
@@ -90,7 +90,7 @@ function run(item: MenuItem) {
         <!-- 普通项 -->
         <button
           v-else
-          class="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-sm text-zinc-700 hover:bg-zinc-100 disabled:opacity-40 dark:text-zinc-200 dark:hover:bg-zinc-700/60"
+          class="flex w-full cursor-pointer items-center gap-2.5 px-3 py-1.5 text-left text-sm text-zinc-700 hover:bg-zinc-100 disabled:opacity-40 dark:text-zinc-200 dark:hover:bg-zinc-700/60"
           :class="item.danger ? 'text-red-600 dark:text-red-400' : ''"
           :disabled="item.disabled"
           @click.stop="run(item)"

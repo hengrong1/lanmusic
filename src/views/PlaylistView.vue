@@ -145,7 +145,7 @@ async function onPickerAdded() {
       <div class="flex shrink-0 items-center gap-2">
         <button
           data-stagger
-          class="flex h-9 items-center gap-1.5 rounded-full border border-zinc-200 px-3.5 text-sm text-zinc-600 transition hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+          class="flex h-9 cursor-pointer items-center gap-1.5 rounded-full border border-zinc-200 px-3.5 text-sm text-zinc-600 transition hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
           title="编辑歌单信息（名称、简介、删除）"
           @click="openEdit"
         >
@@ -155,7 +155,7 @@ async function onPickerAdded() {
         <button
           data-stagger
           v-if="tracks.length"
-          class="flex items-center gap-1.5 rounded-full border px-4 py-2 text-sm transition"
+          class="flex cursor-pointer items-center gap-1.5 rounded-full border px-4 py-2 text-sm transition"
           :class="
             batchMode
               ? 'border-violet-400 bg-violet-50 text-violet-600 dark:bg-violet-500/10 dark:text-violet-300'
@@ -168,7 +168,7 @@ async function onPickerAdded() {
         </button>
         <button
           data-stagger
-          class="flex items-center gap-1.5 rounded-full border border-zinc-200 px-4 py-2 text-sm text-zinc-600 transition hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+          class="flex cursor-pointer items-center gap-1.5 rounded-full border border-zinc-200 px-4 py-2 text-sm text-zinc-600 transition hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
           @click="pickerOpen = true"
         >
           <Plus class="h-4 w-4" />
@@ -177,7 +177,7 @@ async function onPickerAdded() {
         <button
           v-if="tracks.length"
           data-stagger
-          class="flex items-center gap-2 rounded-full bg-violet-500 px-5 py-2 text-sm font-medium text-white shadow transition hover:bg-violet-400"
+          class="flex cursor-pointer items-center gap-2 rounded-full bg-violet-500 px-5 py-2 text-sm font-medium text-white shadow transition hover:bg-violet-400"
           @click="playAll"
         >
           <Play class="h-4 w-4" fill="currentColor" />
@@ -237,28 +237,28 @@ async function onPickerAdded() {
       >
         <span class="px-2 text-xs font-medium text-zinc-500 dark:text-zinc-400">已选 {{ selIds.length }} 首</span>
         <button
-          class="flex items-center gap-1 rounded-full px-3 py-1.5 text-sm text-zinc-600 transition hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-700"
+          class="flex cursor-pointer items-center gap-1 rounded-full px-3 py-1.5 text-sm text-zinc-600 transition hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-700"
           @click="batchPlay"
         >
           <Play class="h-3.5 w-3.5" />
           播放
         </button>
         <button
-          class="flex items-center gap-1 rounded-full px-3 py-1.5 text-sm text-zinc-600 transition hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-700"
+          class="flex cursor-pointer items-center gap-1 rounded-full px-3 py-1.5 text-sm text-zinc-600 transition hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-700"
           @click="batchEnqueue"
         >
           <ListPlus class="h-3.5 w-3.5" />
           加入队列
         </button>
         <button
-          class="flex items-center gap-1 rounded-full px-3 py-1.5 text-sm text-red-600 transition hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-500/10"
+          class="flex cursor-pointer items-center gap-1 rounded-full px-3 py-1.5 text-sm text-red-600 transition hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-500/10"
           @click="batchRemove"
         >
           <Trash2 class="h-3.5 w-3.5" />
           移出歌单
         </button>
         <button
-          class="ml-1 flex items-center gap-1 rounded-full px-3 py-1.5 text-sm text-zinc-500 transition hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-700"
+          class="ml-1 flex cursor-pointer items-center gap-1 rounded-full px-3 py-1.5 text-sm text-zinc-500 transition hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-700"
           @click="exitBatch"
         >
           取消

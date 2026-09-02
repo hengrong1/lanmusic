@@ -102,7 +102,7 @@ async function addFolder() {
           v-if="!nav.current.value.search && !nav.current.value.recent"
           v-model="sort"
           data-stagger
-          class="h-8 rounded-lg border border-zinc-200 bg-white px-2 text-sm text-zinc-600 outline-none dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"
+          class="h-8 cursor-pointer rounded-lg border border-zinc-200 bg-white px-2 text-sm text-zinc-600 outline-none dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"
         >
           <option value="none">入库顺序</option>
           <option v-for="o in sortOptions" :key="o.value" :value="o.value">{{ o.label }}</option>
@@ -118,7 +118,7 @@ async function addFolder() {
         description="添加本地文件夹、连接局域网设备或 NAS 的 WebDAV 目录，歌曲会自动入库。"
       >
         <button
-          class="mt-2 flex items-center gap-2 rounded-full bg-violet-500 px-5 py-2.5 text-sm font-medium text-white shadow transition hover:bg-violet-400"
+          class="mt-2 flex cursor-pointer items-center gap-2 rounded-full bg-violet-500 px-5 py-2.5 text-sm font-medium text-white shadow transition hover:bg-violet-400 disabled:cursor-not-allowed disabled:opacity-40"
           :disabled="adding"
           @click="addFolder"
         >

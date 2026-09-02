@@ -151,7 +151,7 @@ function openArtist() {
     >
       <!-- 左：关闭播放页（其余空白仍为拖拽区） -->
       <button
-        class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-white/70 transition hover:bg-white/10 hover:text-white"
+        class="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-full text-white/70 transition hover:bg-white/10 hover:text-white"
         title="收起播放页 (Esc)"
         @click="emit('close')"
       >
@@ -188,7 +188,7 @@ function openArtist() {
           <p class="mt-1 max-w-full truncate text-sm text-white/60">
             <button
               v-if="player.current?.artistId != null"
-              class="transition hover:text-white hover:underline"
+              class="cursor-pointer transition hover:text-white hover:underline"
               :title="`查看艺人：${player.current?.artist ?? '未知艺人'}`"
               @click="openArtist"
             >{{ player.current?.artist ?? '未知艺人' }}</button>
@@ -196,7 +196,7 @@ function openArtist() {
           </p>
           <button
             v-if="player.current?.albumId != null"
-            class="mt-0.5 max-w-full truncate text-xs text-white/40 transition hover:text-white/80"
+            class="mt-0.5 max-w-full cursor-pointer truncate text-xs text-white/40 transition hover:text-white/80"
             title="查看专辑"
             @click="openAlbum"
           >

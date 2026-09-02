@@ -127,7 +127,7 @@ const scannedSourceIds = computed(() => new Set(Object.keys(library.scanProgress
         <div class="mb-3 flex items-center justify-between">
           <h2 class="text-sm font-semibold text-zinc-800 dark:text-zinc-100">音乐来源</h2>
           <button
-            class="flex items-center gap-1.5 rounded-full bg-violet-500 px-3.5 py-1.5 text-xs font-medium text-white transition hover:bg-violet-400"
+            class="flex cursor-pointer items-center gap-1.5 rounded-full bg-violet-500 px-3.5 py-1.5 text-xs font-medium text-white transition hover:bg-violet-400 disabled:cursor-not-allowed disabled:opacity-40"
             :disabled="adding"
             @click="addFolder"
           >
@@ -158,7 +158,7 @@ const scannedSourceIds = computed(() => new Set(Object.keys(library.scanProgress
               >
                 快速导入
                 <button
-                  class="relative h-5 w-9 rounded-full transition"
+                  class="relative h-5 w-9 cursor-pointer rounded-full transition"
                   :class="s.fastImport ? 'bg-violet-500' : 'bg-zinc-200 dark:bg-zinc-700'"
                   @click.prevent="toggleFastImport(s)"
                 >
@@ -170,7 +170,7 @@ const scannedSourceIds = computed(() => new Set(Object.keys(library.scanProgress
               </label>
               <div class="flex shrink-0 items-center gap-1">
                 <button
-                  class="flex h-8 items-center justify-center rounded-full px-2 text-xs text-zinc-500 hover:bg-zinc-100 hover:text-violet-600 disabled:opacity-40 dark:hover:bg-zinc-800"
+                  class="flex h-8 cursor-pointer items-center justify-center rounded-full px-2 text-xs text-zinc-500 hover:bg-zinc-100 hover:text-violet-600 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:bg-zinc-800"
                   title="全部重新解析标签（含快速导入与解析失败的歌曲）"
                   :disabled="scannedSourceIds.has(s.id)"
                   @click="rescanFull(s)"
@@ -178,7 +178,7 @@ const scannedSourceIds = computed(() => new Set(Object.keys(library.scanProgress
                   完整解析
                 </button>
                 <button
-                  class="flex h-8 w-8 items-center justify-center rounded-full text-zinc-500 hover:bg-zinc-100 hover:text-violet-600 disabled:opacity-40 dark:hover:bg-zinc-800"
+                  class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full text-zinc-500 hover:bg-zinc-100 hover:text-violet-600 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:bg-zinc-800"
                   title="增量扫描"
                   :disabled="scannedSourceIds.has(s.id)"
                   @click="rescan(s.id)"
@@ -186,7 +186,7 @@ const scannedSourceIds = computed(() => new Set(Object.keys(library.scanProgress
                   <RefreshCw class="h-4 w-4" :class="scannedSourceIds.has(s.id) ? 'animate-spin' : ''" />
                 </button>
                 <button
-                  class="flex h-8 w-8 items-center justify-center rounded-full text-zinc-500 hover:bg-zinc-100 hover:text-red-500 dark:hover:bg-zinc-800"
+                  class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full text-zinc-500 hover:bg-zinc-100 hover:text-red-500 dark:hover:bg-zinc-800"
                   title="移除"
                   @click="remove(s)"
                 >
@@ -235,7 +235,7 @@ const scannedSourceIds = computed(() => new Set(Object.keys(library.scanProgress
         <div class="mb-3 flex items-center justify-between">
           <h2 class="text-sm font-semibold text-zinc-800 dark:text-zinc-100">WebDAV 音乐源</h2>
           <button
-            class="flex items-center gap-1.5 rounded-full bg-violet-500 px-3.5 py-1.5 text-xs font-medium text-white transition hover:bg-violet-400"
+            class="flex cursor-pointer items-center gap-1.5 rounded-full bg-violet-500 px-3.5 py-1.5 text-xs font-medium text-white transition hover:bg-violet-400"
             @click="showWebdav = !showWebdav"
           >
             <Globe class="h-3.5 w-3.5" />
@@ -278,7 +278,7 @@ const scannedSourceIds = computed(() => new Set(Object.keys(library.scanProgress
               placeholder="备注名（可选）"
             />
             <button
-              class="flex items-center gap-2 rounded-full bg-violet-500 px-4 py-1.5 text-sm font-medium text-white hover:bg-violet-400"
+              class="flex cursor-pointer items-center gap-2 rounded-full bg-violet-500 px-4 py-1.5 text-sm font-medium text-white hover:bg-violet-400 disabled:cursor-not-allowed disabled:opacity-40"
               :disabled="webdavBusy"
             >
               <LoaderCircle v-if="webdavBusy" class="h-4 w-4 animate-spin" />
@@ -296,7 +296,7 @@ const scannedSourceIds = computed(() => new Set(Object.keys(library.scanProgress
           <button
             v-for="t in themes"
             :key="t.value"
-            class="rounded-full px-4 py-1.5 text-sm transition"
+            class="cursor-pointer rounded-full px-4 py-1.5 text-sm transition"
             :class="
               mode === t.value
                 ? 'bg-violet-500 font-medium text-white'

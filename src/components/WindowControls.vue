@@ -23,7 +23,7 @@ onUnmounted(() => unlisten?.())
 <template>
   <div class="flex h-full items-stretch">
     <button
-      class="group flex w-11 items-center justify-center transition"
+      class="group flex w-11 cursor-pointer items-center justify-center transition"
       title="最小化"
       @click="appWindow.minimize()"
     >
@@ -39,7 +39,7 @@ onUnmounted(() => unlisten?.())
       </span>
     </button>
     <button
-      class="group flex w-11 items-center justify-center transition"
+      class="group flex w-11 cursor-pointer items-center justify-center transition"
       :title="maximized ? '还原' : '最大化'"
       @click="appWindow.toggleMaximize()"
     >
@@ -56,7 +56,7 @@ onUnmounted(() => unlisten?.())
       </span>
     </button>
     <button
-      class="group flex w-11 items-center justify-center transition"
+      class="group flex w-11 cursor-pointer items-center justify-center transition"
       title="关闭"
       @click="appWindow.close()"
     >

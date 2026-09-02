@@ -45,13 +45,13 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
           </div>
           <div class="mt-5 flex justify-end gap-2">
             <button
-              class="rounded-full px-4 py-1.5 text-sm text-zinc-600 transition hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-700"
+              class="cursor-pointer rounded-full px-4 py-1.5 text-sm text-zinc-600 transition hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-700"
               @click="answer(false)"
             >
               {{ state.cancelText }}
             </button>
             <button
-              class="rounded-full px-4 py-1.5 text-sm font-medium text-white transition hover:brightness-110"
+              class="cursor-pointer rounded-full px-4 py-1.5 text-sm font-medium text-white transition hover:brightness-110"
               :class="state.danger ? 'bg-red-500' : 'bg-violet-500'"
               @click="answer(true)"
             >

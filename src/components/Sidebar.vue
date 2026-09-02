@@ -211,7 +211,7 @@ function openPlaylistMenu(e: MouseEvent, p: { id: number; name: string }) {
         :disabled="!collapsed"
       >
         <button
-          class="mb-0.5 flex h-9 w-full shrink-0 items-center rounded-lg text-sm transition"
+          class="mb-0.5 flex h-9 w-full shrink-0 cursor-pointer items-center rounded-lg text-sm transition"
           :class="[
             showText ? 'gap-2.5 px-2.5' : 'justify-center px-0',
             isActive(e)
@@ -236,7 +236,7 @@ function openPlaylistMenu(e: MouseEvent, p: { id: number; name: string }) {
       <div class="flex items-center justify-between px-2 pb-1">
         <p class="sidebar-fade text-[11px] font-semibold tracking-wider text-zinc-400 uppercase dark:text-zinc-600">歌单</p>
         <button
-          class="sidebar-fade flex h-5 w-5 items-center justify-center rounded text-zinc-400 hover:bg-zinc-200 hover:text-zinc-600 disabled:cursor-default dark:hover:bg-zinc-700 dark:hover:text-zinc-300"
+          class="sidebar-fade flex h-5 w-5 cursor-pointer items-center justify-center rounded text-zinc-400 hover:bg-zinc-200 hover:text-zinc-600 disabled:cursor-default dark:hover:bg-zinc-700 dark:hover:text-zinc-300"
           title="新建歌单"
           :disabled="collapsed"
           @click="startCreate"
@@ -259,7 +259,7 @@ function openPlaylistMenu(e: MouseEvent, p: { id: number; name: string }) {
           @keydown.enter="confirmEdit"
           @keydown.esc="editing = null"
         />
-        <button class="text-zinc-400 hover:text-zinc-600" @click="editing = null">
+        <button class="cursor-pointer text-zinc-400 hover:text-zinc-600" @click="editing = null">
           <X class="h-3.5 w-3.5" />
         </button>
       </div>
@@ -268,7 +268,7 @@ function openPlaylistMenu(e: MouseEvent, p: { id: number; name: string }) {
         <Tooltip :text="p.name" :disabled="!collapsed">
           <button
             v-if="editing?.id !== p.id"
-            class="mb-0.5 flex h-9 w-full items-center rounded-lg text-sm transition"
+            class="mb-0.5 flex h-9 w-full cursor-pointer items-center rounded-lg text-sm transition"
             :class="[
               showText ? 'gap-2.5 px-2.5' : 'justify-center px-0',
               current.view === 'playlist' && current.playlistId === p.id

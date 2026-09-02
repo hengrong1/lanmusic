@@ -19,7 +19,7 @@ defineEmits<{ open: [album: AlbumItem]; play: [album: AlbumItem] }>()
       <div class="relative">
         <CoverImg :album-id="album.id" class="aspect-square w-full rounded-xl shadow-sm transition group-hover:shadow-lg" />
         <button
-          class="absolute right-2 bottom-2 flex h-10 w-10 items-center justify-center rounded-full bg-violet-500 text-white shadow-lg transition hover:scale-105 hover:bg-violet-400"
+          class="absolute right-2 bottom-2 flex h-10 w-10 cursor-pointer items-center justify-center rounded-full bg-violet-500 text-white shadow-lg transition hover:scale-105 hover:bg-violet-400"
           :class="album.trackCount === 0 ? 'hidden' : ''"
           title="播放专辑"
           @click.stop="$emit('play', album)"
