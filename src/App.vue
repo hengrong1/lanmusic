@@ -8,9 +8,11 @@ import QueuePanel from '@/components/QueuePanel.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import NowPlayingView from '@/components/NowPlayingView.vue'
 import Toast from '@/components/Toast.vue'
+import { useUpdater } from '@/composables/useUpdater'
 import TracksView from '@/views/TracksView.vue'
 import AlbumsView from '@/views/AlbumsView.vue'
 import ArtistsView from '@/views/ArtistsView.vue'
+import GenresView from '@/views/GenresView.vue'
 import PlaylistView from '@/views/PlaylistView.vue'
 import SettingsView from '@/views/SettingsView.vue'
 import { useLibraryStore } from '@/stores/library'
@@ -113,6 +115,8 @@ const viewComponent = computed(() => {
       return AlbumsView
     case 'artists':
       return ArtistsView
+    case 'genres':
+      return GenresView
     case 'playlist':
       return PlaylistView
     case 'settings':
@@ -174,6 +178,8 @@ function nowPlayingLeave(el: Element, done: () => void) {
 onMounted(() => {
   void library.init()
   void player.restore()
+  // 启动时静默检查应用更新（有新版本 toast 提示，失败不打扰）
+  void useUpdater().checkForUpdate(true)
 })
 
 // 全局快捷键

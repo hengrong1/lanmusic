@@ -16,9 +16,18 @@ const LS = {
   volume: 'lm.volume',
   mode: 'lm.mode',
   muted: 'lm.muted',
+  rate: 'lm.rate',
   lastTrack: 'lm.lastTrack',
   lastPos: 'lm.lastPos',
   queue: 'lm.queue',
+}
+
+/** 可选播放倍速（PlayerBar 点击循环切换） */
+export const PLAYBACK_RATES = [0.5, 0.75, 1, 1.25, 1.5, 2]
+
+/** 校验倍速值：不在可选列表内则回退到 1x */
+function normalizeRate(v: number): number {
+  return PLAYBACK_RATES.includes(v) ? v : 1
 }
 
 /** 队列快照：任何队列/索引变化时自动保存 */
@@ -47,6 +56,8 @@ export const usePlayerStore = defineStore('player', () => {
   const mode = ref<PlayMode>((localStorage.getItem(LS.mode) as PlayMode) || 'order')
   const volume = ref(Number(localStorage.getItem(LS.volume) ?? 1))
   const muted = ref(localStorage.getItem(LS.muted) === '1')
+  /** 播放倍速：持久化；换歌加载新 src 时由 defaultPlaybackRate 延续 */
+  const rate = ref(normalizeRate(Number(localStorage.getItem(LS.rate) ?? 1)))
 
   // ---------- 歌词 ----------
   const lyricsLines = ref<LrcLine[] | null>(null)
@@ -108,6 +119,9 @@ export const usePlayerStore = defineStore('player', () => {
   // ---------- audio 事件收口 ----------
   audio.volume = muted.value ? 0 : volume.value
   audio.muted = muted.value
+  // 倍速：换源加载新 src 时 playbackRate 会重置，defaultPlaybackRate 保证新歌延续倍速
+  audio.playbackRate = rate.value
+  audio.defaultPlaybackRate = rate.value
 
   // 连续播放失败计数：整轮队列都失败则停止跳歌（见 error 监听器），成功播放即归零
   let errorStreak = 0
@@ -352,6 +366,11 @@ export const usePlayerStore = defineStore('player', () => {
     muted.value = !muted.value
   }
 
+  /** 设置播放倍速（不在可选列表内的值回退到 1x） */
+  function setRate(v: number) {
+    rate.value = normalizeRate(v)
+  }
+
   // ---------- 队列操作 ----------
   function playNextInQueue(t: Track) {
     if (index.value === -1) {
@@ -407,6 +426,11 @@ export const usePlayerStore = defineStore('player', () => {
     localStorage.setItem(LS.muted, m ? '1' : '0')
   })
   watch(mode, (m) => localStorage.setItem(LS.mode, m))
+  watch(rate, (r) => {
+    audio.playbackRate = r
+    audio.defaultPlaybackRate = r
+    localStorage.setItem(LS.rate, String(r))
+  })
   watch(current, (t) => {
     if (t) localStorage.setItem(LS.lastTrack, String(t.id))
   })
@@ -508,6 +532,8 @@ export const usePlayerStore = defineStore('player', () => {
     mode,
     volume,
     muted,
+    rate,
+    setRate,
     current,
     lyricsLines,
     lyricsPlain,

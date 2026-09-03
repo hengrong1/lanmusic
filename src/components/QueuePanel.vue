@@ -1,11 +1,17 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { MapPointIcon as LocateFixed } from '@solar-icons/vue/linear/map-point'
+import { PlaylistIcon as ListPlus } from '@solar-icons/vue/linear/playlist'
 import { TrashBin2Icon as Trash2 } from '@solar-icons/vue/linear/trash-bin-2'
 import { CloseIcon as X } from '@solar-icons/vue/linear/close'
 import { usePlayerStore } from '@/stores/player'
+import { useLibraryStore } from '@/stores/library'
+import { useNav } from '@/composables/useNav'
+import { toast } from '@/composables/useToast'
 
 const player = usePlayerStore()
+const library = useLibraryStore()
+const nav = useNav()
 
 const props = defineProps<{ open?: boolean }>()
 const emit = defineEmits<{ close: [] }>()
@@ -35,6 +41,25 @@ function fmt(s: number | null | undefined) {
   const m = Math.floor(s / 60)
   const sec = Math.floor(s % 60)
   return `${m}:${String(sec).padStart(2, '0')}`
+}
+
+// ---- 另存为歌单：把当前队列整体保存为新歌单并跳转（以保存时间命名，便于多次保存区分）----
+const saving = ref(false)
+async function saveAsPlaylist() {
+  if (saving.value || !player.queue.length) return
+  saving.value = true
+  try {
+    const pad = (n: number) => String(n).padStart(2, '0')
+    const d = new Date()
+    const name = `队列 ${d.getMonth() + 1}/${d.getDate()} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+    const p = await library.createPlaylist(name)
+    await library.addToPlaylist(p.id, player.queue.map((t) => t.id))
+    nav.go({ view: 'playlist', playlistId: p.id, playlistName: p.name })
+  } catch (e) {
+    toast(String(e), 'error')
+  } finally {
+    saving.value = false
+  }
 }
 
 // ---- 定位正在播放：不可见时浮出按钮 ----
@@ -106,6 +131,14 @@ watch(
             <p class="text-xs text-zinc-500">{{ player.queue.length }} 首</p>
           </div>
           <div class="flex items-center gap-1">
+            <button
+              class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full text-zinc-500 hover:bg-zinc-100 hover:text-violet-500 disabled:cursor-default disabled:opacity-40 dark:hover:bg-zinc-800"
+              title="把当前队列保存为歌单"
+              :disabled="saving"
+              @click="saveAsPlaylist"
+            >
+              <ListPlus class="h-4 w-4" />
+            </button>
             <button
               class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full text-zinc-500 hover:bg-zinc-100 hover:text-red-500 dark:hover:bg-zinc-800"
               title="清空队列"

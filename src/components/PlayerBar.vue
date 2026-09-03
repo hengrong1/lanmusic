@@ -19,7 +19,7 @@ import { VolumeSmallIcon as Volume1 } from '@solar-icons/vue/linear/volume-small
 import { VolumeLoudIcon as Volume2 } from '@solar-icons/vue/linear/volume-loud'
 import { VolumeCrossIcon as VolumeX } from '@solar-icons/vue/linear/volume-cross'
 import { SubtitlesIcon as Subtitles } from '@solar-icons/vue/linear/subtitles'
-import { usePlayerStore, type PlayMode } from '@/stores/player'
+import { usePlayerStore, PLAYBACK_RATES, type PlayMode } from '@/stores/player'
 import { useDesktopLyrics } from '@/composables/useDesktopLyrics'
 import { useNav } from '@/composables/useNav'
 import { useAmbient } from '@/composables/useAmbient'
@@ -68,6 +68,12 @@ function toggleSpectrum() {
   skin.value.on = !skin.value.on
   // 在用户手势内首次创建 AudioContext / AnalyserNode，避免自动播放限制
   if (skin.value.on) ensureAnalyser()
+}
+
+// ---- 播放倍速：点击循环切换（0.5x → … → 2x → 0.5x），状态与持久化在 player store ----
+function cycleRate() {
+  const i = PLAYBACK_RATES.indexOf(player.rate)
+  player.setRate(PLAYBACK_RATES[(i + 1) % PLAYBACK_RATES.length])
 }
 
 // 点击弹层外部关闭（footer 带 gsap transform，fixed 遮罩会被限制在条内，故用文档监听）
@@ -539,8 +545,17 @@ const theme = computed(() =>
       </div>
     </div>
 
-    <!-- 右：皮肤 / 音量 / 队列 -->
-    <div class="flex w-56 items-center justify-end gap-1">
+    <!-- 右：倍速 / 皮肤 / 音量 / 队列 -->
+    <div class="flex w-64 items-center justify-end gap-1">
+      <!-- 倍速循环按钮：非 1x 时高亮提示当前处于变速播放 -->
+      <button
+        class="flex h-8 w-9 shrink-0 cursor-pointer items-center justify-center rounded-full text-xs font-semibold tabular-nums transition-colors duration-500"
+        :class="player.rate === 1 ? theme.iconBtn : 'text-violet-500 hover:bg-violet-500/10'"
+        :title="`播放倍速 ${player.rate}x（点击切换）`"
+        @click="cycleRate"
+      >
+        {{ player.rate }}x
+      </button>
       <!-- 皮肤：频谱开关 + 样式选择（音量左侧；入口仅在播放页显示） -->
       <div v-if="props.nowPlayingOpen" ref="skinPop" class="relative">
         <button

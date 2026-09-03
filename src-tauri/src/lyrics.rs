@@ -83,7 +83,7 @@ pub fn fetch(app: &AppHandle, track_id: i64) -> Result<Option<String>, String> {
         "webdav" => {
             let Some(u) = lrc_path else { return Ok(None) };
             let parsed = url::Url::parse(&u).map_err(|e| e.to_string())?;
-            let auth = crate::network::webdav::Auth::from_config(src.config.as_deref());
+            let auth = crate::network::webdav::Auth::from_source(src.config.as_deref(), source_id);
             crate::network::webdav::download_text(&parsed, auth.as_ref())
         }
         _ => Ok(None),

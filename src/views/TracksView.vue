@@ -31,6 +31,7 @@ const header = computed(() => {
   if (r.search) return { title: `搜索：${r.search}`, subtitle: '' }
   if (r.albumId) return { title: r.albumTitle ?? '专辑', subtitle: '专辑' }
   if (r.artistId) return { title: r.artistName ?? '艺人', subtitle: '艺人' }
+  if (r.genre) return { title: r.genre, subtitle: '风格' }
   if (r.favorites) return { title: '我的喜欢', subtitle: '我的音乐' }
   if (r.recent) return { title: '最近播放', subtitle: '我的音乐' }
   return { title: '全部歌曲', subtitle: '我的音乐' }
@@ -49,6 +50,8 @@ function syncQuery() {
     library.setQuery({ view: 'album', refId: r.albumId, search: undefined })
   } else if (r.artistId) {
     library.setQuery({ view: 'artist', refId: r.artistId, search: undefined })
+  } else if (r.genre) {
+    library.setQuery({ view: 'genre', genre: r.genre, search: undefined })
   } else if (r.search) {
     library.setQuery({ view: 'all', search: r.search })
   } else if (r.favorites) {
@@ -68,6 +71,7 @@ watch(
   () => [
     nav.current.value.albumId,
     nav.current.value.artistId,
+    nav.current.value.genre,
     nav.current.value.search,
     nav.current.value.recent,
     nav.current.value.favorites,

@@ -122,6 +122,9 @@ pub fn scan_source(app: AppHandle, source_id: i64, full_rescan: bool) {
             let _ = app.emit("scan:error", ScanError { source_id, message });
         }
     }
+
+    // 封面缓存容量控制：扫描可能新增大量封面，顺带清理一次（低频、纯本地目录扫描，开销可忽略）
+    crate::covers::enforce_limit_with_setting(&app);
 }
 
 fn load_source(
@@ -289,7 +292,7 @@ fn run_webdav_scan(
 ) -> Result<(usize, usize, usize), String> {
     let Some(base_str) = base_url else { return Err("WebDAV 地址缺失".into()) };
     let base = webdav::normalize_base(&base_str)?;
-    let auth = webdav::Auth::from_config(config.as_deref());
+    let auth = webdav::Auth::from_source(config.as_deref(), source_id);
     let base_path = decoded_url_path(&base).trim_end_matches('/').to_string();
 
     // ---- 1. PROPFIND 广度遍历 ----

@@ -44,6 +44,20 @@ const coverStyle = computed(() =>
   palette.value ? { boxShadow: `0 25px 80px -20px ${palette.value.glow}` } : undefined,
 )
 
+// ---- 音质信息：格式 / 采样率 / 位深 / 码率；≥88.2kHz 或 ≥24bit 标记 Hi-Res ----
+const quality = computed(() => {
+  const t = player.current
+  if (!t) return null
+  const parts = [
+    t.format?.toUpperCase(),
+    t.sampleRate ? `${(t.sampleRate / 1000).toFixed(1).replace(/\.0$/, '')}kHz` : '',
+    t.bitDepth ? `${t.bitDepth}bit` : '',
+    t.bitrate ? `${Math.round(t.bitrate / 1000)}kbps` : '',
+  ].filter(Boolean)
+  if (!parts.length) return null
+  return { text: parts.join(' · '), hires: (t.sampleRate ?? 0) >= 88200 || (t.bitDepth ?? 0) >= 24 }
+})
+
 // ---- 皮肤：圆形粒子样式下封面改为圆形，并在其周围绘制频谱粒子 ----
 const skin = useSkin()
 /** 圆形粒子皮肤激活时封面显示为圆形，并适当缩小给粒子环留出空间 */
@@ -212,6 +226,15 @@ const offsetTip = computed(() => {
           >
             {{ player.current?.album }}
           </button>
+          <!-- 音质徽标：格式/采样率/位深/码率，Hi-Res（高解析度）金色标识 -->
+          <p v-if="quality" class="mt-2 flex items-center justify-center gap-1.5 text-[11px] text-white/40">
+            <span class="font-mono">{{ quality.text }}</span>
+            <span
+              v-if="quality.hires"
+              class="rounded border border-amber-300/50 bg-amber-300/10 px-1.5 py-px font-bold text-amber-200"
+              title="高解析度音频（≥88.2kHz 或 ≥24bit）"
+            >Hi-Res</span>
+          </p>
         </div>
         <!-- 歌词校准：固定在右列右下角（绝对定位不占布局），三个按钮竖排：快退(延后)/还原/快进(提前)，
              同一首歌内点击累计（按曲目记忆持久化）；已累计量在按钮悬停提示中显示 -->

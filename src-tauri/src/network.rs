@@ -35,11 +35,13 @@ pub mod webdav {
     }
 
     impl Auth {
-        pub fn from_config(config: Option<&str>) -> Option<Auth> {
-            Some(Auth {
-                username: config_field(config, "username")?,
-                password: config_field(config, "password")?,
-            })
+        /// 按来源恢复认证：username 取自 config，密码优先 config（旧库明文兼容），
+        /// 否则从系统钥匙串读取（见 keyring.rs）
+        pub fn from_source(config: Option<&str>, source_id: i64) -> Option<Auth> {
+            let username = config_field(config, "username")?;
+            let password = config_field(config, "password")
+                .or_else(|| crate::keyring::get_password(source_id))?;
+            Some(Auth { username, password })
         }
     }
 

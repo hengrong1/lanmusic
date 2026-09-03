@@ -77,7 +77,15 @@ pub struct LibraryStats {
     pub tracks: i64,
     pub albums: i64,
     pub artists: i64,
+    pub genres: i64,
     pub favorites: i64,
+}
+
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct GenreItem {
+    pub name: String,
+    pub track_count: i64,
 }
 
 #[derive(Deserialize)]
@@ -85,6 +93,7 @@ pub struct LibraryStats {
 pub struct TrackQuery {
     pub view: Option<String>,
     pub ref_id: Option<i64>,
+    pub genre: Option<String>,
     pub search: Option<String>,
     pub sort: Option<String>,
     pub page: Option<u32>,
@@ -179,6 +188,9 @@ pub fn add_local_source(app: AppHandle, state: State<'_, AppState>, path: String
 
     spawn_scan(&app, &state, id, false)?;
 
+    // 目录监听：本地文件变化后自动增量扫描
+    crate::watcher::watch_source(&app, id, &path);
+
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     conn.query_row(&format!("{SOURCE_SELECT} WHERE s.id = ?1"), params![id], row_source)
         .map_err(|e| e.to_string())
@@ -212,6 +224,9 @@ pub fn remove_source(app: AppHandle, state: State<'_, AppState>, id: i64) -> Res
         let rows = stmt.query_map([], |r| r.get::<_, i64>(0)).map_err(|e| e.to_string())?;
         rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?
     };
+    let kind: Option<String> = conn
+        .query_row("SELECT kind FROM sources WHERE id = ?1", params![id], |r| r.get(0))
+        .ok();
     conn.execute("DELETE FROM sources WHERE id = ?1", params![id]).map_err(|e| e.to_string())?;
     conn.execute("DELETE FROM albums WHERE id NOT IN (SELECT DISTINCT album_id FROM tracks)", [])
         .map_err(|e| e.to_string())?;
@@ -224,6 +239,13 @@ pub fn remove_source(app: AppHandle, state: State<'_, AppState>, id: i64) -> Res
     .map_err(|e| e.to_string())?;
     drop(conn);
     crate::covers::purge(&state.covers_dir, &orphan_albums);
+
+    // 清理收尾：webdav 来源移除钥匙串凭证；本地来源停止目录监听
+    match kind.as_deref() {
+        Some("webdav") => crate::keyring::delete_password(id),
+        Some("local") => crate::watcher::unwatch_source(&app, id),
+        _ => {}
+    }
     Ok(())
 }
 
@@ -297,6 +319,12 @@ pub fn query_tracks(state: State<'_, AppState>, q: TrackQuery) -> Result<Page<Tr
         }
         "favorites" => {
             wheres.push("t.fav = 1".into());
+        }
+        "genre" => {
+            if let Some(g) = q.genre.as_deref().filter(|s| !s.trim().is_empty()) {
+                wheres.push("t.genre = ?".into());
+                args.push(Box::new(g.trim().to_string()));
+            }
         }
         _ => {}
     }
@@ -509,10 +537,61 @@ pub fn library_stats(state: State<'_, AppState>) -> Result<LibraryStats, String>
     let tracks: i64 = conn.query_row("SELECT COUNT(*) FROM tracks", [], |r| r.get(0)).map_err(|e| e.to_string())?;
     let albums: i64 = conn.query_row("SELECT COUNT(*) FROM albums", [], |r| r.get(0)).map_err(|e| e.to_string())?;
     let artists: i64 = conn.query_row("SELECT COUNT(*) FROM artists", [], |r| r.get(0)).map_err(|e| e.to_string())?;
+    let genres: i64 = conn
+        .query_row(
+            "SELECT COUNT(DISTINCT genre) FROM tracks WHERE genre IS NOT NULL AND genre != ''",
+            [],
+            |r| r.get(0),
+        )
+        .map_err(|e| e.to_string())?;
     let favorites: i64 = conn
         .query_row("SELECT COUNT(*) FROM tracks WHERE fav = 1", [], |r| r.get(0))
         .map_err(|e| e.to_string())?;
-    Ok(LibraryStats { tracks, albums, artists, favorites })
+    Ok(LibraryStats { tracks, albums, artists, genres, favorites })
+}
+
+// ---------- 风格 ----------
+
+/// 风格（genre）列表：来自曲目标签，仅展示非空风格及各自曲目数
+#[tauri::command]
+pub fn query_genres(
+    state: State<'_, AppState>,
+    search: Option<String>,
+    page: Option<u32>,
+    page_size: Option<u32>,
+) -> Result<Page<GenreItem>, String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    let page = page.unwrap_or(0) as i64;
+    let page_size = page_size.unwrap_or(300).clamp(1, 1000) as i64;
+    let offset = page * page_size;
+
+    let like = search
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| format!("%{s}%"));
+    let base_where = "t.genre IS NOT NULL AND t.genre != ''";
+    let where_sql = if like.is_some() {
+        format!("WHERE {base_where} AND t.genre LIKE ?1")
+    } else {
+        format!("WHERE {base_where}")
+    };
+
+    let count_sql = format!("SELECT COUNT(DISTINCT t.genre) FROM tracks t {where_sql}");
+    let total: i64 = match like.as_ref() {
+        Some(l) => conn.query_row(&count_sql, params![l], |r| r.get(0)),
+        None => conn.query_row(&count_sql, [], |r| r.get(0)),
+    }
+    .map_err(|e| e.to_string())?;
+
+    let sql = format!(
+        "SELECT t.genre, COUNT(*) FROM tracks t {where_sql} \
+         GROUP BY t.genre ORDER BY t.genre COLLATE NOCASE LIMIT {page_size} OFFSET {offset}"
+    );
+    let items: Vec<GenreItem> = collect_rows(&conn, &sql, like.as_ref(), |r| {
+        Ok(GenreItem { name: r.get(0)?, track_count: r.get(1)? })
+    })?;
+    Ok(Page { total, items })
 }
 
 // ---------- 喜欢（M2.5） ----------
@@ -933,7 +1012,6 @@ pub fn webdav_add_source(
     let auth = crate::network::webdav::Auth { username, password };
     // 连通性验证：列根目录
     crate::network::webdav::list_dir(&base, Some(&auth))?;
-    let config = serde_json::json!({ "username": auth.username, "password": auth.password }).to_string();
 
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     let exists: Option<i64> = conn
@@ -942,12 +1020,19 @@ pub fn webdav_add_source(
     if exists.is_some() {
         return Err("该地址已添加过".into());
     }
+    // 密码不入库：config 只写 username，插入后把密码写入系统钥匙串；
+    // 钥匙串不可用时回退明文（保证功能可用）
+    let config = serde_json::json!({ "username": auth.username }).to_string();
     conn.execute(
         "INSERT INTO sources (kind, name, base_url, config) VALUES ('webdav', ?1, ?2, ?3)",
         params![display_name, base.as_str(), config],
     )
     .map_err(|e| e.to_string())?;
     let id = conn.last_insert_rowid();
+    if crate::keyring::set_password(id, &auth.password).is_err() {
+        let fallback = serde_json::json!({ "username": auth.username, "password": auth.password }).to_string();
+        let _ = conn.execute("UPDATE sources SET config = ?1 WHERE id = ?2", params![fallback, id]);
+    }
     drop(conn);
 
     spawn_scan(&app, &state, id, false)?;

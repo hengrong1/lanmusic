@@ -49,10 +49,16 @@ export interface ArtistItem {
   trackCount: number
 }
 
+export interface GenreItem {
+  name: string
+  trackCount: number
+}
+
 export interface LibraryStats {
   tracks: number
   albums: number
   artists: number
+  genres: number
   favorites: number
 }
 
@@ -74,15 +80,17 @@ export interface ScanDone {
 }
 
 export interface TrackQuery {
-  view: 'all' | 'album' | 'artist' | 'favorites'
+  view: 'all' | 'album' | 'artist' | 'favorites' | 'genre'
   refId?: number
+  /** view = 'genre' 时的风格名 */
+  genre?: string
   search?: string
   sort?: string
   page?: number
   pageSize?: number
 }
 
-export type ViewName = 'tracks' | 'albums' | 'artists' | 'playlist' | 'settings'
+export type ViewName = 'tracks' | 'albums' | 'artists' | 'genres' | 'playlist' | 'settings'
 
 export interface NavRoute {
   view: ViewName
@@ -90,6 +98,7 @@ export interface NavRoute {
   albumTitle?: string
   artistId?: number
   artistName?: string
+  genre?: string
   playlistId?: number
   playlistName?: string
   recent?: boolean

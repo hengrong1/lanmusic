@@ -123,14 +123,13 @@ fn webdav_auth_for_album<R: Runtime>(
     let state = app.state::<AppState>();
     let conn = state.db.lock().ok()?;
     conn.query_row(
-        "SELECT s.config FROM tracks t JOIN sources s ON s.id = t.source_id
+        "SELECT s.id, s.config FROM tracks t JOIN sources s ON s.id = t.source_id
          WHERE t.album_id = ?1 AND s.kind = 'webdav' LIMIT 1",
         [album_id],
-        |r| r.get::<_, Option<String>>(0),
+        |r| Ok((r.get::<_, i64>(0)?, r.get::<_, Option<String>>(1)?)),
     )
     .ok()
-    .flatten()
-    .and_then(|cfg| crate::network::webdav::Auth::from_config(Some(&cfg)))
+    .and_then(|(source_id, cfg)| crate::network::webdav::Auth::from_source(cfg.as_deref(), source_id))
 }
 
 fn mark_cover<R: Runtime>(app: &AppHandle<R>, album_id: i64) -> Result<(), String> {
@@ -173,5 +172,61 @@ pub(crate) fn save_cover(covers_dir: &Path, album_id: i64, bytes: &[u8]) -> Resu
                 .map_err(|e| e.to_string())
         }
         Err(_) => std::fs::write(&out, bytes).map_err(|e| e.to_string()),
+    }
+}
+
+// ================================================================ 缓存容量控制（LRU 式清理）
+
+/// 上限设置键：app_settings.covers.max_mb（兆字节），缺省 500MB；0 表示不限制
+const MAX_MB_KEY: &str = "covers.max_mb";
+const DEFAULT_MAX_MB: u64 = 500;
+
+/// 按设置清理封面缓存（启动时与每次扫描结束时调用）
+pub fn enforce_limit_with_setting<R: Runtime>(app: &AppHandle<R>) {
+    let state = app.state::<AppState>();
+    let max_mb: u64 = {
+        let Ok(conn) = state.db.lock() else { return };
+        crate::db::get_setting(&conn, MAX_MB_KEY)
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(DEFAULT_MAX_MB)
+    };
+    enforce_limit(&state.covers_dir, max_mb * 1024 * 1024);
+}
+
+/// 缓存总量超限时清理：先删 `.none` 哨兵（零成本，可重建），再按修改时间从旧到新删 `.jpg`。
+/// `max_bytes` = 0 表示不限制。
+pub fn enforce_limit(covers_dir: &Path, max_bytes: u64) {
+    if max_bytes == 0 {
+        return;
+    }
+    let Ok(rd) = std::fs::read_dir(covers_dir) else { return };
+    let mut files: Vec<(PathBuf, u64, std::time::SystemTime, bool)> = Vec::new();
+    let mut total = 0u64;
+    for entry in rd.flatten() {
+        let p = entry.path();
+        let Ok(meta) = entry.metadata() else { continue };
+        if !meta.is_file() {
+            continue;
+        }
+        let name = p.file_name().and_then(|s| s.to_str()).unwrap_or("");
+        let is_sentinel = name.ends_with(".none");
+        if !is_sentinel && !name.ends_with(".jpg") {
+            continue;
+        }
+        total += meta.len();
+        files.push((p, meta.len(), meta.modified().unwrap_or(std::time::UNIX_EPOCH), is_sentinel));
+    }
+    if total <= max_bytes {
+        return;
+    }
+    // 排序：哨兵优先（is_none 排前），其后按 mtime 旧 → 新
+    files.sort_by_key(|(_, _, mtime, is_none)| (!*is_none, *mtime));
+    for (path, size, _, _) in files {
+        if total <= max_bytes {
+            break;
+        }
+        if std::fs::remove_file(&path).is_ok() {
+            total = total.saturating_sub(size);
+        }
     }
 }

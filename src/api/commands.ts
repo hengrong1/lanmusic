@@ -2,6 +2,7 @@ import { invoke } from '@tauri-apps/api/core'
 import type {
   AlbumItem,
   ArtistItem,
+  GenreItem,
   LibraryStats,
   Page,
   Playlist,
@@ -26,6 +27,8 @@ export const api = {
     invoke<Page<AlbumItem>>('query_albums', { search, page, pageSize }),
   queryArtists: (search?: string, page = 0, pageSize = 300) =>
     invoke<Page<ArtistItem>>('query_artists', { search, page, pageSize }),
+  queryGenres: (search?: string, page = 0, pageSize = 300) =>
+    invoke<Page<GenreItem>>('query_genres', { search, page, pageSize }),
   getTrack: (id: number) => invoke<Track | null>('get_track', { id }),
   getTracksByIds: (ids: number[]) => invoke<Track[]>('get_tracks_by_ids', { ids }),
   getStreamUrl: (id: number) => invoke<string>('get_stream_url', { id }),

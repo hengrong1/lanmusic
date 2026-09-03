@@ -4,6 +4,7 @@ import { VinylRecordIcon as Disc3 } from '@solar-icons/vue/linear/vinyl-record'
 import { HeartIcon as Heart } from '@solar-icons/vue/linear/heart'
 import { HistoryIcon as History } from '@solar-icons/vue/linear/history'
 import { MicrophoneIcon as Mic } from '@solar-icons/vue/linear/microphone'
+import { SoundwaveIcon as Soundwave } from '@solar-icons/vue/linear/soundwave'
 import { MusicNoteIcon as Music } from '@solar-icons/vue/linear/music-note'
 import { AddIcon as Plus } from '@solar-icons/vue/linear/add'
 import { CloseIcon as X } from '@solar-icons/vue/linear/close'
@@ -115,6 +116,7 @@ const entries: NavEntry[] = [
   { route: { view: 'tracks', favorites: true }, label: '我的喜欢', icon: Heart, count: () => library.stats.favorites },
   { route: { view: 'albums' }, label: '专辑', icon: Disc3, count: () => library.stats.albums },
   { route: { view: 'artists' }, label: '艺人', icon: Mic, count: () => library.stats.artists },
+  { route: { view: 'genres' }, label: '风格', icon: Soundwave, count: () => library.stats.genres },
   { route: { view: 'tracks', recent: true }, label: '最近播放', icon: History },
 ]
 
@@ -127,10 +129,13 @@ function isActive(e: NavEntry) {
   if (e.route.view === 'artists') {
     return r.view === 'tracks' && r.artistId != null
   }
+  if (e.route.view === 'genres') {
+    return r.view === 'tracks' && !!r.genre
+  }
   if (e.route.view === 'tracks') {
     if (e.route.favorites) return r.view === 'tracks' && !!r.favorites && !r.search
     if (e.route.recent) return r.view === 'tracks' && !!r.recent && !r.search
-    return r.view === 'tracks' && !r.albumId && !r.artistId && !r.recent && !r.favorites && !r.search
+    return r.view === 'tracks' && !r.albumId && !r.artistId && !r.recent && !r.favorites && !r.genre && !r.search
   }
   if (e.route.view === 'settings') {
     return r.view === e.route.view

@@ -17,14 +17,27 @@ import { useStagger } from '@/composables/useStagger'
 import { useDesktopLyrics } from '@/composables/useDesktopLyrics'
 import { getAppFont, setAppFont } from '@/composables/useAppFont'
 import { getPreventSleep, setPreventSleepSetting } from '@/composables/usePowerGuard'
+import { useUpdater } from '@/composables/useUpdater'
 import { usePlayerStore } from '@/stores/player'
 import { api } from '@/api/commands'
 import type { Source } from '@/types'
+import { setLocale } from '@/i18n'
+import { useI18n } from 'vue-i18n'
 
 const library = useLibraryStore()
 const { mode, setTheme } = useTheme()
 const { enabled: dlEnabled, toggle: dlToggle, config: dlConfig } = useDesktopLyrics()
 const player = usePlayerStore()
+const { locale } = useI18n()
+
+const languageOptions = [
+  { value: 'zh' as const, label: '简体中文' },
+  { value: 'en' as const, label: 'English' },
+]
+function onLocaleChange(e: Event) {
+  const val = (e.target as HTMLSelectElement).value as 'zh' | 'en'
+  setLocale(val)
+}
 
 // ---- 播放设置（淡入淡出 / 阻止系统休眠）----
 const fadeOn = ref(player.isFadeOn())
@@ -108,6 +121,10 @@ onMounted(async () => {
     appVersion.value = '0.1.0'
   }
 })
+
+// ---- 应用内更新（GitHub Releases）----
+const updater = useUpdater()
+const progressPct = computed(() => (updater.progress.value >= 0 ? Math.round(updater.progress.value * 100) : -1))
 
 const adding = ref(false)
 async function addFolder() {
@@ -609,11 +626,82 @@ const scannedSourceIds = computed(() => new Set(Object.keys(library.scanProgress
         </div>
       </section>
 
+      <!-- 语言 -->
+      <section data-stagger>
+        <h2 class="mb-3 text-sm font-semibold text-zinc-800 dark:text-zinc-100">{{ $t('settings.language') }}</h2>
+        <div class="rounded-xl border border-zinc-200 bg-white p-4 text-sm text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900">
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <span>{{ $t('settings.languageSelect') }}</span>
+            <select
+              :value="locale"
+              class="cursor-pointer rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm text-zinc-700 outline-none transition hover:bg-zinc-50 focus:border-violet-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
+              @change="onLocaleChange"
+            >
+              <option v-for="opt in languageOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+            </select>
+          </div>
+        </div>
+      </section>
+
       <!-- 关于 -->
       <section data-stagger>
         <h2 class="mb-3 text-sm font-semibold text-zinc-800 dark:text-zinc-100">关于</h2>
         <div class="rounded-xl border border-zinc-200 bg-white p-4 text-sm text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900">
-          LanMusic <span class="tabular-nums">{{ appVersion }}</span> · Tauri 2 + Vue 3 · 纯本地，不上传任何数据
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <span>LanMusic <span class="tabular-nums">{{ appVersion }}</span> · Tauri 2 + Vue 3 · 纯本地，不上传任何数据</span>
+            <!-- 更新操作区：按状态切换 -->
+            <div class="flex items-center gap-2">
+              <template v-if="updater.status.value === 'available' || updater.status.value === 'downloading'">
+                <button
+                  class="flex cursor-pointer items-center gap-1.5 rounded-full bg-violet-500 px-4 py-1.5 text-xs font-medium text-white shadow transition hover:bg-violet-400 disabled:cursor-not-allowed disabled:opacity-40"
+                  :disabled="updater.status.value === 'downloading'"
+                  @click="updater.downloadAndInstall()"
+                >
+                  <RefreshCw v-if="updater.status.value === 'downloading'" class="h-3.5 w-3.5 animate-spin" />
+                  {{ updater.status.value === 'downloading' ? '正在下载…' : `更新到 v${updater.newVersion.value}` }}
+                </button>
+              </template>
+              <button
+                v-else-if="updater.status.value === 'ready'"
+                class="flex cursor-pointer items-center gap-1.5 rounded-full bg-violet-500 px-4 py-1.5 text-xs font-medium text-white shadow transition hover:bg-violet-400"
+                @click="updater.restartToUpdate()"
+              >
+                重启完成更新
+              </button>
+              <button
+                v-else
+                class="flex cursor-pointer items-center gap-1.5 rounded-full border border-zinc-200 px-4 py-1.5 text-xs text-zinc-600 transition hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                :disabled="updater.status.value === 'checking'"
+                @click="updater.checkForUpdate(false)"
+              >
+                <RefreshCw v-if="updater.status.value === 'checking'" class="h-3.5 w-3.5 animate-spin" />
+                检查更新
+              </button>
+              <span v-if="updater.status.value === 'uptodate'" class="text-xs text-zinc-400">已是最新</span>
+            </div>
+          </div>
+          <!-- 更新版说明 + 下载进度 -->
+          <div v-if="updater.status.value === 'available' || updater.status.value === 'downloading' || updater.releaseNotes.value" class="mt-3 border-t border-zinc-100 pt-3 dark:border-zinc-800">
+            <p v-if="updater.status.value === 'available' || updater.status.value === 'downloading'" class="text-xs font-medium text-violet-500">
+              发现新版本 v{{ updater.newVersion.value }}
+            </p>
+            <p v-if="updater.releaseNotes.value" class="mt-1 line-clamp-4 whitespace-pre-wrap text-xs leading-relaxed">{{ updater.releaseNotes.value }}</p>
+            <!-- 下载进度条（total 未知时显示不定进度动画） -->
+            <div v-if="updater.status.value === 'downloading'" class="mt-2 flex items-center gap-2">
+              <div class="h-1.5 flex-1 overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-800">
+                <div
+                  v-if="progressPct >= 0"
+                  class="h-full rounded-full bg-violet-500 transition-all"
+                  :style="{ width: `${progressPct}%` }"
+                ></div>
+                <div v-else class="h-full w-1/3 animate-pulse rounded-full bg-violet-400"></div>
+              </div>
+              <span class="shrink-0 text-xs tabular-nums text-zinc-400">
+                {{ progressPct >= 0 ? `${progressPct}%` : `${updater.downloadedMb.value.toFixed(1)}MB` }}
+              </span>
+            </div>
+            <p v-if="updater.status.value === 'ready'" class="text-xs font-medium text-violet-500">更新已就绪，点击「重启完成更新」生效。</p>
+          </div>
         </div>
       </section>
     </div>

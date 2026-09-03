@@ -71,7 +71,7 @@ pub(crate) fn route_track<R: Runtime>(
         return server_error();
     };
     let row = conn.query_row(
-        "SELECT t.path, t.format, t.file_size, s.kind, s.base_path, s.base_url, s.config
+        "SELECT t.path, t.format, t.file_size, s.kind, s.base_path, s.base_url, s.config, s.id
          FROM tracks t JOIN sources s ON s.id = t.source_id
          WHERE t.id = ?1",
         [id],
@@ -84,10 +84,11 @@ pub(crate) fn route_track<R: Runtime>(
                 r.get::<_, Option<String>>(4)?,
                 r.get::<_, Option<String>>(5)?,
                 r.get::<_, Option<String>>(6)?,
+                r.get::<_, i64>(7)?,
             ))
         },
     );
-    let (rel, format, size, kind, base_path, base_url, config) = match row {
+    let (rel, format, size, kind, base_path, base_url, config, source_id) = match row {
         Ok(v) => v,
         Err(_) => return not_found(),
     };
@@ -108,7 +109,7 @@ pub(crate) fn route_track<R: Runtime>(
                 bu.set_path(&format!("{}/", bu.path()));
             }
             let Some(url) = bu.join(&rel).ok().map(|u| u.to_string()) else { return not_found() };
-            let auth = match network::webdav::Auth::from_config(config.as_deref()) {
+            let auth = match network::webdav::Auth::from_source(config.as_deref(), source_id) {
                 Some(a) => ProxyAuth::Basic(a.username, a.password),
                 None => ProxyAuth::None,
             };

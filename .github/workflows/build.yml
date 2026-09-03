@@ -1,0 +1,76 @@
+name: Build & Release
+
+# 触发方式：
+# 1. 推送 v* 标签（如 git tag v0.1.0 && git push origin v0.1.0）→ 构建并创建 GitHub Release（草稿）
+# 2. 手动在 Actions 页面点 Run workflow
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write # tauri-action 创建 Release 需要写权限
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false # 某个平台失败不影响其他平台继续出包
+      matrix:
+        include:
+          # macOS Apple Silicon（M 系列）：原生编译
+          - platform: macos-latest
+            target: aarch64-apple-darwin
+          # macOS Intel：在 M 芯片 runner 上交叉编译（Xcode 工具链原生支持）
+          - platform: macos-latest
+            target: x86_64-apple-darwin
+          # Windows：Intel 与 AMD 桌面 CPU 同为 x86_64，一个 x64 包通用
+          - platform: windows-latest
+            target: x86_64-pc-windows-msvc
+
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # pnpm 版本读取 package.json 的 packageManager 字段
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      # 按 target 缓存 Cargo 编译产物，二次构建快很多
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          key: ${{ matrix.target }}
+
+      - name: Install frontend deps
+        run: pnpm install
+
+      - name: Build app
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # 更新包签名（tauri signer 生成的私钥，配在仓库 Secrets 里）
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          # 版本号取自 src-tauri/tauri.conf.json 的 version，__VERSION__ 会自动替换
+          tagName: v__VERSION__
+          releaseName: 'LanMusic v__VERSION__'
+          releaseBody: '安装包未签名：macOS 首次打开请右键→打开（或 `xattr -cr /Applications/LanMusic.app`）；Windows SmartScreen 提示选择「仍要运行」。'
+          releaseDraft: true # 产出为草稿 Release，检查无误后手动 Publish
+          prerelease: false
+          includeUpdaterJson: true # 生成 latest.json（应用内更新检查用）
+          args: --target ${{ matrix.target }}
