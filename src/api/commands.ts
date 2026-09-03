@@ -58,6 +58,8 @@ export const api = {
   reportPlay: (id: number) => invoke<void>('report_play', { id }),
   getLyrics: (id: number) => invoke<string | null>('get_lyrics', { id }),
   favoriteToggle: (id: number, fav: boolean) => invoke<void>('favorite_toggle', { id, fav }),
+  // Windows 任务栏缩略图按钮：同步播放/暂停图标（其他平台为空操作）
+  setThumbbarPlaying: (playing: boolean) => invoke<void>('set_thumbbar_playing', { playing }),
 
   // 设置（M2/M3）
   getSetting: (key: string) => invoke<string | null>('get_setting', { key }),

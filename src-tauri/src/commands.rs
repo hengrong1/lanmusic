@@ -525,6 +525,18 @@ pub fn favorite_toggle(state: State<'_, AppState>, id: i64, fav: bool) -> Result
     Ok(())
 }
 
+// ---------- 任务栏缩略图控制（Windows） ----------
+
+/// 前端播放状态变化时同步任务栏缩略图按钮的播放/暂停图标（非 Windows 上为空操作）
+#[tauri::command]
+pub fn set_thumbbar_playing(playing: bool) -> Result<(), String> {
+    #[cfg(windows)]
+    crate::thumbbar::set_playing(playing);
+    #[cfg(not(windows))]
+    let _ = playing;
+    Ok(())
+}
+
 // ---------- 其他 ----------
 
 /// 在系统文件管理器中显示曲目文件

@@ -166,7 +166,7 @@ src-tauri/                 # Rust 后端
 | 来源管理 | `add_local_source(path)` · `list_sources()` · `remove_source(id)` · `rescan_source(id, mode: auto\|full)` · `set_source_fast_import(id, enabled)` · `webdav_add_source(url, username, password, name?)` |
 | 曲库查询 | `query_tracks({view, refId, search, sort, page, pageSize})` · `query_albums(search, page, pageSize)` · `query_artists(search, page, pageSize)` · `get_track(id)` · `get_tracks_by_ids(ids)` · `get_stream_url(id)` · `library_stats()` · `reveal_track(id)` |
 | 歌单 | `playlist_list` · `playlist_create(name)` · `playlist_rename(id, name)` · `playlist_delete(id)` · `playlist_get_items(id)` · `playlist_add_tracks(id, trackIds)` · `playlist_remove_track(id, trackId)` · `playlist_remove_tracks(id, trackIds)` · `playlist_set_description(id, description)` · `playlist_cover(id)` · `playlist_reorder(id, trackIds)` |
-| 播放/歌词/喜欢 | `report_play(id)` · `get_lyrics(id)` · `favorite_toggle(id, fav)` |
+| 播放/歌词/喜欢 | `report_play(id)` · `get_lyrics(id)` · `favorite_toggle(id, fav)` · `set_thumbbar_playing(playing)`（Windows 任务栏缩略图按钮图标同步） |
 | 设置 | `get_setting(key)` · `set_setting(key, value)` |
 
 `query_tracks` 支持的 `sort` 值：`title` `-title` `album` `-album` `artist` `-artist` `added` `duration` `-duration` `recent` `none`（`-` 前缀为降序）。
@@ -178,7 +178,7 @@ src-tauri/                 # Rust 后端
 | `scan:progress` | `{sourceId, phase: "enumerate"\|"parse", done, total, current}` | 扫描进度（enumerate 阶段 total 未知） |
 | `scan:done` | `{sourceId, added, updated, removed, ms}` | 扫描完成统计 |
 | `scan:error` | `{sourceId, message}` | 扫描失败 |
-| `tray` | `"toggle"` \| `"prev"` \| `"next"` | 系统托盘菜单操作 |
+| `tray` | `"toggle"` \| `"prev"` \| `"next"` | 系统托盘菜单操作 / Windows 任务栏缩略图控制按钮 |
 
 ## 数据库结构
 

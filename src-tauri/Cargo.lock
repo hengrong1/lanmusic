@@ -2389,6 +2389,7 @@ dependencies = [
  "tauri-plugin-opener",
  "url",
  "walkdir",
+ "windows",
 ]
 
 [[package]]

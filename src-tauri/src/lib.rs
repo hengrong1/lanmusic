@@ -7,6 +7,8 @@ mod network;
 mod scanner;
 mod scheme;
 mod state;
+#[cfg(windows)]
+mod thumbbar;
 
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::TrayIconBuilder;
@@ -110,6 +112,13 @@ pub fn run() {
                     _ => {}
                 })
                 .build(app)?;
+
+            // Windows：任务栏缩略图工具栏（悬停任务栏图标时的 上一首/播放暂停/下一首）
+            #[cfg(windows)]
+            if let Ok(hwnd) = window.hwnd() {
+                thumbbar::init(app.handle().clone(), hwnd);
+            }
+
             Ok(())
         })
         // 音频流协议：music://track/{id}（Windows 上为 http://music.localhost/track/{id}）
@@ -146,6 +155,7 @@ pub fn run() {
             commands::favorite_toggle,
             commands::get_setting,
             commands::set_setting,
+            commands::set_thumbbar_playing,
             commands::webdav_add_source
         ])
         .run(tauri::generate_context!())

@@ -325,6 +325,11 @@ export const usePlayerStore = defineStore('player', () => {
     else if (e.payload === 'prev') prev()
   })
 
+  // Windows 任务栏缩略图工具栏：播放状态变化时同步中间按钮的播放/暂停图标
+  watch(playing, (p) => {
+    api.setThumbbarPlaying(p).catch(() => {})
+  })
+
   /** 切换当前歌曲的喜欢状态 */
   function toggleFav() {
     const t = current.value
