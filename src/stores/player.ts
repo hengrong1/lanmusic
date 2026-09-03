@@ -4,6 +4,7 @@ import { listen } from '@tauri-apps/api/event'
 import type { Track } from '@/types'
 import { trackStreamUrl } from '@/api/scheme'
 import { api } from '@/api/commands'
+import { useLibraryStore } from '@/stores/library'
 import { toast } from '@/composables/useToast'
 import { activeLineIndex, parseLrc, plainLines, type LrcLine } from '@/utils/lrc'
 
@@ -168,11 +169,22 @@ export const usePlayerStore = defineStore('player', () => {
     }
   }
 
+  /** 判断当前队列与传入列表是否为同一份（同长度、同顺序） */
+  function sameQueueAs(list: Track[]): boolean {
+    return queue.value.length === list.length && queue.value.every((t, i) => t.id === list[i].id)
+  }
+
   function playList(list: Track[], startIndex = 0) {
     if (!list.length) return
+    const idx = Math.max(0, Math.min(startIndex, list.length - 1))
+    // 同一播放列表内点击正在播放的歌曲：暂停/继续，而不是重新开始
+    if (sameQueueAs(list) && list[idx].id === current.value?.id) {
+      toggle()
+      return
+    }
     queue.value = [...list]
     errorStreak = 0
-    playAt(Math.max(0, Math.min(startIndex, list.length - 1)))
+    playAt(idx)
   }
 
   function playAt(i: number) {
@@ -321,6 +333,8 @@ export const usePlayerStore = defineStore('player', () => {
       .favoriteToggle(t.id, !t.fav)
       .then(() => {
         t.fav = !t.fav
+        // 刷新侧边栏「我的喜欢」计数
+        void useLibraryStore().loadStats()
       })
       .catch((e) => toast(String(e), 'error'))
   }

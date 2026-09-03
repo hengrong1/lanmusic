@@ -154,6 +154,8 @@ const menuItems = computed<MenuItem[]>(() => {
           .favoriteToggle(t.id, !t.fav)
           .then(() => {
             t.fav = !t.fav
+            // 刷新侧边栏「我的喜欢」计数
+            void library.loadStats()
             if (props.favoritesView) emit('refresh')
           })
           .catch((e) => toast(String(e), 'error')),

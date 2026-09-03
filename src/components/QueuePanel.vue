@@ -134,7 +134,7 @@ watch(
                 ? 'bg-gradient-to-r from-violet-100 to-transparent shadow-[inset_2px_0_0_0_#8b5cf6] dark:from-violet-500/15 dark:to-transparent'
                 : 'hover:bg-zinc-100 dark:hover:bg-zinc-800/60'
             "
-            @dblclick="player.playAt(i)"
+            @dblclick="i === player.index ? player.toggle() : player.playAt(i)"
           >
             <span
               v-if="i === player.index"
