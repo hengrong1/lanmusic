@@ -539,7 +539,7 @@ pub fn set_thumbbar_playing(playing: bool) -> Result<(), String> {
 
 // ---------- 系统字体 ----------
 
-/// 枚举系统已安装字体（注册表 Fonts 项的字体友好名称），供全局字体设置选择；
+/// 枚举系统已安装字体（DirectWrite 字体集合的字族名），供全局字体设置选择；
 /// 非 Windows 平台返回空列表（前端隐藏字体下拉的字体项）。
 #[tauri::command]
 pub fn list_system_fonts() -> Result<Vec<String>, String> {

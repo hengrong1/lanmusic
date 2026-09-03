@@ -2390,7 +2390,6 @@ dependencies = [
  "url",
  "walkdir",
  "windows",
- "winreg",
 ]
 
 [[package]]
