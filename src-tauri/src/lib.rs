@@ -178,6 +178,7 @@ pub fn run() {
             commands::desktop_lyrics_set,
             commands::list_system_fonts,
             commands::exit_app,
+            commands::set_prevent_sleep,
             commands::webdav_add_source
         ])
         .run(tauri::generate_context!())

@@ -8,6 +8,7 @@ import { api } from '@/api/commands'
 import { useLibraryStore } from '@/stores/library'
 import { toast } from '@/composables/useToast'
 import { activeLineIndex, parseLrc, plainLines, type LrcLine } from '@/utils/lrc'
+import { applyPowerGuard } from '@/composables/usePowerGuard'
 
 export type PlayMode = 'order' | 'loop' | 'one' | 'shuffle'
 
@@ -111,6 +112,85 @@ export const usePlayerStore = defineStore('player', () => {
   // 连续播放失败计数：整轮队列都失败则停止跳歌（见 error 监听器），成功播放即归零
   let errorStreak = 0
 
+  // ---------- 淡入淡出 ----------
+  // 开关存 localStorage lm.fade（默认关闭）。淡入：每曲开头 800ms 从 0 升至目标音量；
+  // 淡出：暂停/切歌前 600ms 平滑降至 0，避免突兀截断。
+  const FADE_IN_MS = 800
+  const FADE_OUT_MS = 600
+  function fadeEnabled(): boolean {
+    return localStorage.getItem('lm.fade') === '1'
+  }
+  let fadeRaf = 0
+  let fadeSeq = 0
+  /** 淡入淡出期间禁止 watch(volume) 直接写 audio.volume（避免与逐帧渐变打架） */
+  let suppressVolSync = false
+  function cancelFade() {
+    if (fadeRaf) cancelAnimationFrame(fadeRaf)
+    fadeRaf = 0
+    fadeSeq++
+    suppressVolSync = false
+  }
+  /** 平滑淡入：从当前音量升到用户设定音量 */
+  function fadeIn() {
+    cancelFade()
+    if (!fadeEnabled()) {
+      audio.volume = volume.value
+      return
+    }
+    const seq = ++fadeSeq
+    const from = audio.volume
+    const to = volume.value
+    const start = performance.now()
+    suppressVolSync = true
+    const step = (now: number) => {
+      if (fadeSeq !== seq) return
+      const t = Math.min(1, (now - start) / FADE_IN_MS)
+      audio.volume = from + (to - from) * t
+      if (t < 1) {
+        fadeRaf = requestAnimationFrame(step)
+      } else {
+        fadeRaf = 0
+        suppressVolSync = false
+        audio.volume = volume.value // 结束校正：若过程中用户调了音量则落在最新值
+      }
+    }
+    fadeRaf = requestAnimationFrame(step)
+  }
+  /** 平滑淡出：降到 0 后执行回调（暂停/换源） */
+  function fadeOut(cb?: () => void) {
+    if (!fadeEnabled() || audio.paused) {
+      cb?.()
+      return
+    }
+    cancelFade()
+    const seq = ++fadeSeq
+    const from = audio.volume
+    const start = performance.now()
+    suppressVolSync = true
+    const step = (now: number) => {
+      if (fadeSeq !== seq) return
+      const t = Math.min(1, (now - start) / FADE_OUT_MS)
+      audio.volume = from * (1 - t)
+      if (t < 1) {
+        fadeRaf = requestAnimationFrame(step)
+      } else {
+        fadeRaf = 0
+        suppressVolSync = false
+        audio.volume = 0
+        cb?.()
+      }
+    }
+    fadeRaf = requestAnimationFrame(step)
+  }
+  /** 设置淡入淡出开关（设置页调用）；关闭时立即恢复当前音量 */
+  function setFadeEnabled(v: boolean) {
+    localStorage.setItem('lm.fade', v ? '1' : '0')
+    if (!v) {
+      cancelFade()
+      audio.volume = volume.value
+    }
+  }
+
   audio.addEventListener('timeupdate', () => {
     position.value = audio.currentTime
     if (audio.currentTime > 0) localStorage.setItem(LS.lastPos, String(audio.currentTime))
@@ -156,17 +236,27 @@ export const usePlayerStore = defineStore('player', () => {
 
   // ---------- 控制 ----------
   function load(t: Track, autoplay = true) {
-    audio.src = trackStreamUrl(t.id)
-    position.value = 0
-    duration.value = t.duration ?? 0
-    // 切换新歌立即进入加载态，直到 canplay/playing 事件清除
-    buffering.value = true
-    localStorage.setItem(LS.lastPos, '0')
-    void loadLyrics(t)
-    if (autoplay) {
-      void audio.play().catch(() => {})
-      // 播放统计（静默上报）
-      api.reportPlay(t.id).catch(() => {})
+    const doLoad = () => {
+      audio.src = trackStreamUrl(t.id)
+      position.value = 0
+      duration.value = t.duration ?? 0
+      // 切换新歌立即进入加载态，直到 canplay/playing 事件清除
+      buffering.value = true
+      localStorage.setItem(LS.lastPos, '0')
+      void loadLyrics(t)
+      if (autoplay) {
+        audio.volume = 0 // 淡入起点
+        void audio.play().catch(() => {})
+        api.reportPlay(t.id).catch(() => {})
+        fadeIn()
+      }
+    }
+    if (audio.paused) {
+      cancelFade()
+      doLoad()
+    } else {
+      // 正在播放：先淡出旧曲再换源（自然衔接）
+      fadeOut(doLoad)
     }
   }
 
@@ -198,9 +288,13 @@ export const usePlayerStore = defineStore('player', () => {
   function toggle() {
     if (!current.value) return
     if (audio.paused) {
+      cancelFade()
+      audio.volume = 0 // 淡入起点
       void audio.play().catch(() => {})
+      fadeIn()
     } else {
-      audio.pause()
+      // 暂停前先淡出，避免音量突变
+      fadeOut(() => audio.pause())
     }
   }
 
@@ -218,8 +312,10 @@ export const usePlayerStore = defineStore('player', () => {
       if (mode.value === 'loop') {
         playAt(0)
       } else if (!fromError) {
-        audio.pause()
-        position.value = 0
+        fadeOut(() => {
+          audio.pause()
+          position.value = 0
+        })
       }
     } else {
       playAt(i)
@@ -303,7 +399,7 @@ export const usePlayerStore = defineStore('player', () => {
 
   // ---------- 持久化 ----------
   watch(volume, (v) => {
-    audio.volume = v
+    if (!suppressVolSync) audio.volume = v
     localStorage.setItem(LS.volume, String(v))
   })
   watch(muted, (m) => {
@@ -330,6 +426,8 @@ export const usePlayerStore = defineStore('player', () => {
   // Windows 任务栏缩略图工具栏：播放状态变化时同步中间按钮的播放/暂停图标
   watch(playing, (p) => {
     api.setThumbbarPlaying(p).catch(() => {})
+    // 播放时阻止系统休眠/锁屏（开关见设置，默认启用）
+    applyPowerGuard(p)
   })
 
   // 窗口标题跟随当前歌曲：任务栏悬停预览 / Alt+Tab 顶部显示歌名（类似 QQ 音乐）
@@ -425,6 +523,8 @@ export const usePlayerStore = defineStore('player', () => {
     seek,
     setVolume,
     toggleMute,
+    setFadeEnabled,
+    isFadeOn: () => localStorage.getItem('lm.fade') === '1',
     playNextInQueue,
     enqueue,
     removeFromQueue,

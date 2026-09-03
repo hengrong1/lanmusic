@@ -601,6 +601,31 @@ pub async fn desktop_lyrics_set(app: AppHandle, enabled: bool) -> Result<bool, S
 
 // ---------- 其他 ----------
 
+/// 播放时阻止系统休眠/锁屏。
+/// Windows 通过 SetThreadExecutionState 请求系统保持运行与屏幕常亮；
+/// 在其他平台为空操作（前端可回退到 Web Wake Lock API）。
+#[tauri::command]
+#[cfg_attr(not(windows), allow(unused_variables))]
+pub fn set_prevent_sleep(prevent: bool) -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        use windows::Win32::System::Power::{
+            SetThreadExecutionState, ES_CONTINUOUS, ES_DISPLAY_REQUIRED, ES_SYSTEM_REQUIRED,
+        };
+        let flags = if prevent {
+            ES_CONTINUOUS | ES_SYSTEM_REQUIRED | ES_DISPLAY_REQUIRED
+        } else {
+            ES_CONTINUOUS
+        };
+        // SAFETY: 在应用主线程调用，API 本身无内存安全前置条件
+        let prev = unsafe { SetThreadExecutionState(flags) };
+        if prev.0 == 0 {
+            return Err("SetThreadExecutionState 调用失败".into());
+        }
+    }
+    Ok(())
+}
+
 /// 退出应用（托盘菜单「退出」）
 #[tauri::command]
 pub fn exit_app(app: AppHandle) {

@@ -16,12 +16,29 @@ import { confirmDialog } from '@/composables/useConfirm'
 import { useStagger } from '@/composables/useStagger'
 import { useDesktopLyrics } from '@/composables/useDesktopLyrics'
 import { getAppFont, setAppFont } from '@/composables/useAppFont'
+import { getPreventSleep, setPreventSleepSetting } from '@/composables/usePowerGuard'
+import { usePlayerStore } from '@/stores/player'
 import { api } from '@/api/commands'
 import type { Source } from '@/types'
 
 const library = useLibraryStore()
 const { mode, setTheme } = useTheme()
 const { enabled: dlEnabled, toggle: dlToggle, config: dlConfig } = useDesktopLyrics()
+const player = usePlayerStore()
+
+// ---- 播放设置（淡入淡出 / 阻止系统休眠）----
+const fadeOn = ref(player.isFadeOn())
+function onFadeToggle() {
+  fadeOn.value = !fadeOn.value
+  player.setFadeEnabled(fadeOn.value)
+  toast(fadeOn.value ? '已开启歌曲淡入淡出' : '已关闭歌曲淡入淡出')
+}
+const preventSleepOn = ref(getPreventSleep())
+function onPreventSleepToggle() {
+  preventSleepOn.value = !preventSleepOn.value
+  setPreventSleepSetting(preventSleepOn.value, player.playing)
+  toast(preventSleepOn.value ? '已开启播放时阻止系统休眠' : '已关闭播放时阻止系统休眠')
+}
 
 /** 桌面歌词设置项可选项 */
 const dlLineOptions = [
@@ -380,6 +397,46 @@ const scannedSourceIds = computed(() => new Set(Object.keys(library.scanProgress
               <option v-for="f in systemFonts" :key="f" :value="`'${f}'`">{{ f }}</option>
             </select>
           </div>
+        </div>
+      </section>
+
+      <!-- 播放 -->
+      <section data-stagger>
+        <h2 class="mb-3 text-sm font-semibold text-zinc-800 dark:text-zinc-100">播放</h2>
+        <div class="space-y-3 rounded-xl border border-zinc-200 bg-white p-4 text-sm dark:border-zinc-800 dark:bg-zinc-900">
+          <!-- 淡入淡出 -->
+          <div class="flex items-center justify-between">
+            <span class="text-zinc-600 dark:text-zinc-300">歌曲淡入淡出</span>
+            <button
+              class="relative h-5 w-9 cursor-pointer rounded-full transition"
+              :class="fadeOn ? 'bg-violet-500' : 'bg-zinc-200 dark:bg-zinc-700'"
+              title="开启后播放/暂停与切歌时音量平滑过渡（淡入 0.8s，淡出 0.6s）"
+              @click="onFadeToggle"
+            >
+              <span
+                class="absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all"
+                :class="fadeOn ? 'left-[18px]' : 'left-0.5'"
+              ></span>
+            </button>
+          </div>
+          <p class="text-xs text-zinc-400">播放 / 暂停与切歌 / 队列末尾时音量平滑过渡，避免突兀截断。</p>
+
+          <!-- 阻止系统休眠 -->
+          <div class="flex items-center justify-between pt-2">
+            <span class="text-zinc-600 dark:text-zinc-300">播放时阻止系统休眠 / 锁屏</span>
+            <button
+              class="relative h-5 w-9 cursor-pointer rounded-full transition"
+              :class="preventSleepOn ? 'bg-violet-500' : 'bg-zinc-200 dark:bg-zinc-700'"
+              title="播放歌曲期间保持系统与屏幕常亮，防止自动休眠/锁屏"
+              @click="onPreventSleepToggle"
+            >
+              <span
+                class="absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all"
+                :class="preventSleepOn ? 'left-[18px]' : 'left-0.5'"
+              ></span>
+            </button>
+          </div>
+          <p class="text-xs text-zinc-400">播放期间保持系统与屏幕常亮；暂停 / 停止后自动恢复（默认开启）。Windows 通过系统电源 API 实现，其他平台尝试 Web Wake Lock。</p>
         </div>
       </section>
 
