@@ -12,9 +12,8 @@ mod state;
 #[cfg(windows)]
 mod thumbbar;
 
-use tauri::menu::{Menu, MenuItem};
-use tauri::tray::TrayIconBuilder;
-use tauri::{Emitter, Manager};
+use tauri::tray::{MouseButtonState, TrayIconBuilder, TrayIconEvent};
+use tauri::{AppHandle, Manager, PhysicalPosition};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -81,37 +80,55 @@ pub fn run() {
                 cover_extract: std::sync::Mutex::new(()),
             });
 
-            // 系统托盘（M2）
-            let show = MenuItem::with_id(app, "show", "显示主窗口", true, None::<&str>)?;
-            let toggle = MenuItem::with_id(app, "toggle", "播放 / 暂停", true, None::<&str>)?;
-            let prev = MenuItem::with_id(app, "prev", "上一首", true, None::<&str>)?;
-            let next = MenuItem::with_id(app, "next", "下一首", true, None::<&str>)?;
-            let quit = MenuItem::with_id(app, "quit", "退出 LanMusic", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&show, &toggle, &prev, &next, &quit])?;
-            TrayIconBuilder::with_id("main-tray")
+            // 系统托盘：点击图标弹出自定义菜单弹窗（类似 QQ 音乐）。
+            // 原生托盘菜单无法实现圆角/封面/悬停高亮等样式，改用独立 tray 窗口渲染；
+            // 启动时预创建为隐藏窗口，点击即现，失焦自动收起。
+            let tray_builder =
+                tauri::WebviewWindowBuilder::new(app, "tray", tauri::WebviewUrl::App("index.html".into()))
+                    .title("LanMusic 托盘菜单")
+                    .decorations(false)
+                    .always_on_top(true)
+                    .skip_taskbar(true)
+                    .resizable(false)
+                    .shadow(false)
+                    .focused(false)
+                    .visible(false)
+                    .inner_size(TRAY_MENU_W, TRAY_MENU_H);
+            // 透明背景：Windows/Linux 支持圆角+投影；macOS 需 macos-private-api feature，v1 暂不启用
+            #[cfg(any(windows, target_os = "linux"))]
+            let tray_builder = tray_builder.transparent(true);
+            let tray_window = tray_builder.build()?;
+
+            // 失焦自动收起：延迟 150ms，避免「点击托盘关闭菜单」时 blur 先隐藏、
+            // 随后托盘 Click 事件又把菜单重新弹出的竞态
+            {
+                let w = tray_window.clone();
+                tray_window.on_window_event(move |event| {
+                    if let tauri::WindowEvent::Focused(false) = event {
+                        let w = w.clone();
+                        std::thread::spawn(move || {
+                            std::thread::sleep(std::time::Duration::from_millis(150));
+                            if !w.is_focused().unwrap_or(true) {
+                                let _ = w.hide();
+                            }
+                        });
+                    }
+                });
+            }
+
+            let _tray = TrayIconBuilder::with_id("main-tray")
                 .icon(app.default_window_icon().expect("缺少应用图标").clone())
                 .tooltip("LanMusic")
-                .menu(&menu)
-                .show_menu_on_left_click(false)
-                .on_menu_event(|app, event| match event.id().as_ref() {
-                    "show" => {
-                        if let Some(w) = app.get_webview_window("main") {
-                            let _ = w.show();
-                            let _ = w.unminimize();
-                            let _ = w.set_focus();
-                        }
+                .on_tray_icon_event(|tray, event| {
+                    if let TrayIconEvent::Click {
+                        position,
+                        rect,
+                        button_state: MouseButtonState::Up,
+                        ..
+                    } = event
+                    {
+                        toggle_tray_menu(tray.app_handle(), position, rect);
                     }
-                    "toggle" => {
-                        let _ = app.emit("tray", "toggle");
-                    }
-                    "prev" => {
-                        let _ = app.emit("tray", "prev");
-                    }
-                    "next" => {
-                        let _ = app.emit("tray", "next");
-                    }
-                    "quit" => app.exit(0),
-                    _ => {}
                 })
                 .build(app)?;
 
@@ -160,8 +177,62 @@ pub fn run() {
             commands::set_thumbbar_playing,
             commands::desktop_lyrics_set,
             commands::list_system_fonts,
+            commands::exit_app,
             commands::webdav_add_source
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+/// 托盘菜单弹窗逻辑尺寸（物理像素 = 逻辑 × DPI 缩放）
+const TRAY_MENU_W: f64 = 288.0;
+const TRAY_MENU_H: f64 = 196.0;
+
+/// 托盘点击：菜单弹窗已显示则收起，否则按托盘图标位置弹出
+fn toggle_tray_menu(app: &AppHandle, cursor: PhysicalPosition<f64>, tray_rect: tauri::Rect) {
+    let Some(w) = app.get_webview_window("tray") else {
+        return;
+    };
+    if w.is_visible().unwrap_or(false) {
+        let _ = w.hide();
+        return;
+    }
+    position_tray_menu(&w, cursor, &tray_rect);
+    let _ = w.show();
+    let _ = w.set_focus();
+}
+
+/// 把弹窗定位到托盘图标上方居中（任务栏在顶部时改为下方），并 clamp 在光标所在显示器内
+fn position_tray_menu(
+    w: &tauri::WebviewWindow,
+    cursor: PhysicalPosition<f64>,
+    tray_rect: &tauri::Rect,
+) {
+    // 光标所在显示器（多显示器时弹窗与托盘同屏）
+    let monitor = w
+        .monitor_from_point(cursor.x, cursor.y)
+        .ok()
+        .flatten()
+        .or_else(|| w.primary_monitor().ok().flatten());
+    let scale = monitor.as_ref().map(|m| m.scale_factor()).unwrap_or(1.0);
+    let pw = (TRAY_MENU_W * scale) as i32;
+    let ph = (TRAY_MENU_H * scale) as i32;
+    // 托盘图标矩形：事件的 position/size 为逻辑/物理混合的枚举，统一转物理像素
+    let icon_pos = tray_rect.position.to_physical::<i32>(scale);
+    let icon = tray_rect.size.to_physical::<u32>(scale);
+
+    // 水平：托盘图标中心对齐弹窗中心；垂直：图标上方留 8 物理像素
+    let icon_cx = icon_pos.x + icon.width as i32 / 2;
+    let mut x = icon_cx - pw / 2;
+    let mut y = icon_pos.y - ph - 8;
+    if let Some(m) = &monitor {
+        let mp = m.position();
+        let ms = m.size();
+        x = x.clamp(mp.x + 8, mp.x + ms.width as i32 - pw - 8);
+        if y < mp.y + 8 {
+            // 任务栏在屏幕顶部：弹窗改到图标下方
+            y = icon_pos.y + icon.height as i32 + 8;
+        }
+    }
+    let _ = w.set_position(PhysicalPosition::new(x, y));
 }

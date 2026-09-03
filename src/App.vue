@@ -19,6 +19,7 @@ import { useNav } from '@/composables/useNav'
 import { useAmbient } from '@/composables/useAmbient'
 import { useSkinOpen } from '@/composables/useSkin'
 import { useDesktopLyrics } from '@/composables/useDesktopLyrics'
+import { useTrayMenu } from '@/composables/useTrayMenu'
 
 const library = useLibraryStore()
 const player = usePlayerStore()
@@ -30,6 +31,8 @@ const nowPlaying = ref(false)
 
 // 桌面歌词：初始化同步监听并恢复上次开启状态（主窗口内仅此一次）
 useDesktopLyrics()
+// 系统托盘菜单：向 tray 弹窗同步播放状态并处理其系统级指令
+useTrayMenu()
 
 /** 播放页专注模式：仅当正在播放且播放页打开时启用；鼠标不在底部/顶栏控制区，5s 无移动则隐藏控制 */
 const npFocus = ref(false)

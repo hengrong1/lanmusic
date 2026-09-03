@@ -601,6 +601,12 @@ pub async fn desktop_lyrics_set(app: AppHandle, enabled: bool) -> Result<bool, S
 
 // ---------- 其他 ----------
 
+/// 退出应用（托盘菜单「退出」）
+#[tauri::command]
+pub fn exit_app(app: AppHandle) {
+    app.exit(0);
+}
+
 /// 在系统文件管理器中显示曲目文件
 #[tauri::command]
 pub fn reveal_track(state: State<'_, AppState>, id: i64) -> Result<(), String> {

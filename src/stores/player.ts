@@ -324,6 +324,7 @@ export const usePlayerStore = defineStore('player', () => {
     if (e.payload === 'toggle') toggle()
     else if (e.payload === 'next') next()
     else if (e.payload === 'prev') prev()
+    else if (e.payload === 'fav') toggleFav()
   })
 
   // Windows 任务栏缩略图工具栏：播放状态变化时同步中间按钮的播放/暂停图标

@@ -1,4 +1,5 @@
 /** 全局字体（localStorage 持久化）：设置为空串表示使用软件默认字体栈 */
+import { emit } from '@tauri-apps/api/event'
 
 const LS_FONT = 'lm.font'
 
@@ -22,5 +23,7 @@ export function setAppFont(family: string) {
   if (family) localStorage.setItem(LS_FONT, family)
   else localStorage.removeItem(LS_FONT)
   applyTo(document, family)
+  // 通知歌词/托盘浮窗同步新字体
+  void emit('font:changed', family).catch(() => {})
 }
 

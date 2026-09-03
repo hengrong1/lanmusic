@@ -144,6 +144,8 @@ export function useDesktopLyrics() {
     )
     // 歌词浮窗就绪后立即补推一次（覆盖窗口刚创建/无新歌词行变化的场景）
     void listen('lyrics:ready', () => push(deskLines.value.lines, deskLines.value.active))
+    // 全局字体变更（设置页）：立即同步给歌词浮窗
+    void listen<string>('font:changed', () => push(deskLines.value.lines, deskLines.value.active))
     // 歌词浮窗控制条指令：转发给播放器（校准与播放页 [ ] / 还原语义一致）
     void listen<DeskControl>('lyrics:control', (e) => {
       switch (e.payload) {

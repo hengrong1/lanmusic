@@ -64,6 +64,8 @@ export const api = {
   desktopLyricsSet: (enabled: boolean) => invoke<boolean>('desktop_lyrics_set', { enabled }),
   // 系统已安装字体列表（DirectWrite 枚举字族名；其他平台为空数组）
   listSystemFonts: () => invoke<string[]>('list_system_fonts'),
+  // 退出应用（托盘菜单「退出」）
+  exitApp: () => invoke<void>('exit_app'),
 
   // 设置（M2/M3）
   getSetting: (key: string) => invoke<string | null>('get_setting', { key }),
