@@ -19,7 +19,7 @@ export const i18n = createI18n<[MessageSchema], 'zh' | 'en'>({
 })
 
 export function setLocale(locale: 'zh' | 'en') {
-  ;(i18n.global.locale as { value: 'zh' | 'en' }).value = locale
+  ;(i18n.global.locale as unknown as { value: 'zh' | 'en' }).value = locale
   localStorage.setItem('lm.locale', locale)
   document.querySelector('html')?.setAttribute('lang', locale)
 }
