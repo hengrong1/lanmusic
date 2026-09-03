@@ -42,6 +42,8 @@ windows = { version = "0.61", features = [
     "Win32_UI_Shell",
     "Win32_UI_WindowsAndMessaging",
 ] }
+# 系统字体枚举（读注册表 Fonts 项）
+winreg = "0.55"
 
 [target."cfg(target_os = \"macos\")".dependencies]
 objc2-app-kit = { version = "0.3.2", features = ["NSColor", "NSWindow", "objc2-core-foundation"] }

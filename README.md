@@ -166,7 +166,7 @@ src-tauri/                 # Rust 后端
 | 来源管理 | `add_local_source(path)` · `list_sources()` · `remove_source(id)` · `rescan_source(id, mode: auto\|full)` · `set_source_fast_import(id, enabled)` · `webdav_add_source(url, username, password, name?)` |
 | 曲库查询 | `query_tracks({view, refId, search, sort, page, pageSize})` · `query_albums(search, page, pageSize)` · `query_artists(search, page, pageSize)` · `get_track(id)` · `get_tracks_by_ids(ids)` · `get_stream_url(id)` · `library_stats()` · `reveal_track(id)` |
 | 歌单 | `playlist_list` · `playlist_create(name)` · `playlist_rename(id, name)` · `playlist_delete(id)` · `playlist_get_items(id)` · `playlist_add_tracks(id, trackIds)` · `playlist_remove_track(id, trackId)` · `playlist_remove_tracks(id, trackIds)` · `playlist_set_description(id, description)` · `playlist_cover(id)` · `playlist_reorder(id, trackIds)` |
-| 播放/歌词/喜欢 | `report_play(id)` · `get_lyrics(id)` · `favorite_toggle(id, fav)` · `set_thumbbar_playing(playing)`（Windows 任务栏缩略图按钮图标同步） |
+| 播放/歌词/喜欢 | `report_play(id)` · `get_lyrics(id)` · `favorite_toggle(id, fav)` · `set_thumbbar_playing(playing)`（Windows 任务栏缩略图按钮图标同步） · `desktop_lyrics_set(enabled)`（桌面歌词浮窗开关） · `list_system_fonts()`（系统字体列表） |
 | 设置 | `get_setting(key)` · `set_setting(key, value)` |
 
 `query_tracks` 支持的 `sort` 值：`title` `-title` `album` `-album` `artist` `-artist` `added` `duration` `-duration` `recent` `none`（`-` 前缀为降序）。
@@ -179,6 +179,14 @@ src-tauri/                 # Rust 后端
 | `scan:done` | `{sourceId, added, updated, removed, ms}` | 扫描完成统计 |
 | `scan:error` | `{sourceId, message}` | 扫描失败 |
 | `tray` | `"toggle"` \| `"prev"` \| `"next"` | 系统托盘菜单操作 / Windows 任务栏缩略图控制按钮 |
+
+### 窗口间事件（前端 → 前端，桌面歌词同步）
+
+| 事件 | 方向 | 载荷 | 说明 |
+|---|---|---|---|
+| `lyrics:sync` | 主窗口 → 歌词浮窗 | `{lines: [行1, 行2], active: 0\|1, config, playing}` | 双行交替：`active` 指明播放行所在位置，行/配置/播放状态变化即推送 |
+| `lyrics:ready` | 歌词浮窗 → 主窗口 | - | 浮窗就绪，主窗口立即补推一次 |
+| `lyrics:control` | 歌词浮窗 → 主窗口 | `"prev" \| "toggle" \| "next" \| "close" \| "calib-back" \| "calib-forward" \| "calib-reset"` | 浮窗控制条指令（切歌/关闭/歌词校准），由播放器执行 |
 
 ## 数据库结构
 
@@ -207,6 +215,8 @@ SQLite（WAL 模式，外键开启），建表与列迁移见 `src-tauri/src/db.
 | `lm.nav` | 上次停留的视图（含筛选上下文，启动时恢复） |
 | `sidebar:collapsed` | 侧栏是否收起 |
 | `lm.lrcOffset.<trackId>` | 歌词偏移（秒，按曲目记忆，见「歌词校准」） |
+| `lm.font` | 全局字体（CSS font-family 字符串，空 = 软件默认字体栈） |
+| `lm.deskLyrics` | 桌面歌词 `{enabled, config: {lines, align(left\|center\|right\|split), color, pendingColor, fontSize, bgColor, bgOpacity, outline, outlineColor, bold}}` |
 
 ## 安全设计
 

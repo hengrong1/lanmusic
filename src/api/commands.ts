@@ -60,6 +60,10 @@ export const api = {
   favoriteToggle: (id: number, fav: boolean) => invoke<void>('favorite_toggle', { id, fav }),
   // Windows 任务栏缩略图按钮：同步播放/暂停图标（其他平台为空操作）
   setThumbbarPlaying: (playing: boolean) => invoke<void>('set_thumbbar_playing', { playing }),
+  // 桌面歌词浮窗开关，返回最终状态
+  desktopLyricsSet: (enabled: boolean) => invoke<boolean>('desktop_lyrics_set', { enabled }),
+  // 系统已安装字体列表（Windows 注册表枚举；其他平台为空数组）
+  listSystemFonts: () => invoke<string[]>('list_system_fonts'),
 
   // 设置（M2/M3）
   getSetting: (key: string) => invoke<string | null>('get_setting', { key }),

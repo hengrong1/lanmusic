@@ -14,10 +14,72 @@ import { useTheme, type ThemeMode } from '@/composables/useTheme'
 import { toast } from '@/composables/useToast'
 import { confirmDialog } from '@/composables/useConfirm'
 import { useStagger } from '@/composables/useStagger'
+import { useDesktopLyrics } from '@/composables/useDesktopLyrics'
+import { getAppFont, setAppFont } from '@/composables/useAppFont'
+import { api } from '@/api/commands'
 import type { Source } from '@/types'
 
 const library = useLibraryStore()
 const { mode, setTheme } = useTheme()
+const { enabled: dlEnabled, toggle: dlToggle, config: dlConfig } = useDesktopLyrics()
+
+/** 桌面歌词设置项可选项 */
+const dlLineOptions = [
+  { value: 1 as const, label: '单行' },
+  { value: 2 as const, label: '双行' },
+]
+const dlAlignOptions = [
+  { value: 'left' as const, label: '左对齐' },
+  { value: 'center' as const, label: '居中' },
+  { value: 'right' as const, label: '右对齐' },
+  { value: 'split' as const, label: '左右分离' },
+]
+
+// ---- 全局字体（设置 → 外观）----
+const appFont = ref(getAppFont())
+/** 系统已安装字体（Rust 侧读注册表；非 Windows / 读取失败为空，只显示默认项） */
+const systemFonts = ref<string[]>([])
+onMounted(() => {
+  api
+    .listSystemFonts()
+    .then((f) => (systemFonts.value = f))
+    .catch(() => (systemFonts.value = []))
+})
+function onFontChange(e: Event) {
+  appFont.value = (e.target as HTMLSelectElement).value
+  setAppFont(appFont.value)
+}
+
+/** 桌面歌词预览：与浮窗完全一致的样式计算 */
+function hexToRgba(hex: string, alpha: number): string {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim())
+  if (!m) return `rgba(0, 0, 0, ${alpha})`
+  const n = parseInt(m[1], 16)
+  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`
+}
+const previewBoxStyle = computed(() => ({
+  background:
+    dlConfig.value.bgOpacity > 0 ? hexToRgba(dlConfig.value.bgColor, dlConfig.value.bgOpacity) : 'transparent',
+  boxShadow: dlConfig.value.bgOpacity > 0 ? 'none' : 'inset 0 0 0 1px rgba(0,0,0,0.08)',
+}))
+const previewShadow = computed(() => {
+  if (!dlConfig.value.outline) return 'none'
+  return `0 0 2px ${dlConfig.value.outlineColor}, 0 1px 2px ${dlConfig.value.outlineColor}`
+})
+const previewMainStyle = computed(() => ({
+  color: dlConfig.value.color,
+  fontSize: `${Math.min(dlConfig.value.fontSize, 28)}px`,
+  fontWeight: dlConfig.value.bold ? 700 : 500,
+  textShadow: previewShadow.value,
+  textAlign: dlConfig.value.align === 'split' ? 'left' : dlConfig.value.align,
+}))
+const previewPendingStyle = computed(() => ({
+  color: dlConfig.value.pendingColor,
+  fontSize: `${Math.min(dlConfig.value.fontSize, 28)}px`,
+  fontWeight: dlConfig.value.bold ? 700 : 500,
+  textShadow: previewShadow.value,
+  textAlign: dlConfig.value.align === 'split' ? 'right' : dlConfig.value.align,
+}))
 const root = ref<HTMLElement | null>(null)
 useStagger(root, ref(true))
 
@@ -290,20 +352,203 @@ const scannedSourceIds = computed(() => new Set(Object.keys(library.scanProgress
       <!-- 外观 -->
       <section data-stagger>
         <h2 class="mb-3 text-sm font-semibold text-zinc-800 dark:text-zinc-100">外观</h2>
-        <div class="flex gap-2">
-          <button
-            v-for="t in themes"
-            :key="t.value"
-            class="cursor-pointer rounded-full px-4 py-1.5 text-sm transition"
-            :class="
-              mode === t.value
-                ? 'bg-violet-500 font-medium text-white'
-                : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700'
-            "
-            @click="setTheme(t.value)"
+        <div class="space-y-3">
+          <div class="flex gap-2">
+            <button
+              v-for="t in themes"
+              :key="t.value"
+              class="cursor-pointer rounded-full px-4 py-1.5 text-sm transition"
+              :class="
+                mode === t.value
+                  ? 'bg-violet-500 font-medium text-white'
+                  : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700'
+              "
+              @click="setTheme(t.value)"
+            >
+              {{ t.label }}
+            </button>
+          </div>
+          <!-- 全局字体：应用于整个软件（含桌面歌词），从系统读取 -->
+          <div class="flex items-center justify-between gap-3">
+            <span class="text-sm text-zinc-600 dark:text-zinc-300">字体</span>
+            <select
+              class="h-9 max-w-[280px] flex-1 cursor-pointer rounded-lg border border-zinc-200 bg-transparent px-2 text-sm outline-none focus:border-violet-400 dark:border-zinc-700"
+              :value="appFont"
+              @change="onFontChange"
+            >
+              <option value="">默认字体</option>
+              <option v-for="f in systemFonts" :key="f" :value="`'${f}'`">{{ f }}</option>
+            </select>
+          </div>
+        </div>
+      </section>
+
+      <!-- 桌面歌词 -->
+      <section data-stagger>
+        <h2 class="mb-3 text-sm font-semibold text-zinc-800 dark:text-zinc-100">桌面歌词</h2>
+        <div class="rounded-xl border border-zinc-200 bg-white p-4 text-sm dark:border-zinc-800 dark:bg-zinc-900">
+          <!-- 预览：与浮窗样式一致，随下方设置实时变化 -->
+          <div
+            class="flex min-h-[76px] flex-col justify-center gap-1 rounded-xl px-5 py-3"
+            :style="previewBoxStyle"
           >
-            {{ t.label }}
-          </button>
+            <p class="truncate font-bold" :style="previewMainStyle">这是正在播放的一句歌词预览</p>
+            <p class="truncate" :style="previewPendingStyle">这是下一句歌词的预告预览</p>
+          </div>
+
+          <!-- 显示 -->
+          <div class="mt-5 mb-3 flex items-center gap-2">
+            <span class="text-xs font-medium text-zinc-400">显示</span>
+            <span class="h-px flex-1 bg-zinc-100 dark:bg-zinc-800"></span>
+          </div>
+          <div class="grid grid-cols-1 gap-x-8 gap-y-4 sm:grid-cols-2">
+            <!-- 开关 -->
+            <div class="flex items-center justify-between">
+              <span class="text-zinc-600 dark:text-zinc-300">显示桌面歌词浮窗</span>
+              <button
+                class="cursor-pointer rounded-full px-4 py-1.5 transition"
+                :class="
+                  dlEnabled
+                    ? 'bg-violet-500 font-medium text-white'
+                    : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700'
+                "
+                @click="dlToggle()"
+              >
+                {{ dlEnabled ? '已开启' : '已关闭' }}
+              </button>
+            </div>
+            <!-- 显示行数 -->
+            <div class="flex items-center justify-between">
+              <span class="text-zinc-600 dark:text-zinc-300">显示行数</span>
+              <div class="flex gap-2">
+                <button
+                  v-for="opt in dlLineOptions"
+                  :key="opt.value"
+                  class="cursor-pointer rounded-full px-4 py-1.5 transition"
+                  :class="
+                    dlConfig.lines === opt.value
+                      ? 'bg-violet-500 font-medium text-white'
+                      : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700'
+                  "
+                  @click="dlConfig.lines = opt.value"
+                >
+                  {{ opt.label }}
+                </button>
+              </div>
+            </div>
+            <!-- 对齐方式（选项较多，独占一行） -->
+            <div class="flex items-center justify-between gap-3 sm:col-span-2">
+              <span class="shrink-0 text-zinc-600 dark:text-zinc-300">对齐方式</span>
+              <div class="flex gap-2">
+                <button
+                  v-for="opt in dlAlignOptions"
+                  :key="opt.value"
+                  v-show="opt.value !== 'split' || dlConfig.lines === 2"
+                  class="cursor-pointer rounded-full px-4 py-1.5 transition"
+                  :class="
+                    dlConfig.align === opt.value
+                      ? 'bg-violet-500 font-medium text-white'
+                      : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700'
+                  "
+                  @click="dlConfig.align = opt.value"
+                >
+                  {{ opt.label }}
+                </button>
+              </div>
+            </div>
+          </div>
+          <!-- 样式 -->
+          <div class="mt-5 mb-3 flex items-center gap-2">
+            <span class="text-xs font-medium text-zinc-400">样式</span>
+            <span class="h-px flex-1 bg-zinc-100 dark:bg-zinc-800"></span>
+          </div>
+          <div class="grid grid-cols-1 gap-x-8 gap-y-4 sm:grid-cols-2">
+            <!-- 播放行颜色 -->
+            <div class="flex items-center justify-between">
+              <span class="text-zinc-600 dark:text-zinc-300">播放行颜色</span>
+              <input
+                type="color"
+                class="h-8 w-14 cursor-pointer rounded-lg border border-zinc-200 bg-transparent p-0.5 dark:border-zinc-700"
+                :value="dlConfig.color"
+                @input="dlConfig.color = ($event.target as HTMLInputElement).value"
+              />
+            </div>
+            <!-- 未播放行颜色 -->
+            <div class="flex items-center justify-between">
+              <span class="text-zinc-600 dark:text-zinc-300">未播放行颜色</span>
+              <input
+                type="color"
+                class="h-8 w-14 cursor-pointer rounded-lg border border-zinc-200 bg-transparent p-0.5 dark:border-zinc-700"
+                :value="dlConfig.pendingColor"
+                @input="dlConfig.pendingColor = ($event.target as HTMLInputElement).value"
+              />
+            </div>
+            <!-- 描边 -->
+            <div class="flex items-center justify-between">
+              <span class="text-zinc-600 dark:text-zinc-300">显示文字描边</span>
+              <div class="flex items-center gap-2">
+                <input
+                  v-model="dlConfig.outline"
+                  type="color"
+                  class="h-8 w-14 cursor-pointer rounded-lg border border-zinc-200 bg-transparent p-0.5 dark:border-zinc-700"
+                  :class="{ 'pointer-events-none opacity-40': !dlConfig.outline }"
+                  :value="dlConfig.outlineColor"
+                  @input="dlConfig.outlineColor = ($event.target as HTMLInputElement).value"
+                />
+                <input v-model="dlConfig.outline" type="checkbox" class="h-4 w-4 cursor-pointer accent-violet-500" />
+              </div>
+            </div>
+            <!-- 字体加粗 -->
+            <div class="flex items-center justify-between">
+              <span class="text-zinc-600 dark:text-zinc-300">字体加粗</span>
+              <input v-model="dlConfig.bold" type="checkbox" class="h-4 w-4 cursor-pointer accent-violet-500" />
+            </div>
+            <!-- 字号（独占一行，滑杆拉满宽度） -->
+            <div class="flex items-center gap-3 sm:col-span-2">
+              <span class="shrink-0 text-zinc-600 dark:text-zinc-300">字号（{{ dlConfig.fontSize }}px）</span>
+              <input
+                v-model.number="dlConfig.fontSize"
+                type="range"
+                class="slider w-full min-w-0 flex-1"
+                min="18"
+                max="56"
+                step="2"
+                :style="{ '--fill': ((dlConfig.fontSize - 18) / 38) * 100 + '%' }"
+              />
+            </div>
+          </div>
+
+          <!-- 背景 -->
+          <div class="mt-5 mb-3 flex items-center gap-2">
+            <span class="text-xs font-medium text-zinc-400">背景</span>
+            <span class="h-px flex-1 bg-zinc-100 dark:bg-zinc-800"></span>
+          </div>
+          <div class="grid grid-cols-1 gap-x-8 gap-y-4 sm:grid-cols-2">
+            <!-- 背景颜色 -->
+            <div class="flex items-center justify-between">
+              <span class="text-zinc-600 dark:text-zinc-300">背景颜色</span>
+              <input
+                type="color"
+                class="h-8 w-14 cursor-pointer rounded-lg border border-zinc-200 bg-transparent p-0.5 dark:border-zinc-700"
+                :value="dlConfig.bgColor"
+                @input="dlConfig.bgColor = ($event.target as HTMLInputElement).value"
+              />
+            </div>
+            <!-- 背景不透明度 -->
+            <div class="flex items-center gap-3">
+              <span class="shrink-0 text-zinc-600 dark:text-zinc-300">不透明度（{{ Math.round(dlConfig.bgOpacity * 100) }}%）</span>
+              <input
+                v-model.number="dlConfig.bgOpacity"
+                type="range"
+                class="slider w-full min-w-0 flex-1"
+                min="0"
+                max="0.85"
+                step="0.05"
+                :style="{ '--fill': (dlConfig.bgOpacity / 0.85) * 100 + '%' }"
+              />
+            </div>
+          </div>
+          <p class="mt-4 text-xs text-zinc-400">按住桌面歌词文字区域可拖动位置；悬停浮窗可使用控制条（切歌 / 歌词校准 / 关闭）。</p>
         </div>
       </section>
 

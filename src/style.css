@@ -76,3 +76,13 @@ input[type='range'].slider:hover::-webkit-slider-thumb {
 input[type='range'].slider:disabled {
   cursor: default;
 }
+
+/* ---- 原生 select 弹出选项：显式配色，避免暗色模式下弹层白底看不清 ---- */
+select option {
+  background-color: #ffffff;
+  color: #18181b;
+}
+html.dark select option {
+  background-color: #27272a;
+  color: #e4e4e7;
+}

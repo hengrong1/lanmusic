@@ -18,6 +18,7 @@ import { usePlayerStore } from '@/stores/player'
 import { useNav } from '@/composables/useNav'
 import { useAmbient } from '@/composables/useAmbient'
 import { useSkinOpen } from '@/composables/useSkin'
+import { useDesktopLyrics } from '@/composables/useDesktopLyrics'
 
 const library = useLibraryStore()
 const player = usePlayerStore()
@@ -26,6 +27,9 @@ const { palette } = useAmbient()
 
 const queueOpen = ref(false)
 const nowPlaying = ref(false)
+
+// 桌面歌词：初始化同步监听并恢复上次开启状态（主窗口内仅此一次）
+useDesktopLyrics()
 
 /** 播放页专注模式：仅当正在播放且播放页打开时启用；鼠标不在底部/顶栏控制区，5s 无移动则隐藏控制 */
 const npFocus = ref(false)

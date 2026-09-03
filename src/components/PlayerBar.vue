@@ -18,7 +18,9 @@ import { HeartIcon as HeartBold } from '@solar-icons/vue/bold/heart'
 import { VolumeSmallIcon as Volume1 } from '@solar-icons/vue/linear/volume-small'
 import { VolumeLoudIcon as Volume2 } from '@solar-icons/vue/linear/volume-loud'
 import { VolumeCrossIcon as VolumeX } from '@solar-icons/vue/linear/volume-cross'
+import { SubtitlesIcon as Subtitles } from '@solar-icons/vue/linear/subtitles'
 import { usePlayerStore, type PlayMode } from '@/stores/player'
+import { useDesktopLyrics } from '@/composables/useDesktopLyrics'
 import { useNav } from '@/composables/useNav'
 import { useAmbient } from '@/composables/useAmbient'
 import { useSkin, useSkinOpen } from '@/composables/useSkin'
@@ -228,6 +230,9 @@ const currentLyricLine = computed(() => {
 const pct = computed(() => (player.duration > 0 ? (player.position / player.duration) * 100 : 0))
 const volPct = computed(() => (player.muted ? 0 : player.volume * 100))
 const volDisplay = computed(() => Math.round(player.volume * 100))
+
+// ---- 桌面歌词开关（音量之后） ----
+const { enabled: dlEnabled, toggle: dlToggle } = useDesktopLyrics()
 /** 音量条/图标悬停时显示音量数字气泡 */
 const volHover = ref(false)
 
@@ -616,6 +621,15 @@ const theme = computed(() =>
           @input="player.setVolume(Number(($event.target as HTMLInputElement).value))"
         />
       </div>
+      <!-- 桌面歌词开关：音量之后 -->
+      <button
+        class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full transition-colors duration-500"
+        :class="dlEnabled ? 'text-violet-500 hover:bg-violet-500/10' : theme.iconBtn"
+        :title="dlEnabled ? '关闭桌面歌词' : '开启桌面歌词'"
+        @click="dlToggle()"
+      >
+        <Subtitles class="h-4 w-4" />
+      </button>
       <button
         data-queue-toggle
         class="ml-2 flex h-8 w-8 cursor-pointer items-center justify-center rounded-full transition-colors duration-500"

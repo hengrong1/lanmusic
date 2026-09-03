@@ -1,5 +1,7 @@
 mod commands;
 mod covers;
+#[cfg(windows)]
+mod fonts;
 mod db;
 mod lyrics;
 mod metadata;
@@ -156,6 +158,8 @@ pub fn run() {
             commands::get_setting,
             commands::set_setting,
             commands::set_thumbbar_playing,
+            commands::desktop_lyrics_set,
+            commands::list_system_fonts,
             commands::webdav_add_source
         ])
         .run(tauri::generate_context!())

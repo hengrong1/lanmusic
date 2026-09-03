@@ -537,6 +537,68 @@ pub fn set_thumbbar_playing(playing: bool) -> Result<(), String> {
     Ok(())
 }
 
+// ---------- 系统字体 ----------
+
+/// 枚举系统已安装字体（注册表 Fonts 项的字体友好名称），供全局字体设置选择；
+/// 非 Windows 平台返回空列表（前端隐藏字体下拉的字体项）。
+#[tauri::command]
+pub fn list_system_fonts() -> Result<Vec<String>, String> {
+    #[cfg(windows)]
+    return Ok(crate::fonts::system_fonts());
+    #[cfg(not(windows))]
+    return Ok(Vec::new());
+}
+
+// ---------- 桌面歌词 ----------
+
+/// 开启/关闭桌面歌词浮窗（置顶、无边框、可拖动），返回最终状态。
+/// 浮窗与主窗口共用前端资源，前端按窗口 label（lyrics）渲染桌面歌词 UI。
+///
+/// 注意：必须为 async 命令。Windows 上 WebView2 窗口的创建会阻塞等待主线程消息，
+/// 同步命令在主线程执行会导致消息循环死锁（应用卡死），async 命令在工作线程执行、
+/// 由 Tauri 内部代理到主线程完成创建。
+#[tauri::command]
+pub async fn desktop_lyrics_set(app: AppHandle, enabled: bool) -> Result<bool, String> {
+    if !enabled {
+        if let Some(w) = app.get_webview_window("lyrics") {
+            w.close().map_err(|e| e.to_string())?;
+        }
+        return Ok(false);
+    }
+    if app.get_webview_window("lyrics").is_some() {
+        return Ok(true);
+    }
+    let builder = tauri::webview::WebviewWindowBuilder::new(
+        &app,
+        "lyrics",
+        tauri::WebviewUrl::App("index.html".into()),
+    )
+    .title("LanMusic 桌面歌词")
+    .decorations(false)
+    .always_on_top(true)
+    .skip_taskbar(true)
+    .resizable(false)
+    .shadow(false)
+    .focused(false)
+    .inner_size(760.0, 170.0);
+    // 透明背景：Windows/Linux 支持；macOS 需 macos-private-api feature，v1 暂不启用
+    #[cfg(any(windows, target_os = "linux"))]
+    let builder = builder.transparent(true);
+    let win = builder.build().map_err(|e| e.to_string())?;
+
+    // 主显示器底部居中（上方留出约 120 逻辑像素，避开任务栏区域）
+    if let Ok(Some(monitor)) = win.primary_monitor() {
+        let scale = monitor.scale_factor();
+        let (logical_w, logical_h) = (760.0_f64, 170.0_f64);
+        let screen = monitor.size();
+        let pos = monitor.position();
+        let x = pos.x + ((screen.width as f64 - logical_w * scale) / 2.0) as i32;
+        let y = pos.y + (screen.height as f64 - logical_h * scale) as i32 - (120.0 * scale) as i32;
+        let _ = win.set_position(tauri::PhysicalPosition::new(x, y));
+    }
+    Ok(true)
+}
+
 // ---------- 其他 ----------
 
 /// 在系统文件管理器中显示曲目文件
