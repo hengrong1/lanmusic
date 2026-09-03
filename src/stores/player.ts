@@ -1,6 +1,7 @@
 import { computed, markRaw, ref, watch } from 'vue'
 import { defineStore } from 'pinia'
 import { listen } from '@tauri-apps/api/event'
+import { getCurrentWindow } from '@tauri-apps/api/window'
 import type { Track } from '@/types'
 import { trackStreamUrl } from '@/api/scheme'
 import { api } from '@/api/commands'
@@ -328,6 +329,13 @@ export const usePlayerStore = defineStore('player', () => {
   // Windows 任务栏缩略图工具栏：播放状态变化时同步中间按钮的播放/暂停图标
   watch(playing, (p) => {
     api.setThumbbarPlaying(p).catch(() => {})
+  })
+
+  // 窗口标题跟随当前歌曲：任务栏悬停预览 / Alt+Tab 顶部显示歌名（类似 QQ 音乐）
+  const appWindow = getCurrentWindow()
+  watch(current, (t) => {
+    const title = t ? `${t.title} - ${t.artist ?? '未知艺人'}` : 'LanMusic'
+    void appWindow.setTitle(title).catch(() => {})
   })
 
   /** 切换当前歌曲的喜欢状态 */
