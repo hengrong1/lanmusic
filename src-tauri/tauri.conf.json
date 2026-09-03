@@ -31,7 +31,7 @@
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDc5QzIzRTQ3MjJFNzAyRkQKUldUOUF1Y2lSejdDZVRBQXhIcUY2ZWl2TlZwbytNVXJiWllkN1FMQyt3Q1U5aXRBZEVwdUxaS1AK",
       "endpoints": [
-        "https://github.com/YOUR_GITHUB_USERNAME/lanmusic/releases/latest/download/latest.json"
+        "https://github.com/hengrong1/lanmusic/releases/latest/download/latest.json"
       ]
     }
   }
