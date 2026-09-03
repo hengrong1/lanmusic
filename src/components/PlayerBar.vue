@@ -255,6 +255,23 @@ function onVolMove(e: MouseEvent) {
   volBubbleLeftPx.value = Math.min(Math.max(28, local), rect.width - 28)
 }
 
+// ---- 滚轮调节音量：图标与滑块上滚动，每格 5%，调节时短暂显示音量气泡 ----
+let volWheelTimer: ReturnType<typeof setTimeout> | undefined
+function onVolumeWheel(e: WheelEvent) {
+  const step = 0.05
+  const base = player.muted ? 0 : player.volume
+  const next = Math.min(1, Math.max(0, Math.round((base + (e.deltaY < 0 ? step : -step)) * 100) / 100))
+  player.setVolume(next)
+  // 气泡反馈：跟随鼠标所在音量位置（滑块 w-24 ≈ 96px，clamp 到与 onVolMove 一致的边距）
+  volHover.value = true
+  volPreview.value = next * 100
+  volBubbleLeftPx.value = Math.min(Math.max(28, next * 96), 96 - 28)
+  clearTimeout(volWheelTimer)
+  volWheelTimer = setTimeout(() => {
+    volHover.value = false
+  }, 600)
+}
+
 // ---- 进度条悬停气泡：时间 + 对应歌词 ----
 const progressHover = ref(false)
 const hoverPct = ref(0)
@@ -591,14 +608,15 @@ const theme = computed(() =>
       <button
         class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full transition-colors duration-500"
         :class="theme.iconBtn"
-        :title="player.muted ? `已静音（音量 ${volDisplay}%）` : `音量 ${volDisplay}%`"
+        :title="player.muted ? `已静音（音量 ${volDisplay}%）` : `音量 ${volDisplay}%，可滚轮调节`"
         @click="player.toggleMute()"
+        @wheel.prevent="onVolumeWheel"
       >
         <VolumeX v-if="player.muted" class="h-4 w-4" />
         <Volume1 v-else-if="player.volume < 0.5" class="h-4 w-4" />
         <Volume2 v-else class="h-4 w-4" />
       </button>
-      <div class="relative flex w-24 items-center">
+      <div class="relative flex w-24 items-center" @wheel.prevent="onVolumeWheel">
         <!-- 音量数字气泡：跟随鼠标位置显示音量数字 -->
         <div
           class="pointer-events-none absolute -top-8 z-10 rounded-md bg-zinc-800 px-2 py-1 font-mono text-[11px] leading-none text-white opacity-0 shadow-lg transition-opacity duration-150 dark:bg-zinc-700"
