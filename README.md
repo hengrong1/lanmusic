@@ -9,11 +9,11 @@
 
 ## 界面预览
 
-| 首页（歌曲库） | 播放页 | 设置页 |
+| 歌曲库 | 专辑视图 | 艺人视图 |
 |:---:|:---:|:---:|
-| ![首页](docs/screenshots/win_library.jpg) | ![播放页](docs/screenshots/win_nowplaying.jpg) | ![设置页](docs/screenshots/win_settings.jpg) |
+| ![歌曲库](docs/screenshots/library.jpg) | ![专辑](docs/screenshots/albums.jpg) | ![艺人](docs/screenshots/artists.jpg) |
 
-> 更多界面：专辑视图、艺人视图、风格视图可在运行应用后自行查看。
+> 更多界面：风格视图、播放页、设置页可在运行应用后自行查看。
 
 ## 技术栈
 
