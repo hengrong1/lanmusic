@@ -13,6 +13,7 @@ import type {
 } from '@/types'
 import { api } from '@/api/commands'
 import { toast } from '@/composables/useToast'
+import { usePlayerStore } from '@/stores/player'
 
 export const useLibraryStore = defineStore('library', () => {
   const sources = ref<Source[]>([])
@@ -94,6 +95,14 @@ export const useLibraryStore = defineStore('library', () => {
   async function removeSource(id: number) {
     await api.removeSource(id)
     await Promise.all([loadSources(), loadStats(), loadTracks()])
+    // 移除来源后，检查当前播放的歌曲是否还存在（可能被级联删除）
+    const player = usePlayerStore()
+    if (player.current) {
+      const stillExists = await api.getTrack(player.current.id).catch(() => null)
+      if (!stillExists) {
+        player.clearQueue()
+      }
+    }
   }
 
   async function rescan(id: number, mode: 'auto' | 'full' = 'auto') {
