@@ -139,7 +139,7 @@ export const usePlayerStore = defineStore('player', () => {
   /** 淡入淡出期间禁止 watch(volume) 直接写 audio.volume（避免与逐帧渐变打架） */
   let suppressVolSync = false
   function cancelFade() {
-    if (fadeRaf) cancelAnimationFrame(fadeRaf)
+    if (fadeRaf) clearInterval(fadeRaf)
     fadeRaf = 0
     fadeSeq++
     suppressVolSync = false
@@ -156,19 +156,19 @@ export const usePlayerStore = defineStore('player', () => {
     const to = volume.value
     const start = performance.now()
     suppressVolSync = true
-    const step = (now: number) => {
+    // 用定时器而非 rAF 驱动：窗口被遮挡/最小化时 rAF 停摆，音量会永远卡在起点（无声播放）
+    const step = () => {
       if (fadeSeq !== seq) return
-      const t = Math.min(1, (now - start) / FADE_IN_MS)
+      const t = Math.min(1, (performance.now() - start) / FADE_IN_MS)
       audio.volume = from + (to - from) * t
-      if (t < 1) {
-        fadeRaf = requestAnimationFrame(step)
-      } else {
-        fadeRaf = 0
-        suppressVolSync = false
-        audio.volume = volume.value // 结束校正：若过程中用户调了音量则落在最新值
-      }
+      if (t < 1) return
+      clearInterval(fadeRaf)
+      fadeRaf = 0
+      suppressVolSync = false
+      audio.volume = volume.value // 结束校正：若过程中用户调了音量则落在最新值
     }
-    fadeRaf = requestAnimationFrame(step)
+    step()
+    fadeRaf = setInterval(step, 16)
   }
   /** 平滑淡出：降到 0 后执行回调（暂停/换源） */
   function fadeOut(cb?: () => void) {
@@ -181,20 +181,19 @@ export const usePlayerStore = defineStore('player', () => {
     const from = audio.volume
     const start = performance.now()
     suppressVolSync = true
-    const step = (now: number) => {
+    const step = () => {
       if (fadeSeq !== seq) return
-      const t = Math.min(1, (now - start) / FADE_OUT_MS)
+      const t = Math.min(1, (performance.now() - start) / FADE_OUT_MS)
       audio.volume = from * (1 - t)
-      if (t < 1) {
-        fadeRaf = requestAnimationFrame(step)
-      } else {
-        fadeRaf = 0
-        suppressVolSync = false
-        audio.volume = 0
-        cb?.()
-      }
+      if (t < 1) return
+      clearInterval(fadeRaf)
+      fadeRaf = 0
+      suppressVolSync = false
+      audio.volume = 0
+      cb?.()
     }
-    fadeRaf = requestAnimationFrame(step)
+    step()
+    fadeRaf = setInterval(step, 16)
   }
   /** 设置淡入淡出开关（设置页调用）；关闭时立即恢复当前音量 */
   function setFadeEnabled(v: boolean) {
@@ -249,6 +248,33 @@ export const usePlayerStore = defineStore('player', () => {
   })
 
   // ---------- 控制 ----------
+  /**
+   * 发起播放:在调用方（用户手势）内立即调用 play()，数据未就绪时浏览器会挂起直到可播。
+   * 不能等 loadedmetadata 再播——该事件每次加载只触发一次，若已被消费（如启动恢复进度的
+   * seek 场景，readyState 因 seek 未完成停在 HAVE_METADATA），监听永远不会触发，播放死等。
+   * play() 拒绝时若非换源打断（AbortError），等 canplay 后重试一次。
+   */
+  function requestPlay() {
+    buffering.value = true
+    const attempt = () => {
+      audio.play()?.catch((e: unknown) => {
+        if ((e as DOMException | undefined)?.name === 'AbortError') return
+        if (audio.readyState >= 2) {
+          void audio.play().catch(() => (buffering.value = false))
+        } else {
+          audio.addEventListener(
+            'canplay',
+            () => {
+              void audio.play().catch(() => (buffering.value = false))
+            },
+            { once: true },
+          )
+        }
+      })
+    }
+    attempt()
+  }
+
   function load(t: Track, autoplay = true) {
     const doLoad = () => {
       audio.src = trackStreamUrl(t.id)
@@ -261,18 +287,9 @@ export const usePlayerStore = defineStore('player', () => {
       void loadLyrics(t)
       if (autoplay) {
         audio.volume = 0 // 淡入起点
-        // 等待媒体数据加载完成后再播放，避免首次播放失败
-        const tryPlay = () => {
-          void audio.play().catch(() => {})
-          api.reportPlay(t.id).catch(() => {})
-          fadeIn()
-        }
-        // readyState >= 2 (HAVE_CURRENT_DATA) 表示已有足够的数据开始播放
-        if (audio.readyState >= 2 && !audio.paused) {
-          tryPlay()
-        } else {
-          audio.addEventListener('loadedmetadata', tryPlay, { once: true })
-        }
+        requestPlay()
+        api.reportPlay(t.id).catch(() => {})
+        fadeIn()
       }
     }
     if (audio.paused) {
@@ -314,17 +331,8 @@ export const usePlayerStore = defineStore('player', () => {
     if (audio.paused) {
       cancelFade()
       audio.volume = 0 // 淡入起点
-      // 等待媒体数据加载完成后再播放，避免首次播放失败
-      const tryPlay = () => {
-        void audio.play().catch(() => {})
-        fadeIn()
-      }
-      // readyState >= 2 (HAVE_CURRENT_DATA) 表示已有足够的数据开始播放
-      if (audio.readyState >= 2) {
-        tryPlay()
-      } else {
-        audio.addEventListener('loadedmetadata', tryPlay, { once: true })
-      }
+      requestPlay()
+      fadeIn()
     } else {
       // 暂停前先淡出，避免音量突变
       fadeOut(() => audio.pause())
@@ -533,6 +541,9 @@ export const usePlayerStore = defineStore('player', () => {
     void loadLyrics(first)
     const pos = Number(localStorage.getItem(LS.lastPos) ?? 0)
     if (pos > 0) {
+      // 先把进度同步到 UI：媒体是分块流式加载，seek 校准可能要等数秒，
+      // 期间用户不应看到进度归零
+      position.value = pos
       const apply = () => {
         if (pos < (audio.duration || Infinity)) audio.currentTime = pos
       }
