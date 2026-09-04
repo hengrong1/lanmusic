@@ -57,6 +57,7 @@ watch(
     vlist.value?.scrollToTop()
     // 排序变化时清空选中状态
     selSet.value = new Set()
+    selected.value = -1
   },
 )
 
