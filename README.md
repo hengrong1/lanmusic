@@ -263,7 +263,6 @@ SQLite（WAL 模式，外键开启），建表与列迁移见 `src-tauri/src/db.
 | `lm.sort` | 曲目列表排序 |
 | `lm.skin` | 频谱皮肤 `{on, style: particles\|tree}` |
 | `lm.theme` | 主题模式 `light\|dark\|system`（默认 dark） |
-| `lm.nav` | 上次停留的视图（含筛选上下文，启动时恢复） |
 | `sidebar:collapsed` | 侧栏是否收起 |
 | `lm.lrcOffset.<trackId>` | 歌词偏移（秒，按曲目记忆，见「歌词校准」） |
 | `lm.font` | 全局字体（CSS font-family 字符串，空 = 软件默认字体栈） |

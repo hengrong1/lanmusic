@@ -1,37 +1,9 @@
-import { computed, ref, watch } from 'vue'
+import { computed, ref } from 'vue'
 import type { NavRoute } from '@/types'
 
-const LS_NAV = 'lm.nav'
-const VALID_VIEWS = ['tracks', 'albums', 'artists', 'genres', 'playlist', 'settings']
-
-/** 启动时恢复上次停留的视图（筛选上下文） */
-function loadRoute(): NavRoute {
-  try {
-    const raw = localStorage.getItem(LS_NAV)
-    if (raw) {
-      const r = JSON.parse(raw)
-      if (r && VALID_VIEWS.includes(r.view)) return r
-    }
-  } catch {
-    /* 忽略损坏的存档 */
-  }
-  return { view: 'tracks' }
-}
-
-const current = ref<NavRoute>(loadRoute())
+/** 每次启动都从默认视图（全部歌曲）开始，不记忆上次停留的界面 */
+const current = ref<NavRoute>({ view: 'tracks' })
 const history = ref<NavRoute[]>([])
-
-watch(
-  current,
-  (v) => {
-    try {
-      localStorage.setItem(LS_NAV, JSON.stringify(v))
-    } catch {
-      /* ignore */
-    }
-  },
-  { deep: true },
-)
 
 export function useNav() {
   /** 路由是否实质相同：仅比较关键参数（view + 各 id + 标记），忽略显示用的 title/name */
