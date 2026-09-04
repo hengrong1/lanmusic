@@ -257,12 +257,22 @@ export const usePlayerStore = defineStore('player', () => {
       // 切换新歌立即进入加载态，直到 canplay/playing 事件清除
       buffering.value = true
       localStorage.setItem(LS.lastPos, '0')
+      errorStreak = 0
       void loadLyrics(t)
       if (autoplay) {
         audio.volume = 0 // 淡入起点
-        void audio.play().catch(() => {})
-        api.reportPlay(t.id).catch(() => {})
-        fadeIn()
+        // 等待媒体数据加载完成后再播放，避免首次播放失败
+        const tryPlay = () => {
+          void audio.play().catch(() => {})
+          api.reportPlay(t.id).catch(() => {})
+          fadeIn()
+        }
+        // readyState >= 2 (HAVE_CURRENT_DATA) 表示已有足够的数据开始播放
+        if (audio.readyState >= 2 && !audio.paused) {
+          tryPlay()
+        } else {
+          audio.addEventListener('loadedmetadata', tryPlay, { once: true })
+        }
       }
     }
     if (audio.paused) {
@@ -304,8 +314,17 @@ export const usePlayerStore = defineStore('player', () => {
     if (audio.paused) {
       cancelFade()
       audio.volume = 0 // 淡入起点
-      void audio.play().catch(() => {})
-      fadeIn()
+      // 等待媒体数据加载完成后再播放，避免首次播放失败
+      const tryPlay = () => {
+        void audio.play().catch(() => {})
+        fadeIn()
+      }
+      // readyState >= 2 (HAVE_CURRENT_DATA) 表示已有足够的数据开始播放
+      if (audio.readyState >= 2) {
+        tryPlay()
+      } else {
+        audio.addEventListener('loadedmetadata', tryPlay, { once: true })
+      }
     } else {
       // 暂停前先淡出，避免音量突变
       fadeOut(() => audio.pause())
