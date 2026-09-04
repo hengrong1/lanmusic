@@ -119,6 +119,13 @@ function rowDblClick(_t: Track, i: number) {
   player.playList(props.tracks, i)
 }
 
+function playMv(t: Track) {
+  // 打开 MV 播放窗口
+  const params = new URLSearchParams({ trackId: String(t.id) })
+  const features = 'width=960,height=540,menubar=no,toolbar=no,location=no,status=no'
+  window.open(`?${params.toString()}`, `mv-${t.id}`, features)
+}
+
 const selected = ref(-1)
 
 /** 正在播放的行：渐变底色 + 左侧紫条 + 标题紫色 + 跳动音条 */
@@ -338,8 +345,18 @@ function onDragEnd() {
                 <span class="eq-bar w-[3px] rounded-full bg-gradient-to-t from-violet-600 to-fuchsia-400" style="animation-delay: 0.5s"></span>
               </span>
             </div>
-            <div class="min-w-0 truncate" :class="player.current?.id === t.id ? 'font-medium text-violet-600 dark:text-violet-400' : 'text-zinc-800 dark:text-zinc-100'">
-              {{ t.title }}
+            <div class="flex min-w-0 items-center gap-1.5" :class="player.current?.id === t.id ? 'font-medium text-violet-600 dark:text-violet-400' : 'text-zinc-800 dark:text-zinc-100'">
+              <span class="truncate">{{ t.title }}</span>
+              <button
+                v-if="t.hasMv"
+                class="shrink-0 rounded-full p-0.5 text-fuchsia-500 transition hover:bg-fuchsia-50 dark:hover:bg-fuchsia-900/30"
+                title="播放 MV"
+                @click.stop="playMv(t)"
+              >
+                <svg class="h-3.5 w-3.5" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M8 5v14l11-7z"/>
+                </svg>
+              </button>
             </div>
             <div class="min-w-0 truncate text-zinc-500 dark:text-zinc-400">
               <button

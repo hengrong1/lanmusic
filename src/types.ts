@@ -26,6 +26,7 @@ export interface Track {
   format: string | null
   path: string
   hasLyrics: boolean
+  hasMv: boolean
   fav: boolean
 }
 

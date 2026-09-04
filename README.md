@@ -5,15 +5,15 @@
 > 产品设计文档见 [docs/产品设计文档.md](docs/产品设计文档.md)。
 > 当前进度：**M0-M3 已完成**（本地播放闭环 / 歌单 / 歌词 / 最近播放 / 托盘 / WebDAV 源），开发范围已**定稿**——剩余规划项不再实现，详见文末「路线图」。
 >
-> 最新功能：风格视图、本地目录监听自动增量扫描、WebDAV 凭证入系统钥匙串、封面缓存容量控制、播放倍速、队列另存为歌单、播放页 Hi-Res 音质徽标、单实例启动、歌词时间轴校准（播放页控件 + 快捷键，按曲目记忆）、专注模式、应用内更新（GitHub Releases）、图标库迁移 Solar Icons、界面卡片化布局。
+> 最新功能：风格视图、本地目录监听自动增量扫描、WebDAV 凭证入系统钥匙串、封面缓存容量控制、播放倍速、队列另存为歌单、播放页 Hi-Res 音质徽标、单实例启动、歌词时间轴校准（播放页控件 + 快捷键，按曲目记忆）、专注模式、应用内更新（GitHub Releases）、图标库迁移 Solar Icons、界面卡片化布局、MV 视频播放。
 
 ## 界面预览
 
-| 歌曲库 | 专辑视图 | 艺人视图 |
+| 首页（歌曲库） | 播放页 | 设置页 |
 |:---:|:---:|:---:|
-| ![歌曲库](docs/screenshots/library.jpg) | ![专辑](docs/screenshots/albums.jpg) | ![艺人](docs/screenshots/artists.jpg) |
+| ![首页](docs/screenshots/win_library.jpg) | ![播放页](docs/screenshots/win_nowplaying.jpg) | ![设置页](docs/screenshots/win_settings.jpg) |
 
-> 更多界面：风格视图、播放页、设置页可在运行应用后自行查看。
+> 更多界面：专辑视图、艺人视图、风格视图可在运行应用后自行查看。
 
 ## 技术栈
 
@@ -70,13 +70,14 @@
 ### 支持的格式
 
 - **音频扩展名**：`mp3` `flac` `m4a` `aac` `ogg` `oga` `opus` `wav` `aif` `aiff` `wma` `ape`
+- **视频扩展名**（MV）：`mp4` `mkv` `avi` `mov` `wmv` `flv` `webm` `m4v` `ts` — 同名视频文件自动关联为 MV，点击播放
 - **外挂封面文件名**（与音频同目录）：`cover.jpg|jpeg|png`、`folder.jpg|png`、`front.jpg|png`（也支持内嵌封面，惰性提取）
 - **外挂歌词**：与音频同名的 `.lrc` 文件；或标签内嵌歌词（ID3v2 USLT / Vorbis LYRICS / M4A）
 - 标签解析失败的文件自动降级为「文件名入库」（`meta_state=0` 标记，可随时「完整解析」补全）
 
 ## 环境要求
 
-- Node 20+（包管理器 pnpm，见 `packageManager` 字段）
+- Node 22+（包管理器 pnpm，见 `packageManager` 字段）
 - Rust 1.85+（含各平台 WebView 运行时）
 
 ## 快速开始

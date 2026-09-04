@@ -12,7 +12,7 @@
   "app": {
     "windows": [],
     "security": {
-      "csp": "default-src 'self'; img-src 'self' data: cover: http://cover.localhost; media-src 'self' music: http://music.localhost blob:; style-src 'self' 'unsafe-inline'"
+      "csp": "default-src 'self'; img-src 'self' data: cover: http://cover.localhost; media-src 'self' music: http://music.localhost video: http://video.localhost blob:; style-src 'self' 'unsafe-inline'"
     }
   },
   "bundle": {

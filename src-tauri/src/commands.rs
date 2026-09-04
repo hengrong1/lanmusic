@@ -42,6 +42,7 @@ pub struct Track {
     pub format: Option<String>,
     pub path: String,
     pub has_lyrics: bool,
+    pub has_mv: bool,
     pub fav: bool,
 }
 
@@ -103,7 +104,7 @@ pub struct TrackQuery {
 // ---------- 行映射 ----------
 
 const TRACK_SELECT: &str = "SELECT t.id, t.title, a.name, t.artist_id, al.title, t.album_id, t.track_no, \
-     t.disc_no, t.duration, t.bitrate, t.sample_rate, t.bit_depth, t.format, t.path, t.has_embedded_lyrics, t.fav \
+     t.disc_no, t.duration, t.bitrate, t.sample_rate, t.bit_depth, t.format, t.path, t.has_embedded_lyrics, t.has_mv, t.fav \
      FROM tracks t \
      LEFT JOIN artists a ON a.id = t.artist_id \
      LEFT JOIN albums al ON al.id = t.album_id";
@@ -125,7 +126,8 @@ fn row_track(r: &rusqlite::Row) -> rusqlite::Result<Track> {
         format: r.get(12)?,
         path: r.get(13)?,
         has_lyrics: r.get::<_, i64>(14)? != 0,
-        fav: r.get::<_, i64>(15)? != 0,
+        has_mv: r.get::<_, i64>(15)? != 0,
+        fav: r.get::<_, i64>(16)? != 0,
     })
 }
 
@@ -1039,4 +1041,49 @@ pub fn webdav_add_source(
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     conn.query_row(&format!("{SOURCE_SELECT} WHERE s.id = ?1"), params![id], row_source)
         .map_err(|e| e.to_string())
+}
+
+// ================================================================ MV 播放
+
+/// 获取视频文件的流 URL（用于播放 MV）
+#[tauri::command]
+pub fn get_mv_url(app: AppHandle, state: State<'_, AppState>, track_id: i64) -> Result<Option<String>, String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    let (source_kind, base_path, base_url, track_path): (String, Option<String>, Option<String>, String) = conn
+        .query_row(
+            "SELECT s.kind, s.base_path, s.base_url, t.path FROM tracks t JOIN sources s ON s.id = t.source_id WHERE t.id = ?1",
+            [track_id],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+        )
+        .map_err(|e| e.to_string())?;
+
+    // 获取音频文件的 stem（不含扩展名）
+    let stem = std::path::Path::new(&track_path)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("")
+        .to_string();
+
+    // 视频扩展名列表
+    let video_exts = ["mp4", "mkv", "avi", "mov", "wmv", "flv", "webm", "m4v", "ts"];
+
+    if source_kind == "local" {
+        let Some(base) = base_path else { return Ok(None) };
+        let base_dir = std::path::Path::new(&base).join(std::path::Path::new(&track_path).parent().unwrap_or(std::path::Path::new("")));
+        // 查找同名视频文件
+        for ext in &video_exts {
+            let video_path = base_dir.join(format!("{}.{}", stem, ext));
+            if video_path.exists() {
+                // 返回自定义协议 URL
+                let url = if cfg!(windows) {
+                    format!("http://video.localhost/mv/{}", track_id)
+                } else {
+                    format!("video://mv/{}", track_id)
+                };
+                return Ok(Some(url));
+            }
+        }
+    }
+
+    Ok(None)
 }

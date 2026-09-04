@@ -29,6 +29,11 @@ use crate::state::AppState;
 const AUDIO_EXTS: &[&str] = &[
     "mp3", "flac", "m4a", "aac", "ogg", "oga", "opus", "wav", "aif", "aiff", "wma", "ape",
 ];
+
+/// 视频扩展名（用于检测同名 MV 文件）
+const VIDEO_EXTS: &[&str] = &[
+    "mp4", "mkv", "avi", "mov", "wmv", "flv", "webm", "m4v", "ts",
+];
 /// 每这么多首提交一次事务并上报一次进度
 const BATCH: usize = 100;
 /// 并发解析线程上限（I/O 密集，8 线程已能掩盖网络延迟且不至于压垮网络）
@@ -79,6 +84,7 @@ struct ParsedTrack {
     channels: Option<i64>,
     bit_depth: Option<i64>,
     has_lyrics: bool,
+    has_mv: bool,
     format: Option<String>,
     mtime: i64,
     size: i64,
@@ -176,9 +182,10 @@ fn run_local_scan(
         .query_row("SELECT fast_import FROM sources WHERE id = ?1", [source_id], |r| r.get(0))
         .map_err(|e| e.to_string())?;
 
-    // ---- 1. 枚举目录 + 收集 .lrc ----
+    // ---- 1. 枚举目录 + 收集 .lrc + 检测视频文件 ----
     let mut files: Vec<(String, i64, i64)> = Vec::new();
     let mut lrc_map: HashMap<String, String> = HashMap::new(); // rel 去扩展名 → 本地 .lrc 绝对路径
+    let mut video_stems: HashSet<String> = HashSet::new(); // 视频文件的 stem_key 集合
     let mut seen = 0usize; // 遍历的文件总数（含非音频文件，进度按此上报更平滑）
     for entry in WalkDir::new(&base).follow_links(false).into_iter().filter_map(|e| e.ok()) {
         if !entry.file_type().is_file() {
@@ -195,6 +202,11 @@ fn run_local_scan(
         };
         if ext == "lrc" {
             lrc_map.insert(stem_key(&rel), base.join(&rel).to_string_lossy().to_string());
+            continue;
+        }
+        // 检测视频文件
+        if VIDEO_EXTS.contains(&ext.as_str()) {
+            video_stems.insert(stem_key(&rel));
             continue;
         }
         if !AUDIO_EXTS.contains(&ext.as_str()) {
@@ -223,14 +235,16 @@ fn run_local_scan(
 
     // ---- 3. 并发解析 ----
     let base_c = base.clone();
+    let video_stems_c = video_stems.clone();
     let rx = run_concurrent(to_parse, move |(rel, mtime, size)| {
+        let has_mv = video_stems_c.contains(&stem_key(&rel));
         if fast_import {
-            return Some(fast_track(&rel, mtime, size));
+            return Some(fast_track(&rel, mtime, size, has_mv));
         }
         let full = base_c.join(&rel);
         match metadata::read(&full, false) {
-            Ok(m) => Some(parsed_from_meta(&rel, m, mtime, size)),
-            Err(_) => Some(fallback_track(&rel, mtime, size)),
+            Ok(m) => Some(parsed_from_meta(&rel, m, mtime, size, has_mv)),
+            Err(_) => Some(fallback_track(&rel, mtime, size, has_mv)),
         }
     });
 
@@ -549,15 +563,15 @@ fn write_batch(
         tx.execute(
             "INSERT INTO tracks (source_id, path, title, artist_id, album_id, genre, track_no, disc_no,
                                   year, duration, bitrate, sample_rate, channels, bit_depth,
-                                  has_embedded_lyrics, mtime, file_size, format, added_at, meta_state)
-             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20)
+                                  has_embedded_lyrics, has_mv, mtime, file_size, format, added_at, meta_state)
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21)
              ON CONFLICT(source_id, path) DO UPDATE SET
                 title=excluded.title, artist_id=excluded.artist_id, album_id=excluded.album_id,
                 genre=excluded.genre, track_no=excluded.track_no, disc_no=excluded.disc_no,
                 year=excluded.year, duration=excluded.duration, bitrate=excluded.bitrate,
                 sample_rate=excluded.sample_rate, channels=excluded.channels, bit_depth=excluded.bit_depth,
-                has_embedded_lyrics=excluded.has_embedded_lyrics, mtime=excluded.mtime,
-                file_size=excluded.file_size, format=excluded.format, meta_state=excluded.meta_state",
+                has_embedded_lyrics=excluded.has_embedded_lyrics, has_mv=excluded.has_mv,
+                mtime=excluded.mtime, file_size=excluded.file_size, format=excluded.format, meta_state=excluded.meta_state",
             params![
                 source_id,
                 row.rel,
@@ -574,6 +588,7 @@ fn write_batch(
                 row.channels,
                 row.bit_depth,
                 row.has_lyrics as i64,
+                row.has_mv as i64,
                 row.mtime,
                 row.size,
                 row.format,
@@ -769,7 +784,7 @@ fn file_name_of(rel: &str) -> String {
 }
 
 /// 快速导入：不读文件内容。按常见目录布局（艺人/专辑/曲名）猜测。
-fn fast_track(rel: &str, mtime: i64, size: i64) -> ParsedTrack {
+fn fast_track(rel: &str, mtime: i64, size: i64, has_mv: bool) -> ParsedTrack {
     let parts: Vec<&str> = rel.split('/').filter(|s| !s.is_empty()).collect();
     let (artist, album_title) = match parts.len() {
         n if n >= 3 => (parts[n - 3].to_string(), parts[n - 2].to_string()),
@@ -792,6 +807,7 @@ fn fast_track(rel: &str, mtime: i64, size: i64) -> ParsedTrack {
         channels: None,
         bit_depth: None,
         has_lyrics: false,
+        has_mv,
         format: ext_of(rel),
         mtime,
         size,
@@ -800,7 +816,7 @@ fn fast_track(rel: &str, mtime: i64, size: i64) -> ParsedTrack {
 }
 
 /// 标签解析失败时的降级行（meta_state=1：标记已尝试，避免每次重扫重试；「完整解析」可再试）
-fn fallback_track(rel: &str, mtime: i64, size: i64) -> ParsedTrack {
+fn fallback_track(rel: &str, mtime: i64, size: i64, has_mv: bool) -> ParsedTrack {
     ParsedTrack {
         rel: rel.to_string(),
         title: stem_of(rel),
@@ -817,6 +833,7 @@ fn fallback_track(rel: &str, mtime: i64, size: i64) -> ParsedTrack {
         channels: None,
         bit_depth: None,
         has_lyrics: false,
+        has_mv,
         format: ext_of(rel),
         mtime,
         size,
@@ -824,7 +841,7 @@ fn fallback_track(rel: &str, mtime: i64, size: i64) -> ParsedTrack {
     }
 }
 
-fn parsed_from_meta(rel: &str, meta: TrackMeta, mtime: i64, size: i64) -> ParsedTrack {
+fn parsed_from_meta(rel: &str, meta: TrackMeta, mtime: i64, size: i64, has_mv: bool) -> ParsedTrack {
     let artist = meta
         .artist
         .clone()
@@ -849,6 +866,7 @@ fn parsed_from_meta(rel: &str, meta: TrackMeta, mtime: i64, size: i64) -> Parsed
         channels: meta.channels,
         bit_depth: meta.bit_depth,
         has_lyrics: meta.has_lyrics,
+        has_mv,
         format: ext_of(rel),
         mtime,
         size,

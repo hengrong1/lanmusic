@@ -374,6 +374,15 @@ pub(crate) fn mime_of(format: Option<&str>) -> &'static str {
         "ogg" | "oga" | "opus" => "audio/ogg",
         "wav" => "audio/wav",
         "aif" | "aiff" => "audio/aiff",
+        // 视频格式（MV）
+        "mkv" => "video/x-matroska",
+        "avi" => "video/x-msvideo",
+        "mov" => "video/quicktime",
+        "wmv" => "video/x-ms-wmv",
+        "flv" => "video/x-flv",
+        "webm" => "video/webm",
+        "m4v" => "video/x-m4v",
+        "ts" => "video/mp2t",
         _ => "application/octet-stream",
     }
 }
@@ -410,4 +419,96 @@ fn server_error() -> Response<Vec<u8>> {
         .status(StatusCode::INTERNAL_SERVER_ERROR)
         .body(Vec::new())
         .unwrap()
+}
+
+// ---------------------------------------------------------------- 视频流协议
+
+/// 视频扩展名列表
+const VIDEO_EXTS: &[&str] = &["mp4", "mkv", "avi", "mov", "wmv", "flv", "webm", "m4v", "ts"];
+
+pub fn video_protocol<R: Runtime>(
+    ctx: UriSchemeContext<'_, R>,
+    req: Request<Vec<u8>>,
+    responder: UriSchemeResponder,
+) {
+    let app = ctx.app_handle().clone();
+    std::thread::spawn(move || {
+        let resp = video_handle(app, req);
+        let _ = responder.respond(resp);
+    });
+}
+
+fn video_handle<R: Runtime>(app: AppHandle<R>, req: Request<Vec<u8>>) -> Response<Vec<u8>> {
+    let Some(id) = parse_id(&req, "mv") else {
+        return not_found();
+    };
+    if id <= 0 {
+        return not_found();
+    }
+    let range = req
+        .headers()
+        .get(RANGE)
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_string);
+    serve_video(&app, id, range.as_deref())
+}
+
+/// 查找同名视频文件并返回流响应
+fn serve_video<R: Runtime>(app: &AppHandle<R>, track_id: i64, range: Option<&str>) -> Response<Vec<u8>> {
+    let state = app.state::<crate::state::AppState>();
+    let Ok(conn) = state.db.lock() else {
+        return server_error();
+    };
+    let row = conn.query_row(
+        "SELECT t.path, s.kind, s.base_path FROM tracks t JOIN sources s ON s.id = t.source_id WHERE t.id = ?1",
+        [track_id],
+        |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, Option<String>>(2)?,
+            ))
+        },
+    );
+    let (track_path, kind, base_path) = match row {
+        Ok(v) => v,
+        Err(_) => return not_found(),
+    };
+    drop(conn);
+
+    if kind != "local" {
+        return not_found();
+    }
+    let Some(base) = base_path else { return not_found() };
+
+    // 获取音频文件的 stem（不含扩展名）
+    let stem = std::path::Path::new(&track_path)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("")
+        .to_string();
+    let parent = std::path::Path::new(&track_path)
+        .parent()
+        .unwrap_or(std::path::Path::new(""));
+    let base_dir = std::path::Path::new(&base).join(parent);
+
+    // 查找同名视频文件
+    let mut video_path = None;
+    let mut video_ext = "";
+    for ext in VIDEO_EXTS {
+        let path = base_dir.join(format!("{}.{}", stem, ext));
+        if path.exists() {
+            video_path = Some(path);
+            video_ext = ext;
+            break;
+        }
+    }
+    let Some(video_path) = video_path else {
+        return not_found();
+    };
+
+    let Ok(file) = std::fs::File::open(&video_path) else { return not_found() };
+    let size = file.metadata().map(|m| m.len()).unwrap_or(0);
+    let mime = mime_of(Some(video_ext));
+    serve_file_response(file, mime, size, range)
 }

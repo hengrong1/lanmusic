@@ -187,6 +187,8 @@ pub fn run() {
         .register_asynchronous_uri_scheme_protocol("music", scheme::music_protocol)
         // 封面协议：cover://album/{album_id}
         .register_asynchronous_uri_scheme_protocol("cover", scheme::cover_protocol)
+        // 视频流协议：video://mv/{track_id}（Windows 上为 http://video.localhost/mv/{track_id}）
+        .register_asynchronous_uri_scheme_protocol("video", scheme::video_protocol)
         .invoke_handler(tauri::generate_handler![
             commands::add_local_source,
             commands::list_sources,
@@ -223,7 +225,8 @@ pub fn run() {
             commands::list_system_fonts,
             commands::exit_app,
             commands::set_prevent_sleep,
-            commands::webdav_add_source
+            commands::webdav_add_source,
+            commands::get_mv_url
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

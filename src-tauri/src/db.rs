@@ -102,6 +102,8 @@ pub fn open_conn(path: &Path, init: bool) -> rusqlite::Result<Connection> {
 }
 
 fn migrate(conn: &Connection) -> rusqlite::Result<()> {
+    // has_mv: 是否存在同名视频文件（MV）
+    ensure_column(conn, "tracks", "has_mv", "INTEGER NOT NULL DEFAULT 0")?;
     // meta_state: 0=快速导入（仅文件名入库），1=完整解析过标签
     ensure_column(conn, "tracks", "meta_state", "INTEGER NOT NULL DEFAULT 1")?;
     ensure_column(conn, "sources", "fast_import", "INTEGER NOT NULL DEFAULT 0")?;
