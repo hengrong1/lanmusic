@@ -53,7 +53,11 @@ function toggleSort(field: string) {
 }
 watch(
   () => props.sort,
-  () => vlist.value?.scrollToTop(),
+  () => {
+    vlist.value?.scrollToTop()
+    // 排序变化时清空选中状态
+    selSet.value = new Set()
+  },
 )
 
 // ---- 定位正在播放：不可见时浮出按钮，点击滚动过去 ----
