@@ -53,6 +53,31 @@ function onPreventSleepToggle() {
   toast(preventSleepOn.value ? '已开启播放时阻止系统休眠' : '已关闭播放时阻止系统休眠')
 }
 
+// ---- 系统托盘设置 ----
+type CloseAction = 'tray' | 'quit'
+function getCloseAction(): CloseAction {
+  const v = localStorage.getItem('lm.closeAction')
+  return v === 'quit' ? 'quit' : 'tray'
+}
+function setCloseAction(action: CloseAction) {
+  localStorage.setItem('lm.closeAction', action)
+  // 同步到 SQLite，供 Rust 侧关闭事件使用
+  api.setSetting('lm.closeAction', action).catch(() => {})
+  toast(action === 'tray' ? '关闭窗口时将最小化到托盘' : '关闭窗口时将退出应用')
+}
+const closeAction = ref(getCloseAction())
+// 从 SQLite 加载设置（如果存在）
+onMounted(() => {
+  api.getSetting('lm.closeAction')
+    .then((v) => {
+      if (v === 'tray' || v === 'quit') {
+        closeAction.value = v
+        localStorage.setItem('lm.closeAction', v)
+      }
+    })
+    .catch(() => {})
+})
+
 /** 桌面歌词设置项可选项 */
 const dlLineOptions = [
   { value: 1 as const, label: '单行' },
@@ -622,7 +647,41 @@ const scannedSourceIds = computed(() => new Set(Object.keys(library.scanProgress
               />
             </div>
           </div>
-          <p class="mt-4 text-xs text-zinc-400">按住桌面歌词文字区域可拖动位置；悬停浮窗可使用控制条（切歌 / 歌词校准 / 关闭）。</p>
+          <p class="mt-4 text-xs text-zinc-400">
+            桌面歌词背景默认隐藏，鼠标悬停到浮窗上才会显示；按住歌词文字区域可拖动位置，悬停时还可使用控制条（切歌 / 歌词校准 / 关闭）。
+          </p>
+        </div>
+      </section>
+
+      <!-- 系统托盘 -->
+      <section data-stagger>
+        <h2 class="mb-3 text-sm font-semibold text-zinc-800 dark:text-zinc-100">{{ $t('settings.tray') }}</h2>
+        <div class="rounded-xl border border-zinc-200 bg-white p-4 text-sm dark:border-zinc-800 dark:bg-zinc-900">
+          <!-- 关闭窗口行为 -->
+          <div class="flex items-center justify-between">
+            <span class="text-zinc-600 dark:text-zinc-300">{{ $t('settings.closeAction') }}</span>
+            <div class="flex gap-2">
+              <button
+                class="cursor-pointer rounded-full px-4 py-1.5 text-sm transition"
+                :class="closeAction === 'tray'
+                  ? 'bg-violet-500 font-medium text-white'
+                  : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700'"
+                @click="closeAction = 'tray'; setCloseAction('tray')"
+              >
+                {{ $t('settings.closeActionTray') }}
+              </button>
+              <button
+                class="cursor-pointer rounded-full px-4 py-1.5 text-sm transition"
+                :class="closeAction === 'quit'
+                  ? 'bg-violet-500 font-medium text-white'
+                  : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700'"
+                @click="closeAction = 'quit'; setCloseAction('quit')"
+              >
+                {{ $t('settings.closeActionQuit') }}
+              </button>
+            </div>
+          </div>
+          <p class="mt-2 text-xs text-zinc-400">{{ $t('settings.closeActionDesc') }}</p>
         </div>
       </section>
 

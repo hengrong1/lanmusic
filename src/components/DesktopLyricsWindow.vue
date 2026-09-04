@@ -9,7 +9,7 @@ import { Rewind5SecondsBackIcon as RewindBack } from '@solar-icons/vue/linear/re
 import { Rewind5SecondsForwardIcon as RewindForward } from '@solar-icons/vue/linear/rewind-5-seconds-forward'
 import { RestartIcon as RotateCcw } from '@solar-icons/vue/linear/restart'
 import { CloseIcon as X } from '@solar-icons/vue/linear/close'
-import type { DeskControl, DeskLyricsConfig } from '@/composables/useDesktopLyrics'
+import { EMPTY_LYRIC, type DeskControl, type DeskLyricsConfig } from '@/composables/useDesktopLyrics'
 
 // 桌面歌词浮窗：接收主窗口推送的歌词行与配置进行渲染；
 // 整窗透明，按住文字区域可拖动（data-tauri-drag-region）。
@@ -78,8 +78,9 @@ const rootStyle = computed(() => ({
         : config.value.align === 'split'
           ? 'stretch' // 左右分离：两行各占满行宽，由各行自己的 text-align 控制对齐
           : 'center',
-  // 背景铺满整个歌词面板（含控制条区域）；不透明度 0 = 完全透明
-  background:
+  // 背景默认隐藏，鼠标悬停浮窗时才显示（见样式表 .dl-root:hover）；
+  // 这里只提供悬停时要用的颜色，不透明度 0 = 悬停也无背景。
+  '--dl-bg':
     config.value.bgOpacity > 0 ? hexToRgba(config.value.bgColor, config.value.bgOpacity) : 'transparent',
 }))
 /** 描边阴影串：多层同色阴影模拟描边；关闭时无阴影 */
@@ -123,10 +124,10 @@ const controlsStyle = computed(() => ({
 const rows = computed(() => {
   if (config.value.lines === 1) {
     // 单行只有播放行，始终用播放行颜色
-    return [{ text: lines.value[active.value] || '暂无歌词', style: { ...rowStyle(0), color: config.value.color } }]
+    return [{ text: lines.value[active.value] || EMPTY_LYRIC, style: { ...rowStyle(0), color: config.value.color } }]
   }
   return [
-    { text: lines.value[0] || (active.value === 0 ? '暂无歌词' : '\u00A0'), style: rowStyle(0) },
+    { text: lines.value[0] || (active.value === 0 ? EMPTY_LYRIC : '\u00A0'), style: rowStyle(0) },
     { text: lines.value[1] || '\u00A0', style: rowStyle(1) },
   ]
 })
@@ -185,7 +186,14 @@ const rows = computed(() => {
   cursor: move;
   user-select: none;
   overflow: hidden;
+  /* 背景默认隐藏：整窗透明，只有歌词文字（靠描边保证可读）浮在桌面上；
+     鼠标悬停浮窗时才淡入设置的背景色（--dl-bg 由根元素行内样式提供，
+     背景不透明度为 0 时悬停也不显示背景）。 */
   background: transparent;
+  transition: background 0.2s ease;
+}
+.dl-root:hover {
+  background: var(--dl-bg, transparent);
 }
 /* 控制条：默认隐藏，悬停窗口时浮现 */
 .dl-controls {

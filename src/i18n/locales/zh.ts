@@ -84,6 +84,8 @@ export default {
     notifications: '通知', notificationsDesc: '显示播放通知', tray: '系统托盘',
     showTrayIcon: '显示托盘图标', showTrayIconDesc: '最小化到系统托盘',
     minimizeToTray: '最小化到托盘', minimizeToTrayDesc: '关闭窗口时最小化到托盘',
+    closeAction: '关闭窗口时', closeActionDesc: '选择点击关闭按钮后的行为',
+    closeActionTray: '最小化到托盘', closeActionQuit: '退出应用',
     startAtLogin: '开机自启', startAtLoginDesc: '开机时自动启动应用',
     audio: '音频', outputDevice: '输出设备', outputDeviceDefault: '默认设备',
     volumeNormalization: '音量标准化', volumeNormalizationDesc: '自动调整音量至合适水平',

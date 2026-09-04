@@ -84,6 +84,8 @@ export default {
     notifications: 'Notifications', notificationsDesc: 'Show playback notifications', tray: 'System Tray',
     showTrayIcon: 'Show Tray Icon', showTrayIconDesc: 'Minimize to system tray',
     minimizeToTray: 'Minimize to Tray', minimizeToTrayDesc: 'Minimize to tray when closing window',
+    closeAction: 'On Close', closeActionDesc: 'Choose what happens when clicking the close button',
+    closeActionTray: 'Minimize to Tray', closeActionQuit: 'Quit App',
     startAtLogin: 'Start at Login', startAtLoginDesc: 'Automatically start app on system boot',
     audio: 'Audio', outputDevice: 'Output Device', outputDeviceDefault: 'Default Device',
     volumeNormalization: 'Volume Normalization', volumeNormalizationDesc: 'Automatically adjust volume to appropriate level',

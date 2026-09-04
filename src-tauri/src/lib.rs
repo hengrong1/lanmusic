@@ -14,7 +14,7 @@ mod state;
 mod thumbbar;
 mod watcher;
 
-use tauri::tray::{MouseButtonState, TrayIconBuilder, TrayIconEvent};
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Manager, PhysicalPosition};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -57,6 +57,46 @@ pub fn run() {
                 let ns_window_ptr = window.ns_window().unwrap() as *mut NSWindow;
                 let ns_window = unsafe { &*ns_window_ptr };
                 ns_window.setBackgroundColor(Some(&NSColor::windowBackgroundColor()));
+            }
+
+            // 关闭窗口行为：根据用户设置决定是最小化到托盘还是退出应用
+            // 前端通过 set_setting 存储 lm.closeAction（'tray' 或 'quit'）到 SQLite
+            {
+                let app_handle = app.handle().clone();
+                let main_window = window.clone();
+                window.on_window_event(move |event| {
+                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                        // 读取用户设置：默认最小化到托盘。
+                        // 读取失败（数据库锁被污染/被占用）时同样按「最小化到托盘」处理，
+                        // 不能退回默认行为——默认行为只销毁主窗口，进程不会退出。
+                        let should_quit = match app_handle.state::<crate::state::AppState>().db.lock() {
+                            Ok(guard) => {
+                                crate::db::get_setting(&guard, "lm.closeAction").as_deref()
+                                    == Some("quit")
+                            }
+                            Err(_) => false,
+                        };
+
+                        if should_quit {
+                            // 用户选择关闭时退出应用。
+                            // 注意：不能直接依赖默认行为（销毁主窗口）——托盘菜单窗口 tray
+                            // 是常驻的隐藏窗口，桌面歌词窗口也可能开着，只要还有窗口存活
+                            // Tauri 就不会退出进程，托盘图标会残留在系统托盘区。
+                            // 因此这里必须显式 exit；放到子线程执行，避免在窗口事件回调
+                            // 中重入事件循环造成死锁。
+                            api.prevent_close();
+                            let handle = app_handle.clone();
+                            std::thread::spawn(move || {
+                                handle.exit(0);
+                            });
+                            return;
+                        }
+
+                        // 默认行为：隐藏窗口到托盘，不退出
+                        api.prevent_close();
+                        let _ = main_window.hide();
+                    }
+                });
             }
 
             let data_dir = app.path().app_data_dir().expect("无法获取应用数据目录");
@@ -163,6 +203,17 @@ pub fn run() {
                 .icon(app.default_window_icon().expect("缺少应用图标").clone())
                 .tooltip("LanMusic")
                 .on_tray_icon_event(|tray, event| {
+                    // 左键：根据主窗口状态决定还原/前置（最小化 → 还原；可见但被遮 → 前置聚焦）
+                    if let TrayIconEvent::Click {
+                        button: MouseButton::Left,
+                        button_state: MouseButtonState::Up,
+                        ..
+                    } = event
+                    {
+                        focus_or_show_main_window(tray.app_handle());
+                        return;
+                    }
+                    // 右键（或中键）：切换自定义菜单弹窗（原行为保留）
                     if let TrayIconEvent::Click {
                         position,
                         rect,
@@ -234,7 +285,9 @@ pub fn run() {
 
 /// 托盘菜单弹窗逻辑尺寸（物理像素 = 逻辑 × DPI 缩放）
 const TRAY_MENU_W: f64 = 288.0;
-const TRAY_MENU_H: f64 = 196.0;
+/// 初始高度（内容自然高度约 183）。前端挂载后会按实际内容高度调用 setSize 校正，
+/// 这里只是首帧兜底值；定位统一用窗口当前真实尺寸，不依赖本常量。
+const TRAY_MENU_H: f64 = 184.0;
 
 /// 托盘点击：菜单弹窗已显示则收起，否则按托盘图标位置弹出
 fn toggle_tray_menu(app: &AppHandle, cursor: PhysicalPosition<f64>, tray_rect: tauri::Rect) {
@@ -247,6 +300,31 @@ fn toggle_tray_menu(app: &AppHandle, cursor: PhysicalPosition<f64>, tray_rect: t
     }
     position_tray_menu(&w, cursor, &tray_rect);
     let _ = w.show();
+    let _ = w.set_focus();
+}
+
+/// 单击托盘图标（左键）：按主窗口当前状态决定是还原还是前置聚焦
+///
+/// - 隐藏或最小化：`show() + unminimize()` 还原
+/// - 可见但被其它窗口遮挡：`set_focus()` 前置到 Z 序顶部（`SetForegroundWindow`）
+/// - 已经在最前：不操作，避免误隐藏
+///
+/// 顺带关掉可能正显示的菜单弹窗，避免「主窗口浮起来 + 菜单弹窗还盖在上面」的怪态。
+fn focus_or_show_main_window(app: &AppHandle) {
+    let Some(w) = app.get_webview_window("main") else {
+        return;
+    };
+    if let Some(tray) = app.get_webview_window("tray") {
+        if tray.is_visible().unwrap_or(false) {
+            let _ = tray.hide();
+        }
+    }
+    let minimized = w.is_minimized().unwrap_or(false);
+    let visible = w.is_visible().unwrap_or(false);
+    if minimized || !visible {
+        let _ = w.show();
+        let _ = w.unminimize();
+    }
     let _ = w.set_focus();
 }
 
@@ -263,8 +341,15 @@ fn position_tray_menu(
         .flatten()
         .or_else(|| w.primary_monitor().ok().flatten());
     let scale = monitor.as_ref().map(|m| m.scale_factor()).unwrap_or(1.0);
-    let pw = (TRAY_MENU_W * scale) as i32;
-    let ph = (TRAY_MENU_H * scale) as i32;
+    // 用窗口当前真实尺寸定位：前端会按内容高度收缩窗口（去掉底部空白），
+    // 若仍按常量计算，菜单底边会偏离托盘图标（空隙变大）。
+    let (pw, ph) = match w.inner_size() {
+        Ok(s) => (s.width as i32, s.height as i32),
+        Err(_) => (
+            (TRAY_MENU_W * scale) as i32,
+            (TRAY_MENU_H * scale) as i32,
+        ),
+    };
     // 托盘图标矩形：事件的 position/size 为逻辑/物理混合的枚举，统一转物理像素
     let icon_pos = tray_rect.position.to_physical::<i32>(scale);
     let icon = tray_rect.size.to_physical::<u32>(scale);

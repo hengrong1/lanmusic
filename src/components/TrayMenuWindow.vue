@@ -6,6 +6,8 @@
  */
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { emit, listen } from '@tauri-apps/api/event'
+import { getCurrentWindow } from '@tauri-apps/api/window'
+import { LogicalSize } from '@tauri-apps/api/dpi'
 import { SkipPreviousIcon as SkipBack } from '@solar-icons/vue/bold/skip-previous'
 import { SkipNextIcon as SkipForward } from '@solar-icons/vue/bold/skip-next'
 import { PauseIcon as Pause } from '@solar-icons/vue/bold/pause'
@@ -29,6 +31,24 @@ const state = ref<TraySyncPayload>({
   font: '',
 })
 
+// ---- 窗口高度跟随内容 ----
+// 卡片以前是 height:100% 铺满窗口，而窗口高度写死 196、内容只有约 183，
+// 多出来的十几像素全堆在卡片底部，看上去底部空白过大。
+// 现在由内容区（.tray-content，自然高度，含内边距）决定高度，窗口跟着收缩；
+// ResizeObserver 观察内容区，全局字体/文案变化也能自动跟随。
+const appWindow = getCurrentWindow()
+/** 菜单宽度（逻辑像素）；与 Rust 侧 TRAY_MENU_W 保持一致，只改高度不改宽度 */
+const TRAY_MENU_W = 288
+const content = ref<HTMLElement | null>(null)
+let sizeObserver: ResizeObserver | undefined
+function syncWindowHeight() {
+  const el = content.value
+  if (!el) return
+  const height = Math.ceil(el.getBoundingClientRect().height)
+  // 高度为 0（尚未布局）时跳过，避免把窗口压成 0
+  if (height > 0) void appWindow.setSize(new LogicalSize(TRAY_MENU_W, height))
+}
+
 const cover = computed(() => coverUrl(state.value.albumId))
 const coverFailed = ref(false)
 watch(
@@ -38,6 +58,7 @@ watch(
 const showFallback = computed(() => !cover.value || coverFailed.value)
 
 let unlisten: (() => void) | undefined
+let unlistenFocus: (() => void) | undefined
 onMounted(async () => {
   // 透明背景：让 CSS 圆角卡片从桌面浮起
   document.documentElement.style.background = 'transparent'
@@ -50,8 +71,23 @@ onMounted(async () => {
   })
   // 通知主窗口：弹窗已就绪，请求推送当前状态
   void emit('tray:ready')
+  // 内容高度 → 窗口高度（首次同步 + 后续变化自动跟随）
+  if (content.value) {
+    sizeObserver = new ResizeObserver(() => syncWindowHeight())
+    sizeObserver.observe(content.value)
+  }
+  syncWindowHeight()
+  // 每次弹出菜单（Rust 侧 show + set_focus）再校正一次：兜住窗口隐藏期间
+  // 布局未完成、或设置页切换全局字体后高度刚变化的情况
+  unlistenFocus = await appWindow.onFocusChanged((e) => {
+    if (e.payload) syncWindowHeight()
+  })
 })
-onBeforeUnmount(() => unlisten?.())
+onBeforeUnmount(() => {
+  unlisten?.()
+  unlistenFocus?.()
+  sizeObserver?.disconnect()
+})
 
 /** 播放控制指令（player store 监听 'tray'） */
 function playback(c: 'prev' | 'toggle' | 'next' | 'fav') {
@@ -65,80 +101,83 @@ function action(a: 'show' | 'lyrics' | 'settings' | 'quit') {
 </script>
 <template>
   <div class="tray-root">
-    <!-- 顶部信息展示区：封面 + 歌名/歌手 -->
-    <button class="info" title="打开主窗口" @click="action('show')">
-      <div class="cover">
-        <img
-          v-if="!showFallback"
-          :src="cover!"
-          class="h-full w-full object-cover"
-          draggable="false"
-          @error="coverFailed = true"
-        />
-        <div v-else class="fallback">
-          <Music class="h-[46%] w-[46%]" :stroke-width="1.5" />
+    <div ref="content" class="tray-content">
+      <!-- 顶部信息展示区：封面 + 歌名/歌手 -->
+      <button class="info" title="打开主窗口" @click="action('show')">
+        <div class="cover">
+          <img
+            v-if="!showFallback"
+            :src="cover!"
+            class="h-full w-full object-cover"
+            draggable="false"
+            @error="coverFailed = true"
+          />
+          <div v-else class="fallback">
+            <Music class="h-[46%] w-[46%]" :stroke-width="1.5" />
+          </div>
         </div>
+        <div class="meta">
+          <p class="song" :class="{ empty: !state.title }">
+            {{ state.title || '未在播放' }}
+          </p>
+          <p class="artist" :class="{ empty: !state.artist }">
+            {{ state.artist || 'LanMusic' }}
+          </p>
+        </div>
+      </button>
+
+      <!-- 核心媒体控制栏：上一首 / 播放暂停 / 下一首 / 喜欢 -->
+      <div class="controls">
+        <button class="ctrl" title="上一首" @click="playback('prev')">
+          <SkipBack class="h-[18px] w-[18px]" />
+        </button>
+        <button class="ctrl play" :title="state.playing ? '暂停' : '播放'" @click="playback('toggle')">
+          <Pause v-if="state.playing" class="h-[20px] w-[20px]" />
+          <Play v-else class="h-[20px] w-[20px] translate-x-[1px]" />
+        </button>
+        <button class="ctrl" title="下一首" @click="playback('next')">
+          <SkipForward class="h-[18px] w-[18px]" />
+        </button>
+        <button
+          class="ctrl heart"
+          :class="{ active: state.fav }"
+          :title="state.fav ? '取消喜欢' : '喜欢'"
+          @click="playback('fav')"
+        >
+          <HeartFilled v-if="state.fav" class="h-[18px] w-[18px]" />
+          <HeartOutline v-else class="h-[18px] w-[18px]" />
+        </button>
       </div>
-      <div class="meta">
-        <p class="song" :class="{ empty: !state.title }">
-          {{ state.title || '未在播放' }}
-        </p>
-        <p class="artist" :class="{ empty: !state.artist }">
-          {{ state.artist || 'LanMusic' }}
-        </p>
+
+      <!-- 分隔线：与系统级操作区隔开，避免误触 -->
+      <div class="divider"></div>
+
+      <!-- 底部系统操作区 -->
+      <div class="bottom">
+        <button class="act" :class="{ active: state.deskLyrics }" @click="action('lyrics')">
+          <Subtitles :class="state.deskLyrics ? 'is-active' : ''" class="h-[15px] w-[15px]" />
+          桌面歌词
+        </button>
+        <button class="act" @click="action('settings')">
+          <Settings class="h-[15px] w-[15px]" />
+          设置
+        </button>
+        <button class="act quit" @click="action('quit')">
+          <Power class="h-[15px] w-[15px]" />
+          退出
+        </button>
       </div>
-    </button>
-
-    <!-- 核心媒体控制栏：上一首 / 播放暂停 / 下一首 / 喜欢 -->
-    <div class="controls">
-      <button class="ctrl" title="上一首" @click="playback('prev')">
-        <SkipBack class="h-[18px] w-[18px]" />
-      </button>
-      <button class="ctrl play" :title="state.playing ? '暂停' : '播放'" @click="playback('toggle')">
-        <Pause v-if="state.playing" class="h-[20px] w-[20px]" />
-        <Play v-else class="h-[20px] w-[20px] translate-x-[1px]" />
-      </button>
-      <button class="ctrl" title="下一首" @click="playback('next')">
-        <SkipForward class="h-[18px] w-[18px]" />
-      </button>
-      <button
-        class="ctrl heart"
-        :class="{ active: state.fav }"
-        :title="state.fav ? '取消喜欢' : '喜欢'"
-        @click="playback('fav')"
-      >
-        <HeartFilled v-if="state.fav" class="h-[18px] w-[18px]" />
-        <HeartOutline v-else class="h-[18px] w-[18px]" />
-      </button>
-    </div>
-
-    <!-- 分隔线：与系统级操作区隔开，避免误触 -->
-    <div class="divider"></div>
-
-    <!-- 底部系统操作区 -->
-    <div class="bottom">
-      <button class="act" :class="{ active: state.deskLyrics }" @click="action('lyrics')">
-        <Subtitles :class="state.deskLyrics ? 'is-active' : ''" class="h-[15px] w-[15px]" />
-        桌面歌词
-      </button>
-      <button class="act" @click="action('settings')">
-        <Settings class="h-[15px] w-[15px]" />
-        设置
-      </button>
-      <button class="act quit" @click="action('quit')">
-        <Power class="h-[15px] w-[15px]" />
-        退出
-      </button>
     </div>
   </div>
 </template>
 
 <style scoped>
+/* 卡片外壳：只负责玻璃质感与圆角，高度由内部内容区决定（窗口随之收缩），
+   min-height 仅为 JS 未生效时的兜底，避免出现窗口底色空条 */
 .tray-root {
   display: flex;
   flex-direction: column;
-  height: 100%;
-  padding: 12px;
+  min-height: 100%;
   box-sizing: border-box;
   border-radius: 14px;
   background:
@@ -150,6 +189,14 @@ function action(a: 'show' | 'lyrics' | 'settings' | 'quit') {
     inset 0 1px 0 rgba(255, 255, 255, 0.08);
   backdrop-filter: blur(24px);
   user-select: none;
+}
+/* 内容区：自然高度（含内边距），被 ResizeObserver 观察以同步窗口高度 */
+.tray-content {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  padding: 12px;
+  box-sizing: border-box;
 }
 
 /* ---- 顶部信息区 ---- */

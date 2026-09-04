@@ -29,6 +29,13 @@ export interface DeskLyricsConfig {
   bold: boolean
 }
 
+/**
+ * 空歌词占位符：三个中点（U+00B7）'···'。
+ * 与播放页 / 播放条 / 歌词面板保持一致——桌面歌词原先显示「暂无歌词」，
+ * 与其它界面不统一，这里统一用省略点。
+ */
+export const EMPTY_LYRIC = '\u00B7\u00B7\u00B7'
+
 const LS_KEY = 'lm.deskLyrics'
 const DEFAULT_CONFIG: DeskLyricsConfig = {
   lines: 2,
@@ -99,7 +106,7 @@ export function useDesktopLyrics() {
     if (player.lyricsPlain && player.lyricsPlain.length) {
       return { lines: [player.lyricsPlain[0] ?? '', player.lyricsPlain[1] ?? ''], active: 0 }
     }
-    return { lines: ['暂无歌词', ''], active: 0 }
+    return { lines: [EMPTY_LYRIC, ''], active: 0 }
   })
 
   function persist() {
