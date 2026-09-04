@@ -380,10 +380,10 @@ fn run_webdav_scan(
         let url = webdav::file_url(&base_c, &rel);
         match webdav::download(&url, auth_c.as_ref(), Some((0, HEAD_FETCH_SIZE - 1))) {
             Ok(bytes) => match metadata::read_bytes(&bytes, false) {
-                Ok(m) => Some(parsed_from_meta(&rel, m, 0, size)),
-                Err(_) => Some(fallback_track(&rel, 0, size)),
+                Ok(m) => Some(parsed_from_meta(&rel, m, 0, size, false)),
+                Err(_) => Some(fallback_track(&rel, 0, size, false)),
             },
-            Err(_) => Some(fallback_track(&rel, 0, size)),
+            Err(_) => Some(fallback_track(&rel, 0, size, false)),
         }
     });
 

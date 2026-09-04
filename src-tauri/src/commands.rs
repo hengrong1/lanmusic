@@ -1047,9 +1047,9 @@ pub fn webdav_add_source(
 
 /// 获取视频文件的流 URL（用于播放 MV）
 #[tauri::command]
-pub fn get_mv_url(app: AppHandle, state: State<'_, AppState>, track_id: i64) -> Result<Option<String>, String> {
+pub fn get_mv_url(_app: AppHandle, state: State<'_, AppState>, track_id: i64) -> Result<Option<String>, String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
-    let (source_kind, base_path, base_url, track_path): (String, Option<String>, Option<String>, String) = conn
+    let (source_kind, base_path, _base_url, track_path): (String, Option<String>, Option<String>, String) = conn
         .query_row(
             "SELECT s.kind, s.base_path, s.base_url, t.path FROM tracks t JOIN sources s ON s.id = t.source_id WHERE t.id = ?1",
             [track_id],
