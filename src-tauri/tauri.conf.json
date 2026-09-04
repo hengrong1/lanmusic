@@ -29,7 +29,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDc5QzIzRTQ3MjJFNzAyRkQKUldUOUF1Y2lSejdDZVRBQXhIcUY2ZWl2TlZwbytNVXJiWllkN1FMQyt3Q1U5aXRBZEVwdUxaS1AK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEYwQ0UzMjgyQ0UwMTNDRkYKUldUL1BBSE9nakxPOEdTTmZ0Z1VzZG9kY3duTVF2KzFyNmw2UFAxNEVhZXZxUzZXZk9aN0poc2MK",
       "endpoints": [
         "https://github.com/hengrong1/lanmusic/releases/latest/download/latest.json"
       ]
