@@ -59,6 +59,15 @@ CREATE TABLE IF NOT EXISTS tracks (
 CREATE INDEX IF NOT EXISTS idx_tracks_album ON tracks(album_id);
 CREATE INDEX IF NOT EXISTS idx_tracks_artist ON tracks(artist_id);
 
+-- 曲目 ↔ 艺人多对多关联（"A / B" 这类合作曲目拆成独立艺人，ord 记录展示顺序）
+CREATE TABLE IF NOT EXISTS track_artists (
+  track_id INTEGER NOT NULL REFERENCES tracks(id) ON DELETE CASCADE,
+  artist_id INTEGER NOT NULL REFERENCES artists(id),
+  ord INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (track_id, artist_id)
+);
+CREATE INDEX IF NOT EXISTS idx_track_artists_artist ON track_artists(artist_id);
+
 CREATE TABLE IF NOT EXISTS playlists (
   id INTEGER PRIMARY KEY,
   name TEXT NOT NULL,
@@ -124,9 +133,17 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
         conn.execute("DELETE FROM albums WHERE id NOT IN (SELECT DISTINCT album_id FROM tracks)", [])?;
         conn.execute(
             "DELETE FROM artists WHERE id NOT IN (SELECT DISTINCT artist_id FROM tracks)
+             AND id NOT IN (SELECT DISTINCT artist_id FROM track_artists)
              AND id NOT IN (SELECT DISTINCT artist_id FROM albums)",
             [],
         )?;
+    }
+
+    // 多艺人拆分（track_artists）上线：已完整解析过的曲目需重新读标签才能按
+    // 分隔符拆出独立艺人。置回 meta_state=0 让下次扫描自动重解析（一次性）。
+    if get_setting(conn, "track_artists_migrated").is_none() {
+        conn.execute("UPDATE tracks SET meta_state = 0", [])?;
+        set_setting(conn, "track_artists_migrated", "1");
     }
     Ok(())
 }

@@ -4,7 +4,6 @@ import { getCurrentWindow } from '@tauri-apps/api/window'
 import App from './App.vue'
 import DesktopLyricsWindow from './components/DesktopLyricsWindow.vue'
 import TrayMenuWindow from './components/TrayMenuWindow.vue'
-import VideoPlayer from './views/VideoPlayer.vue'
 import { applyStoredFont } from './composables/useAppFont'
 import { i18n } from './i18n'
 import './style.css'
@@ -18,8 +17,6 @@ if (winLabel === 'lyrics') {
   createApp(DesktopLyricsWindow).use(i18n).mount('#app')
 } else if (winLabel === 'tray') {
   createApp(TrayMenuWindow).use(i18n).mount('#app')
-} else if (winLabel.startsWith('mv-')) {
-  createApp(VideoPlayer).mount('#app')
 } else {
   createApp(App).use(createPinia()).use(i18n).mount('#app')
 }

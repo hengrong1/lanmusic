@@ -1,3 +1,5 @@
+allowBuilds:
+  core-js: true
 minimumReleaseAgeExclude:
   - '@lucide/vue@1.38.0'
   - '@tauri-apps/plugin-dialog@2.7.3'

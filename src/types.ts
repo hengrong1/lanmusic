@@ -28,6 +28,14 @@ export interface Track {
   hasLyrics: boolean
   hasMv: boolean
   fav: boolean
+  /** 完整艺人列表（合作曲目按标签顺序拆分为独立艺人） */
+  artists?: TrackArtistRef[]
+}
+
+/** 曲目关联艺人 */
+export interface TrackArtistRef {
+  id: number
+  name: string
 }
 
 export interface Page<T> {

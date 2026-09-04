@@ -216,11 +216,19 @@ const coverRingStyle = computed(() =>
   props.nowPlayingOpen ? { boxShadow: `0 0 0 2px ${palette.value?.accent ?? '#a78bfa'}` } : undefined,
 )
 
-/** 播放条内导航：若播放页展开着，导航后收起，让用户看到目标页面 */
-function goArtist() {
+/** 当前曲目的艺人列表：优先用后端拆分的多艺人，回退到合并字符串 */
+const currentArtistLinks = computed<{ id: number | null; name: string }[]>(() => {
   const t = player.current
-  if (t?.artistId == null) return
-  nav.go({ view: 'tracks', artistId: t.artistId, artistName: t.artist ?? '未知艺人' })
+  if (!t) return []
+  if (t.artists?.length) return t.artists.map((a) => ({ id: a.id, name: a.name }))
+  if (t.artist) return [{ id: t.artistId, name: t.artist }]
+  return [{ id: null, name: '未知艺人' }]
+})
+
+/** 播放条内导航：若播放页展开着，导航后收起，让用户看到目标页面 */
+function goArtist(artist: { id: number | null; name: string }) {
+  if (artist.id == null) return
+  nav.go({ view: 'tracks', artistId: artist.id, artistName: artist.name })
   if (props.nowPlayingOpen) emit('toggleNowPlaying')
 }
 
@@ -412,16 +420,18 @@ const theme = computed(() =>
           >{{ player.current.title }}</span>
           <span v-else class="truncate font-medium" :class="theme.title">未在播放</span>
           <span v-if="player.current" class="shrink-0 opacity-40">–</span>
-          <button
-            v-if="player.current && player.current.artistId != null"
-            class="min-w-0 cursor-pointer truncate transition hover:text-violet-500 hover:underline"
-            :class="theme.artist"
-            :title="`查看艺人：${player.current.artist ?? '未知艺人'}`"
-            @click.stop="goArtist"
-          >{{ player.current.artist ?? '未知艺人' }}</button>
-          <span v-if="player.current && player.current.artistId == null" class="min-w-0 truncate" :class="theme.artist">
-            {{ player.current.artist ?? '' }}
-          </span>
+          <!-- 多艺人：每个名字独立可点击（区分每一个艺人） -->
+          <template v-for="(a, i) in currentArtistLinks" :key="a.id ?? `na-${i}`">
+            <button
+              v-if="a.id != null"
+              class="min-w-0 cursor-pointer truncate transition hover:text-violet-500 hover:underline"
+              :class="theme.artist"
+              :title="`查看艺人：${a.name}`"
+              @click.stop="goArtist(a)"
+            >{{ a.name }}</button>
+            <span v-else class="min-w-0 truncate" :class="theme.artist">{{ a.name }}</span>
+            <span v-if="i < currentArtistLinks.length - 1" class="shrink-0 opacity-40"> / </span>
+          </template>
         </div>
         <!-- 行2：当前歌词（过长滚动），无歌词时显示专辑名；纯展示，不响应点击 -->
         <div

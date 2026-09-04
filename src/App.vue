@@ -8,6 +8,7 @@ import QueuePanel from '@/components/QueuePanel.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import NowPlayingView from '@/components/NowPlayingView.vue'
 import Toast from '@/components/Toast.vue'
+import MvPlayer from '@/components/MvPlayer.vue'
 import { useUpdater } from '@/composables/useUpdater'
 import TracksView from '@/views/TracksView.vue'
 import AlbumsView from '@/views/AlbumsView.vue'
@@ -22,10 +23,12 @@ import { useAmbient } from '@/composables/useAmbient'
 import { useSkinOpen } from '@/composables/useSkin'
 import { useDesktopLyrics } from '@/composables/useDesktopLyrics'
 import { useTrayMenu } from '@/composables/useTrayMenu'
+import { useMvPlayer } from '@/composables/useMvPlayer'
 
 const library = useLibraryStore()
 const player = usePlayerStore()
 const nav = useNav()
+const mv = useMvPlayer()
 const { palette } = useAmbient()
 
 const queueOpen = ref(false)
@@ -186,6 +189,8 @@ onMounted(() => {
 window.addEventListener('keydown', (e) => {
   const target = e.target as HTMLElement
   const typing = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable
+  // MV 播放层打开时让位：快捷键交给播放器（Esc 关闭由 MvPlayer 处理）
+  if (mv.opened.value) return
   if (e.key === 'Escape' && nowPlaying.value) {
     nowPlaying.value = false
     return
@@ -233,6 +238,7 @@ window.addEventListener('keydown', (e) => {
     />
     <Toast />
     <ConfirmDialog />
+    <MvPlayer />
     <!-- 播放页环境：全窗渐变（含播放条背后）+ 上滑的内容层。z-15 低于播放条，播放条透明浮于其上 -->
     <div class="pointer-events-none absolute inset-0 z-[15] overflow-hidden" :style="{ '--np-accent': npAccent }">
       <Transition :css="false" @enter="npBgEnter" @leave="npBgLeave">

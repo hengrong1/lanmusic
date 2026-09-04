@@ -147,10 +147,18 @@ function openAlbum() {
   emit('close')
 }
 
-function openArtist() {
+/** 当前曲目的艺人列表：优先用后端拆分的多艺人，回退到合并字符串 */
+const currentArtistLinks = computed<{ id: number | null; name: string }[]>(() => {
   const t = player.current
-  if (t?.artistId == null) return
-  nav.go({ view: 'tracks', artistId: t.artistId, artistName: t.artist ?? '未知艺人' })
+  if (!t) return []
+  if (t.artists?.length) return t.artists.map((a) => ({ id: a.id, name: a.name }))
+  if (t.artist) return [{ id: t.artistId, name: t.artist }]
+  return [{ id: null, name: '未知艺人' }]
+})
+
+function openArtist(artist: { id: number | null; name: string }) {
+  if (artist.id == null) return
+  nav.go({ view: 'tracks', artistId: artist.id, artistName: artist.name })
   emit('close')
 }
 
@@ -210,13 +218,17 @@ const offsetTip = computed(() => {
         >
           <h1 class="max-w-full truncate text-2xl font-bold text-white">{{ player.current?.title ?? '未在播放' }}</h1>
           <p class="mt-1 max-w-full truncate text-sm text-white/60">
-            <button
-              v-if="player.current?.artistId != null"
-              class="cursor-pointer transition hover:text-white hover:underline"
-              :title="`查看艺人：${player.current?.artist ?? '未知艺人'}`"
-              @click="openArtist"
-            >{{ player.current?.artist ?? '未知艺人' }}</button>
-            <span v-else>{{ player.current?.artist ?? '' }}</span>
+            <!-- 多艺人：每个名字独立可点击（区分每一个艺人） -->
+            <template v-for="(a, i) in currentArtistLinks" :key="a.id ?? `na-${i}`">
+              <button
+                v-if="a.id != null"
+                class="cursor-pointer transition hover:text-white hover:underline"
+                :title="`查看艺人：${a.name}`"
+                @click="openArtist(a)"
+              >{{ a.name }}</button>
+              <span v-else>{{ a.name }}</span>
+              <span v-if="i < currentArtistLinks.length - 1" class="opacity-40"> / </span>
+            </template>
           </p>
           <button
             v-if="player.current?.albumId != null"

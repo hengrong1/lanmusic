@@ -44,6 +44,16 @@ pub struct Track {
     pub has_lyrics: bool,
     pub has_mv: bool,
     pub fav: bool,
+    /// 完整艺人列表（含合作艺人，按标签顺序）；单艺人曲目同样返回
+    pub artists: Vec<TrackArtistRef>,
+}
+
+/// 曲目关联艺人（track_artists）
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct TrackArtistRef {
+    pub id: i64,
+    pub name: String,
 }
 
 #[derive(Serialize)]
@@ -128,7 +138,51 @@ fn row_track(r: &rusqlite::Row) -> rusqlite::Result<Track> {
         has_lyrics: r.get::<_, i64>(14)? != 0,
         has_mv: r.get::<_, i64>(15)? != 0,
         fav: r.get::<_, i64>(16)? != 0,
+        artists: Vec::new(),
     })
+}
+
+/// 批量附加每首曲目的完整艺人列表（track_artists 关联，按 ord 排序）。
+/// 多艺人时用 " / " 连接覆盖 artist 显示串（首个为主艺人）。
+fn attach_artists(conn: &rusqlite::Connection, tracks: &mut [Track]) -> Result<(), String> {
+    if tracks.is_empty() {
+        return Ok(());
+    }
+    use std::collections::HashMap;
+    let mut map: HashMap<i64, Vec<TrackArtistRef>> = HashMap::new();
+    const CHUNK_SIZE: usize = 900;
+    let ids: Vec<i64> = tracks.iter().map(|t| t.id).collect();
+    for chunk in ids.chunks(CHUNK_SIZE) {
+        let placeholders = chunk.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+        let sql = format!(
+            "SELECT ta.track_id, a.id, a.name FROM track_artists ta \
+             JOIN artists a ON a.id = ta.artist_id \
+             WHERE ta.track_id IN ({placeholders}) ORDER BY ta.track_id, ta.ord"
+        );
+        let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(params_from_iter(chunk.iter()), |r| {
+                Ok((
+                    r.get::<_, i64>(0)?,
+                    TrackArtistRef { id: r.get(1)?, name: r.get(2)? },
+                ))
+            })
+            .map_err(|e| e.to_string())?;
+        for row in rows {
+            let (tid, ar) = row.map_err(|e| e.to_string())?;
+            map.entry(tid).or_default().push(ar);
+        }
+    }
+    for t in tracks.iter_mut() {
+        if let Some(list) = map.remove(&t.id) {
+            if list.len() > 1 {
+                t.artist = Some(list.iter().map(|a| a.name.as_str()).collect::<Vec<_>>().join(" / "));
+                t.artist_id = Some(list[0].id);
+            }
+            t.artists = list;
+        }
+    }
+    Ok(())
 }
 
 const SOURCE_SELECT: &str = "SELECT s.id, s.kind, s.name, s.base_path, s.base_url, s.enabled, s.last_scan_at, s.fast_import, \
@@ -235,6 +289,7 @@ pub fn remove_source(app: AppHandle, state: State<'_, AppState>, id: i64) -> Res
     // 专辑归属艺人（albums.artist_id）可能没有直接归属的曲目，删除时需一并排除
     conn.execute(
         "DELETE FROM artists WHERE id NOT IN (SELECT DISTINCT artist_id FROM tracks)
+         AND id NOT IN (SELECT DISTINCT artist_id FROM track_artists)
          AND id NOT IN (SELECT DISTINCT artist_id FROM albums)",
         [],
     )
@@ -315,7 +370,12 @@ pub fn query_tracks(state: State<'_, AppState>, q: TrackQuery) -> Result<Page<Tr
         }
         "artist" => {
             if let Some(id) = q.ref_id {
-                wheres.push("t.artist_id = ?".into());
+                // 主艺人或 track_artists 关联的合作艺人都命中
+                wheres.push(
+                    "(t.artist_id = ? OR EXISTS (SELECT 1 FROM track_artists ta WHERE ta.track_id = t.id AND ta.artist_id = ?))"
+                        .into(),
+                );
+                args.push(Box::new(id));
                 args.push(Box::new(id));
             }
         }
@@ -368,11 +428,12 @@ pub fn query_tracks(state: State<'_, AppState>, q: TrackQuery) -> Result<Page<Tr
 
     let sql = format!("{TRACK_SELECT} {where_sql} {order_sql} LIMIT {page_size} OFFSET {}", page * page_size);
     let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
-    let items = stmt
+    let mut items: Vec<Track> = stmt
         .query_map(params_from_iter(args.iter().map(|b| b.as_ref())), row_track)
         .map_err(|e| e.to_string())?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?;
+    attach_artists(&conn, &mut items)?;
     Ok(Page { total, items })
 }
 
@@ -456,8 +517,8 @@ pub fn query_artists(
         .map(str::trim)
         .filter(|s| !s.is_empty())
         .map(|s| format!("%{s}%"));
-    // 只展示有曲目的艺人：albums.artist_id 现在可指向纯合辑/专辑归属艺人（无直接曲目），不进列表
-    let base_where = "ar.id IN (SELECT DISTINCT artist_id FROM tracks)";
+    // 只展示有曲目的艺人（主艺人或合作艺人）：albums.artist_id 现在可指向纯合辑/专辑归属艺人（无直接曲目），不进列表
+    let base_where = "ar.id IN (SELECT artist_id FROM tracks UNION SELECT artist_id FROM track_artists)";
     let where_sql = if like.is_some() {
         format!("WHERE {base_where} AND ar.name LIKE ?1")
     } else {
@@ -473,7 +534,9 @@ pub fn query_artists(
     };
 
     let sql = format!(
-        "SELECT ar.id, ar.name, (SELECT COUNT(*) FROM tracks t WHERE t.artist_id = ar.id) \
+        "SELECT ar.id, ar.name, \
+         (SELECT COUNT(*) FROM tracks t WHERE t.artist_id = ar.id \
+           OR EXISTS (SELECT 1 FROM track_artists ta WHERE ta.track_id = t.id AND ta.artist_id = ar.id)) \
          FROM artists ar {where_sql} ORDER BY ar.name COLLATE NOCASE LIMIT {page_size} OFFSET {offset}"
     );
     let items: Vec<ArtistItem> = collect_rows(&conn, &sql, like.as_ref(), |r| {
@@ -485,9 +548,14 @@ pub fn query_artists(
 #[tauri::command]
 pub fn get_track(state: State<'_, AppState>, id: i64) -> Result<Option<Track>, String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
-    conn.query_row(&format!("{TRACK_SELECT} WHERE t.id = ?1"), params![id], row_track)
+    let mut track = conn
+        .query_row(&format!("{TRACK_SELECT} WHERE t.id = ?1"), params![id], row_track)
         .optional()
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    if let Some(t) = track.as_mut() {
+        attach_artists(&conn, std::slice::from_mut(t))?;
+    }
+    Ok(track)
 }
 
 /// 批量按 id 取曲目（播放队列快照还原用）
@@ -511,6 +579,7 @@ pub fn get_tracks_by_ids(state: State<'_, AppState>, ids: Vec<i64>) -> Result<Ve
             items.push(r.map_err(|e| e.to_string())?);
         }
     }
+    attach_artists(&conn, &mut items)?;
     Ok(items)
 }
 

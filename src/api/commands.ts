@@ -71,6 +71,8 @@ export const api = {
   exitApp: () => invoke<void>('exit_app'),
   // 播放时阻止系统休眠/锁屏（Windows SetThreadExecutionState；其他平台空操作）
   setPreventSleep: (prevent: boolean) => invoke<void>('set_prevent_sleep', { prevent }),
+  // 获取 MV 视频流 URL（同名视频文件不存在时返回 null）
+  getMvUrl: (trackId: number) => invoke<string | null>('get_mv_url', { trackId }),
 
   // 设置（M2/M3）
   getSetting: (key: string) => invoke<string | null>('get_setting', { key }),

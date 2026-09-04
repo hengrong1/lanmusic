@@ -148,6 +148,12 @@ export default {
     focusMode: 'Focus Mode', focusModeOn: 'Enable Focus Mode', focusModeOff: 'Disable Focus Mode',
     focusModeDesc: 'Auto-hide top bar and player bar after 5 seconds of mouse inactivity during playback',
   },
+  mv: {
+    play: 'Play MV',
+    player: 'MV Player',
+    notFound: 'MV video file not found',
+    loadFailed: 'Failed to load MV video',
+  },
   focusMode: {
     title: 'Focus Mode', enabled: 'Enabled', disabled: 'Disabled', hint: 'Move mouse to restore interface',
   },

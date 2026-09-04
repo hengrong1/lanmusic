@@ -11,6 +11,7 @@ import { ListDownIcon as ListEnd } from '@solar-icons/vue/linear/list-down'
 import { Playlist2Icon as ListPlus } from '@solar-icons/vue/linear/playlist-2'
 import { MapPointIcon as LocateFixed } from '@solar-icons/vue/linear/map-point'
 import { PlayIcon as Play } from '@solar-icons/vue/linear/play'
+import { VideoFramePlayHorizontalIcon as VideoFramePlay } from '@solar-icons/vue/linear/video-frame-play-horizontal'
 import type { Track } from '@/types'
 import VirtualList from '@/components/VirtualList.vue'
 import ContextMenu from '@/components/ContextMenu.vue'
@@ -18,6 +19,7 @@ import type { MenuItem } from '@/components/ContextMenu.vue'
 import { usePlayerStore } from '@/stores/player'
 import { useLibraryStore } from '@/stores/library'
 import { useNav } from '@/composables/useNav'
+import { useMvPlayer } from '@/composables/useMvPlayer'
 import { api } from '@/api/commands'
 import { toast } from '@/composables/useToast'
 
@@ -33,6 +35,7 @@ const emit = defineEmits<{
 const player = usePlayerStore()
 const library = useLibraryStore()
 const nav = useNav()
+const mv = useMvPlayer()
 
 // ---- 表头点击排序（传入 sort 属性时启用；歌单视图保持拖拽顺序不启用）----
 const vlist = ref<{ scrollToTop: () => void; scrollToIndex: (i: number) => void } | null>(null)
@@ -125,10 +128,8 @@ function rowDblClick(_t: Track, i: number) {
 }
 
 function playMv(t: Track) {
-  // 打开 MV 播放窗口
-  const params = new URLSearchParams({ trackId: String(t.id) })
-  const features = 'width=960,height=540,menubar=no,toolbar=no,location=no,status=no'
-  window.open(`?${params.toString()}`, `mv-${t.id}`, features)
+  // 当前页面内弹出 Plyr 播放层（见 MvPlayer.vue）
+  void mv.open(t)
 }
 
 const selected = ref(-1)
@@ -158,6 +159,8 @@ const menuItems = computed<MenuItem[]>(() => {
     },
     { label: '下一首播放', icon: ListEnd, action: () => player.playNextInQueue(t) },
     { label: '加入队列', icon: ListPlus, action: () => player.enqueue(t) },
+    // 仅存在同名视频文件（MV）的歌曲才显示
+    ...(t.hasMv ? [{ label: '播放 MV', icon: VideoFramePlay, action: () => playMv(t) }] : []),
     {
       label: t.fav ? '取消喜欢' : '喜欢',
       icon: Heart,
@@ -221,9 +224,16 @@ function openMenu(e: MouseEvent, t: Track) {
   menu.value = { x: e.clientX, y: e.clientY, track: t }
 }
 
-function openArtist(t: Track) {
-  if (t.artistId == null) return
-  nav.go({ view: 'tracks', artistId: t.artistId, artistName: t.artist ?? '未知艺人' })
+/** 行内展示的艺人列表：优先用后端拆分的多艺人（各自可点击），回退到合并字符串 */
+function artistLinks(t: Track): { id: number | null; name: string }[] {
+  if (t.artists?.length) return t.artists.map((a) => ({ id: a.id, name: a.name }))
+  if (t.artist) return [{ id: t.artistId, name: t.artist }]
+  return [{ id: null, name: '未知艺人' }]
+}
+
+function openArtist(artist: { id: number | null; name: string }) {
+  if (artist.id == null) return
+  nav.go({ view: 'tracks', artistId: artist.id, artistName: artist.name })
 }
 
 function openAlbum(t: Track) {
@@ -356,19 +366,24 @@ function onDragEnd() {
                 v-if="t.hasMv"
                 class="shrink-0 rounded-full p-0.5 text-fuchsia-500 transition hover:bg-fuchsia-50 dark:hover:bg-fuchsia-900/30"
                 title="播放 MV"
+                :aria-label="$t('mv.play')"
                 @click.stop="playMv(t)"
               >
-                <svg class="h-3.5 w-3.5" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M8 5v14l11-7z"/>
-                </svg>
+                <VideoFramePlay class="h-4 w-4" />
               </button>
             </div>
             <div class="min-w-0 truncate text-zinc-500 dark:text-zinc-400">
-              <button
-                class="max-w-full cursor-pointer truncate transition hover:text-violet-600 hover:underline dark:hover:text-violet-400"
-                :title="`查看艺人：${t.artist ?? '未知艺人'}`"
-                @click.stop="openArtist(t)"
-              >{{ t.artist ?? '未知艺人' }}</button>
+              <!-- 多艺人：每个名字独立可点击（区分每一个艺人） -->
+              <template v-for="(a, i) in artistLinks(t)" :key="a.id ?? `na-${i}`">
+                <button
+                  v-if="a.id != null"
+                  class="max-w-full cursor-pointer truncate transition hover:text-violet-600 hover:underline dark:hover:text-violet-400"
+                  :title="`查看艺人：${a.name}`"
+                  @click.stop="openArtist(a)"
+                >{{ a.name }}</button>
+                <span v-else>{{ a.name }}</span>
+                <span v-if="i < artistLinks(t).length - 1" class="opacity-50"> / </span>
+              </template>
             </div>
             <div class="min-w-0 truncate text-zinc-500 dark:text-zinc-400">
               <button

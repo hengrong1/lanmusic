@@ -536,7 +536,12 @@ fn write_batch(
     }
     let tx = conn.transaction().map_err(|e| e.to_string())?;
     for row in batch.drain(..) {
-        let artist_id = get_or_create_artist(&tx, &mut caches.artists, &row.artist)?;
+        // 多艺人拆分："A / B" → [A, B]，首个作为主艺人（tracks.artist_id，兼容旧查询/排序）
+        let artist_ids = split_artists(&row.artist)
+            .iter()
+            .map(|n| get_or_create_artist(&tx, &mut caches.artists, n))
+            .collect::<Result<Vec<i64>, String>>()?;
+        let artist_id = artist_ids.first().copied().unwrap_or(0);
         // 专辑归属按合辑艺人（album_artist）入库，艺人/专辑归类才与标签语义一致
         let album_artist_id = get_or_create_artist(&tx, &mut caches.artists, &row.album_artist)?;
 
@@ -598,6 +603,17 @@ fn write_batch(
         )
         .map_err(|e| e.to_string())?;
         let track_id = tx.last_insert_rowid();
+
+        // 多艺人关联：先清后插保证重复扫描幂等（更新行会重建关联）
+        tx.execute("DELETE FROM track_artists WHERE track_id = ?1", params![track_id])
+            .map_err(|e| e.to_string())?;
+        for (i, aid) in artist_ids.iter().enumerate() {
+            tx.execute(
+                "INSERT OR IGNORE INTO track_artists (track_id, artist_id, ord) VALUES (?1, ?2, ?3)",
+                params![track_id, aid, i as i64],
+            )
+            .map_err(|e| e.to_string())?;
+        }
 
         // 歌词关联：local/webdav 存同名 .lrc 的本地路径或完整 URL
         let lrc_target = lrc_map.and_then(|m| m.get(&stem_key(&row.rel)).cloned());
@@ -684,6 +700,7 @@ fn delete_missing(
         // 保留仍被专辑引用的艺人（专辑归属艺人可能没有直接归属的曲目）
         tx.execute(
             "DELETE FROM artists WHERE id NOT IN (SELECT DISTINCT artist_id FROM tracks)
+             AND id NOT IN (SELECT DISTINCT artist_id FROM track_artists)
              AND id NOT IN (SELECT DISTINCT artist_id FROM albums)",
             [],
         )
@@ -781,6 +798,113 @@ fn file_name_of(rel: &str) -> String {
         .file_name()
         .map(|s| s.to_string_lossy().to_string())
         .unwrap_or_default()
+}
+
+/// 多艺人分隔符（含中文标点与常见合作标注；拆分前 feat./ft./featuring 会先归一为 ';'）
+const ARTIST_SEPARATORS: &[char] = &[';', '；', '、', '&', '，', ',', '/'];
+
+/// 把 "A / B"、"A & B"、"A feat. B" 这类多艺人字符串拆成独立艺人名。
+/// 拆不出多个时原样返回（单元素）。
+fn split_artists(name: &str) -> Vec<String> {
+    let trimmed = name.trim();
+    if trimmed.is_empty() {
+        return vec![name.to_string()];
+    }
+    // 合作标注（feat. / ft. / featuring，大小写不敏感）统一替换为 ';' 分隔符
+    let lower = trimmed.to_lowercase();
+    let feat_tokens = ["feat.", "featuring", "feat", "ft."]; // 长词优先，避免 "feat" 抢先命中 "feat."/"featuring" 前缀
+    let mut normalized = String::with_capacity(trimmed.len());
+    let mut chars = trimmed.char_indices().peekable();
+    while let Some(&(pos, _)) = chars.peek() {
+        // 仅在词边界处匹配（前一个字符不是字母/数字）；is_char_boundary 防御个别
+        // 字符大小写转换后字节长度变化（如 'İ'）导致的切分错位
+        let boundary = pos == 0 || !lower[..pos].ends_with(|c: char| c.is_alphanumeric());
+        let mut token_chars = 0usize;
+        if boundary && lower.is_char_boundary(pos) {
+            for tok in feat_tokens {
+                if lower[pos..].starts_with(tok) {
+                    let after = &lower[pos + tok.len()..];
+                    if after.is_empty() || after.starts_with(|c: char| c.is_whitespace()) {
+                        token_chars = tok.chars().count();
+                        break;
+                    }
+                }
+            }
+        }
+        if token_chars > 0 {
+            normalized.push(';');
+            for _ in 0..token_chars {
+                chars.next();
+            }
+        } else {
+            let (_, c) = chars.next().unwrap();
+            normalized.push(c);
+        }
+    }
+
+    // 按分隔符拆分 + 清洗 + 去重（大小写不敏感，保持原始顺序）
+    let mut parts: Vec<String> = Vec::new();
+    for p in normalized.split(ARTIST_SEPARATORS) {
+        let p = p.trim();
+        if p.is_empty() {
+            continue;
+        }
+        let key = p.to_lowercase();
+        if parts.iter().any(|x| x.to_lowercase() == key) {
+            continue;
+        }
+        parts.push(p.to_string());
+    }
+    if parts.is_empty() {
+        vec![trimmed.to_string()]
+    } else if parts.len() == 1 {
+        // 单元素：可能是拆分前原样（无分隔符），也可能是去重塌缩（"A / a"）——都返回拆分结果
+        vec![parts.into_iter().next().unwrap()]
+    } else {
+        parts
+    }
+}
+
+#[cfg(test)]
+mod split_artists_tests {
+    use super::split_artists;
+
+    #[test]
+    fn keeps_single_artist() {
+        assert_eq!(split_artists("周杰伦"), vec!["周杰伦"]);
+        assert_eq!(split_artists("未知艺人"), vec!["未知艺人"]);
+    }
+
+    #[test]
+    fn splits_common_separators() {
+        assert_eq!(split_artists("周杰伦 / 费玉清"), vec!["周杰伦", "费玉清"]);
+        assert_eq!(split_artists("A & B"), vec!["A", "B"]);
+        assert_eq!(split_artists("A、B、C"), vec!["A", "B", "C"]);
+        assert_eq!(split_artists("A；B"), vec!["A", "B"]);
+        assert_eq!(split_artists("A，B"), vec!["A", "B"]);
+    }
+
+    #[test]
+    fn splits_featuring_tokens() {
+        assert_eq!(split_artists("A feat. B"), vec!["A", "B"]);
+        assert_eq!(split_artists("A Feat. B"), vec!["A", "B"]);
+        assert_eq!(split_artists("A featuring B"), vec!["A", "B"]);
+        assert_eq!(split_artists("A ft. B"), vec!["A", "B"]);
+        // 词中包含 feat 字样的艺人名不应被拆；结尾悬空的 "feat" 视为残留标注，拆掉后清理
+        assert_eq!(split_artists("Feature"), vec!["Feature"]);
+        assert_eq!(split_artists("Mo feat"), vec!["Mo"]);
+    }
+
+    #[test]
+    fn dedupes_and_trims() {
+        assert_eq!(split_artists("A / a"), vec!["A"]);
+        assert_eq!(split_artists("  A  /  B  "), vec!["A", "B"]);
+    }
+
+    #[test]
+    fn empty_falls_back_to_original() {
+        assert_eq!(split_artists(""), vec![""]);
+    }
 }
 
 /// 快速导入：不读文件内容。按常见目录布局（艺人/专辑/曲名）猜测。

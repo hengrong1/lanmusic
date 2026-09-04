@@ -150,6 +150,12 @@ export default {
     focusMode: '专注模式', focusModeOn: '开启专注模式', focusModeOff: '关闭专注模式',
     focusModeDesc: '播放中鼠标 5 秒无操作自动隐藏顶栏与播放条',
   },
+  mv: {
+    play: '播放 MV',
+    player: 'MV 播放',
+    notFound: '未找到 MV 视频文件',
+    loadFailed: 'MV 视频加载失败',
+  },
   focusMode: {
     title: '专注模式', enabled: '已开启', disabled: '已关闭', hint: '移动鼠标恢复界面',
   },
