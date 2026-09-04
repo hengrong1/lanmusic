@@ -138,10 +138,10 @@ function rowClass(t: Track, index: number) {
     return 'bg-violet-50 dark:bg-violet-500/10'
   }
   if (player.current?.id === t.id) {
-    return 'bg-gradient-to-r from-violet-100 to-transparent shadow-[inset_2px_0_0_0_#8b5cf6] dark:from-violet-500/15 dark:to-transparent'
+    return 'bg-gradient-to-r from-violet-100 via-violet-50 to-transparent shadow-[inset_3px_0_0_0_#8b5cf6] dark:from-violet-500/20 dark:via-violet-500/10 dark:to-transparent ring-1 ring-inset ring-violet-200/50 dark:ring-violet-400/20'
   }
   if (selected.value === index) return 'bg-violet-100/70 dark:bg-violet-500/10'
-  return 'hover:bg-zinc-100/80 dark:hover:bg-zinc-800/50'
+  return 'hover:bg-violet-50/50 dark:hover:bg-violet-500/10'
 }
 
 // ---- 右键菜单 ----
