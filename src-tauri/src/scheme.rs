@@ -147,19 +147,35 @@ pub(crate) fn serve_file_response(
                 Err(_) => server_error(),
             }
         }
-        // 无 Range 头：整文件返回（正常媒体引擎首次请求都带 Range，此路径很少触发）
-        None => match file.bytes().collect::<Result<Vec<u8>, _>>() {
-            Ok(data) => Response::builder()
-                .status(StatusCode::OK)
-                .header(CONTENT_TYPE, mime)
-                .header(ACCEPT_RANGES, "bytes")
-                .header(CONTENT_LENGTH, data.len())
-                .header(CACHE_CONTROL, "no-store")
-                .header("Access-Control-Allow-Origin", "*")
-                .body(data)
-                .unwrap_or_else(|_| server_error()),
-            Err(_) => server_error(),
-        },
+        // 无 Range 头：小文件整文件返回；大文件仅返回前 CHUNK（与带 Range 路径一致），
+        // 并返回 206 + Content-Range，告知客户端后续自行续传（避免大文件一次性进内存 OOM）
+        None => {
+            let capped = size.min(CHUNK);
+            let buf = file.take(capped).bytes().collect::<Result<Vec<u8>, _>>();
+            match buf {
+                Ok(data) => {
+                    let full = (size > 0 && data.len() as u64 == size) || size == 0;
+                    let mut b = Response::builder();
+                    if full {
+                        b = b.status(StatusCode::OK);
+                    } else {
+                        let start = 0u64;
+                        let end = (data.len() as u64).saturating_sub(1);
+                        b = b
+                            .status(StatusCode::PARTIAL_CONTENT)
+                            .header(CONTENT_RANGE, format!("bytes {}-{}/{}", start, end, size));
+                    }
+                    b.header(CONTENT_TYPE, mime)
+                        .header(ACCEPT_RANGES, "bytes")
+                        .header(CONTENT_LENGTH, data.len())
+                        .header(CACHE_CONTROL, "no-store")
+                        .header("Access-Control-Allow-Origin", "*")
+                        .body(data)
+                        .unwrap_or_else(|_| server_error())
+                }
+                Err(_) => server_error(),
+            }
+        }
     }
 }
 
@@ -217,6 +233,28 @@ fn cap_open_range(r: &str) -> String {
     r.to_string()
 }
 
+/// 从 Content-Range 响应头中提取 total size（如 "bytes 0-2097151/12345678" → Some(12345678)）；
+/// 形如 "bytes 0-2097151/*"（未知 total）或非法格式返回 None。
+fn extract_content_range_total(cr: &str) -> Option<u64> {
+    let slash = cr.rfind('/')?;
+    let total_str = cr[slash + 1..].trim();
+    if total_str == "*" {
+        return None;
+    }
+    total_str.parse::<u64>().ok()
+}
+
+/// 从客户端 Range 请求提取 start 偏移（cap_open_range 已做封顶，不影响 start 值本身）。
+/// 后缀范围（bytes=-N）无法确定 start（依赖远端 total），返回 None。
+fn extract_range_start(range: Option<&str>) -> Option<u64> {
+    let rest = range?.trim().strip_prefix("bytes=")?;
+    let (a, _) = rest.split_once('-')?;
+    if a.trim().is_empty() {
+        return None;
+    }
+    a.trim().parse::<u64>().ok()
+}
+
 pub(crate) fn proxy_response(
     url: &str,
     client_range: Option<&str>,
@@ -242,21 +280,40 @@ pub(crate) fn proxy_response(
         .get(CONTENT_RANGE)
         .and_then(|v| v.to_str().ok())
         .map(str::to_string);
-    let is_partial = content_range.is_some();
 
     // 最多缓冲 CHUNK 字节，超出部分截断（客户端会继续请求后续 Range）
     let mut resp = resp;
     let mut buf = Vec::new();
     let _ = (&mut resp).take(CHUNK).read_to_end(&mut buf);
+    let buf_len = buf.len() as u64;
+
+    // 基于本地实际截断字节数重写 Content-Range，保证头/体完全一致：
+    // - 客户端请求的 start（若无 Range 则默认 0）
+    // - end = start + buf_len - 1（空 body 时 end=start 也合法）
+    // - total 优先从远端 Content-Range 的 /size 取，没有则用 "*"
+    let start = extract_range_start(client_range).unwrap_or(0);
+    let end = start.saturating_add(buf_len.saturating_sub(1));
+    let total = content_range.as_deref().and_then(extract_content_range_total);
+    let truncated = match total {
+        Some(t) => buf_len < t.saturating_sub(start).min(t),
+        None => buf_len >= CHUNK, // 未知 total 时：缓冲填满了 CHUNK 则视为截断
+    };
+    let has_remote_range = content_range.is_some();
+    // 响应状态：远端 206 或 本地截断都应返回 206
+    let partial = has_remote_range || truncated;
+    let range_value = match total {
+        Some(t) => format!("bytes {}-{}/{}", start, end, t),
+        None => format!("bytes {}-{}/*", start, end),
+    };
 
     let mut builder = Response::builder()
-        .status(if is_partial { StatusCode::PARTIAL_CONTENT } else { StatusCode::OK })
+        .status(if partial { StatusCode::PARTIAL_CONTENT } else { StatusCode::OK })
         .header(ACCEPT_RANGES, "bytes")
         .header(CONTENT_LENGTH, buf.len())
         .header(CACHE_CONTROL, "no-store")
         .header("Access-Control-Allow-Origin", "*");
-    if let Some(cr) = content_range {
-        builder = builder.header(CONTENT_RANGE, cr);
+    if partial {
+        builder = builder.header(CONTENT_RANGE, range_value);
     }
     builder.body(buf).unwrap_or_else(|_| server_error())
 }

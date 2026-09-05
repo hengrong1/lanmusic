@@ -271,8 +271,12 @@ pub fn remove_source(app: AppHandle, state: State<'_, AppState>, id: i64) -> Res
         return Err("该来源正在扫描中，请稍后再移除".into());
     }
     let conn = state.db.lock().map_err(|e| e.to_string())?;
-    // 先收集将被删除的孤儿专辑 id，删除后同步清理封面缓存文件
-    // （否则 SQLite rowid 复用会让新专辑命中旧封面 → 歌和封面对不上）
+    let kind: Option<String> = conn
+        .query_row("SELECT kind FROM sources WHERE id = ?1", params![id], |r| r.get(0))
+        .ok();
+    // 先删来源（ON DELETE CASCADE 级联移除 tracks）
+    conn.execute("DELETE FROM sources WHERE id = ?1", params![id]).map_err(|e| e.to_string())?;
+    // 级联完成后再查真正的孤儿专辑（包含：原就没被引用的 + 因级联 tracks 被删后新变成孤儿的）
     let orphan_albums: Vec<i64> = {
         let mut stmt = conn
             .prepare("SELECT id FROM albums WHERE id NOT IN (SELECT DISTINCT album_id FROM tracks)")
@@ -280,12 +284,17 @@ pub fn remove_source(app: AppHandle, state: State<'_, AppState>, id: i64) -> Res
         let rows = stmt.query_map([], |r| r.get::<_, i64>(0)).map_err(|e| e.to_string())?;
         rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?
     };
-    let kind: Option<String> = conn
-        .query_row("SELECT kind FROM sources WHERE id = ?1", params![id], |r| r.get(0))
-        .ok();
-    conn.execute("DELETE FROM sources WHERE id = ?1", params![id]).map_err(|e| e.to_string())?;
-    conn.execute("DELETE FROM albums WHERE id NOT IN (SELECT DISTINCT album_id FROM tracks)", [])
-        .map_err(|e| e.to_string())?;
+    // 先删封面文件再删 DB 行：如果先删 DB 行后 SQLite rowid 被复用，后续 purge 可能误删新专辑同名缓存
+    let covers_dir = state.covers_dir.clone();
+    drop(conn);
+    crate::covers::purge(&covers_dir, &orphan_albums);
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    // 按已收集的 id 精确删除（与传给 purge 的集合完全一致）
+    if !orphan_albums.is_empty() {
+        let placeholders = orphan_albums.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+        let sql = format!("DELETE FROM albums WHERE id IN ({placeholders})");
+        let _ = conn.execute(&sql, rusqlite::params_from_iter(orphan_albums.iter()));
+    }
     // 专辑归属艺人（albums.artist_id）可能没有直接归属的曲目，删除时需一并排除
     conn.execute(
         "DELETE FROM artists WHERE id NOT IN (SELECT DISTINCT artist_id FROM tracks)
@@ -295,7 +304,6 @@ pub fn remove_source(app: AppHandle, state: State<'_, AppState>, id: i64) -> Res
     )
     .map_err(|e| e.to_string())?;
     drop(conn);
-    crate::covers::purge(&state.covers_dir, &orphan_albums);
 
     // 清理收尾：webdav 来源移除钥匙串凭证；本地来源停止目录监听
     match kind.as_deref() {
@@ -1061,7 +1069,7 @@ pub fn get_setting(state: State<'_, AppState>, key: String) -> Result<Option<Str
 #[tauri::command]
 pub fn set_setting(state: State<'_, AppState>, key: String, value: String) -> Result<(), String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
-    db::set_setting(&conn, &key, &value);
+    db::set_setting(&conn, &key, &value).map_err(|e| e.to_string())?;
     Ok(())
 }
 

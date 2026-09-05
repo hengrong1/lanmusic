@@ -143,7 +143,7 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
     // 分隔符拆出独立艺人。置回 meta_state=0 让下次扫描自动重解析（一次性）。
     if get_setting(conn, "track_artists_migrated").is_none() {
         conn.execute("UPDATE tracks SET meta_state = 0", [])?;
-        set_setting(conn, "track_artists_migrated", "1");
+        set_setting(conn, "track_artists_migrated", "1")?;
     }
     Ok(())
 }
@@ -164,10 +164,11 @@ pub fn get_setting(conn: &Connection, key: &str) -> Option<String> {
         .ok()
 }
 
-pub fn set_setting(conn: &Connection, key: &str, value: &str) {
-    let _ = conn.execute(
+pub fn set_setting(conn: &Connection, key: &str, value: &str) -> rusqlite::Result<()> {
+    conn.execute(
         "INSERT INTO app_settings (key, value) VALUES (?1, ?2)
          ON CONFLICT(key) DO UPDATE SET value = excluded.value",
         [key, value],
-    );
+    )
+    .map(|_| ())
 }
