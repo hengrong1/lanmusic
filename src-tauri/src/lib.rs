@@ -272,6 +272,7 @@ pub fn run() {
             commands::get_setting,
             commands::set_setting,
             commands::set_thumbbar_playing,
+            commands::set_thumbbar_album,
             commands::desktop_lyrics_set,
             commands::list_system_fonts,
             commands::exit_app,

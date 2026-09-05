@@ -63,6 +63,8 @@ export const api = {
   favoriteToggle: (id: number, fav: boolean) => invoke<void>('favorite_toggle', { id, fav }),
   // Windows 任务栏缩略图按钮：同步播放/暂停图标（其他平台为空操作）
   setThumbbarPlaying: (playing: boolean) => invoke<void>('set_thumbbar_playing', { playing }),
+  // Windows 任务栏悬停预览：整块显示当前歌曲所在专辑的封面（其他平台为空操作）
+  setThumbbarAlbum: (albumId: number | null) => invoke<void>('set_thumbbar_album', { albumId }),
   // 桌面歌词浮窗开关，返回最终状态
   desktopLyricsSet: (enabled: boolean) => invoke<boolean>('desktop_lyrics_set', { enabled }),
   // 系统已安装字体列表（DirectWrite 枚举字族名；其他平台为空数组）

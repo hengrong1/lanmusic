@@ -486,6 +486,8 @@ export const usePlayerStore = defineStore('player', () => {
   watch(current, (t) => {
     const title = t ? `${t.title} - ${t.artist ?? '未知艺人'}` : 'LanMusic'
     void appWindow.setTitle(title).catch(() => {})
+    // 任务栏悬停预览整块显示当前歌曲的专辑封面（无曲目/无专辑时传 null 关闭封面预览）
+    api.setThumbbarAlbum(t?.albumId ?? null).catch(() => {})
   })
 
   /** 切换当前歌曲的喜欢状态 */

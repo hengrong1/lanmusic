@@ -695,6 +695,17 @@ pub fn set_thumbbar_playing(playing: bool) -> Result<(), String> {
     Ok(())
 }
 
+/// 前端切歌时报告当前曲目的专辑 id（非 Windows 上为空操作）；
+/// Windows 任务栏悬停预览据此整块显示该专辑封面。
+#[tauri::command]
+pub fn set_thumbbar_album(album_id: Option<i64>) -> Result<(), String> {
+    #[cfg(windows)]
+    crate::thumbbar::set_album(album_id);
+    #[cfg(not(windows))]
+    let _ = album_id;
+    Ok(())
+}
+
 // ---------- 系统字体 ----------
 
 /// 枚举系统已安装字体（DirectWrite 字体集合的字族名），供全局字体设置选择；
