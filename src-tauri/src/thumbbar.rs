@@ -2,8 +2,9 @@
 //! 鼠标悬停任务栏图标时，在缩略图下方显示「上一首 / 播放暂停 / 下一首」控制按钮（类似 QQ 音乐）。
 //!
 //! 实现方式：Win32 `ITaskbarList3::ThumbBarAddButtons` + 窗口过程子类化。
-//! - 按钮图标：代码绘制的白色形状（无需图片资源），经 `CreateDIBSection` + `CreateIconIndirect`
-//!   生成带透明通道的 HICON，尺寸按窗口 DPI 缩放（16dp 基准）。
+//! - 按钮图标：代码绘制的形状（无需图片资源），颜色跟随系统浅/深色主题——
+//!   浅色主题按钮底色浅，用深色图标；深色主题用白色图标。经 `CreateDIBSection`
+//!   + `CreateIconIndirect` 生成带透明通道的 HICON，尺寸按窗口 DPI 缩放（16dp 基准）。
 //! - 点击按钮：系统发来 `WM_COMMAND`（LOWORD(wParam) 为按钮 id），转发为现有 `tray`
 //!   事件（prev / toggle / next），前端播放器监听同一事件驱动播放。
 //! - 图标同步：前端播放状态变化时调用 `set_thumbbar_playing` 命令，切换中间按钮的
@@ -15,20 +16,21 @@ use std::sync::OnceLock;
 
 use tauri::{AppHandle, Emitter};
 use windows::core::w;
-use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
+use windows::Win32::Foundation::{ERROR_SUCCESS, HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::Graphics::Gdi::{
     CreateBitmap, CreateDIBSection, DeleteObject, BITMAPINFO, BITMAPINFOHEADER, DIB_RGB_COLORS,
 };
 use windows::Win32::System::Com::{
     CoCreateInstance, CoInitializeEx, CLSCTX_ALL, COINIT_APARTMENTTHREADED,
 };
+use windows::Win32::System::Registry::{RegGetValueW, HKEY_CURRENT_USER, RRF_RT_REG_DWORD};
 use windows::Win32::UI::HiDpi::GetDpiForWindow;
 use windows::Win32::UI::Shell::{
     DefSubclassProc, ITaskbarList3, SetWindowSubclass, THBF_ENABLED, THB_FLAGS, THB_ICON,
     THB_TOOLTIP, THUMBBUTTON,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    CreateIconIndirect, RegisterWindowMessageW, HICON, ICONINFO,
+    CreateIconIndirect, DestroyIcon, RegisterWindowMessageW, WM_SETTINGCHANGE, HICON, ICONINFO,
 };
 
 /// CLSID_TaskbarList（{56FDF344-FD6D-11d0-958A-006097C9A090}），windows 0.61 未导出该常量
@@ -47,6 +49,8 @@ struct State {
     app: AppHandle,
     hwnd: HWND,
     taskbar: ITaskbarList3,
+    /// 图标生成时的像素尺寸（DPI 缩放结果），主题切换重建图标时复用
+    size: i32,
     icon_prev: HICON,
     icon_play: HICON,
     icon_pause: HICON,
@@ -54,7 +58,9 @@ struct State {
     playing: AtomicBool,
 }
 
-static STATE: OnceLock<State> = OnceLock::new();
+/// 图标句柄在主题切换重建时需要整体替换，故用 Mutex 提供可变访问；
+/// 所有实际使用仍收敛在主线程（跨线程仅读写 playing 原子量）。
+static STATE: OnceLock<std::sync::Mutex<State>> = OnceLock::new();
 /// RegisterWindowMessage("TaskbarButtonCreated") 的消息 id
 static TASKBAR_CREATED_MSG: OnceLock<u32> = OnceLock::new();
 
@@ -81,11 +87,13 @@ pub fn init(app: AppHandle, hwnd: HWND) {
 
         // 按窗口 DPI 缩放图标尺寸（16dp 基准，clamp 防御异常 DPI）
         let size = ((16 * GetDpiForWindow(hwnd)) / 96).clamp(16, 64) as i32;
+        // 图标颜色跟随系统浅/深色主题：浅色主题的按钮底色是浅色，需用深色图标才可见
+        let light_ui = uses_light_ui();
         let (Some(icon_prev), Some(icon_play), Some(icon_pause), Some(icon_next)) = (
-            make_icon(IconKind::Prev, size),
-            make_icon(IconKind::Play, size),
-            make_icon(IconKind::Pause, size),
-            make_icon(IconKind::Next, size),
+            make_icon(IconKind::Prev, size, light_ui),
+            make_icon(IconKind::Play, size, light_ui),
+            make_icon(IconKind::Pause, size, light_ui),
+            make_icon(IconKind::Next, size, light_ui),
         ) else {
             eprintln!("thumbbar: 生成按钮图标失败，任务栏控制按钮不可用");
             return;
@@ -95,21 +103,22 @@ pub fn init(app: AppHandle, hwnd: HWND) {
             app,
             hwnd,
             taskbar,
+            size,
             icon_prev,
             icon_play,
             icon_pause,
             icon_next,
             playing: AtomicBool::new(false),
         };
-        if STATE.set(state).is_err() {
+        if STATE.set(std::sync::Mutex::new(state)).is_err() {
             return; // 仅主窗口，理论不会重复初始化
         }
 
         if SetWindowSubclass(hwnd, Some(subclass_proc), SUBCLASS_ID, 0).as_bool() {
             // 兜底：启动广播可能在子类化安装前已发出（窗口默认可见），
             // 后台线程定期在主线程重试添加，成功即停。
-            let handle = match STATE.get() {
-                Some(s) => s.app.clone(),
+            let app = match STATE.get() {
+                Some(s) => s.lock().unwrap().app.clone(),
                 None => return,
             };
             std::thread::spawn(move || {
@@ -117,7 +126,7 @@ pub fn init(app: AppHandle, hwnd: HWND) {
                     std::thread::sleep(std::time::Duration::from_millis(500));
                     let done = std::sync::Arc::new(AtomicBool::new(false));
                     let done2 = done.clone();
-                    let h = handle.clone();
+                    let h = app.clone();
                     let _ = h.run_on_main_thread(move || {
                         let ok = add_buttons().is_ok();
                         done2.store(ok, Ordering::SeqCst);
@@ -131,14 +140,58 @@ pub fn init(app: AppHandle, hwnd: HWND) {
     }
 }
 
+/// 读取 HKCU Personalize 主题键下的 DWORD 值（regGetValueW 支持在 HKEY 上直接按值路径读取）
+fn read_theme_dword<
+    A: windows::core::Param<windows::core::PCWSTR>,
+    B: windows::core::Param<windows::core::PCWSTR>,
+>(
+    subkey: A,
+    value: B,
+) -> Option<u32> {
+    unsafe {
+        let mut data: u32 = 0;
+        let mut len = std::mem::size_of::<u32>() as u32;
+        let err = RegGetValueW(
+            HKEY_CURRENT_USER,
+            subkey,
+            value,
+            RRF_RT_REG_DWORD,
+            None,
+            Some(&mut data as *mut u32 as *mut core::ffi::c_void),
+            Some(&mut len),
+        );
+        (err == ERROR_SUCCESS).then_some(data)
+    }
+}
+
+/// 判断当前是否浅色 UI（决定缩略图按钮图标颜色）。
+/// 优先任务栏所属的系统模式（SystemUsesLightTheme，Win10 1903+ / Win11）；
+/// 旧系统缺该键时回退应用模式（AppsUseLightTheme）；
+/// 均读取失败时默认深色（白色图标，与历史行为一致）。
+fn uses_light_ui() -> bool {
+    let sub = w!(r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize");
+    if let Some(v) = read_theme_dword(sub, w!("SystemUsesLightTheme")) {
+        return v != 0;
+    }
+    if let Some(v) = read_theme_dword(sub, w!("AppsUseLightTheme")) {
+        return v != 0;
+    }
+    false
+}
+
 /// 前端播放状态变化时同步中间按钮图标（播放中显示「暂停」图标）。
 /// 可能在任意线程被调用（Tauri 命令线程池），实际 UI 操作转发到主线程。
 pub fn set_playing(playing: bool) {
-    let Some(s) = STATE.get() else { return };
-    s.playing.store(playing, Ordering::SeqCst);
-    let app = s.app.clone();
-    let _ = app.run_on_main_thread(|| unsafe {
-        let Some(s) = STATE.get() else { return };
+    let Some(m) = STATE.get() else { return };
+    // 先原子记录播放状态，并取回 AppHandle 用于派发到主线程
+    let app = {
+        let s = m.lock().unwrap();
+        s.playing.store(playing, Ordering::SeqCst);
+        s.app.clone()
+    };
+    let _ = app.run_on_main_thread(move || unsafe {
+        let Some(m) = STATE.get() else { return };
+        let s = m.lock().unwrap();
         let icon = if s.playing.load(Ordering::SeqCst) {
             s.icon_pause
         } else {
@@ -150,9 +203,10 @@ pub fn set_playing(playing: bool) {
 }
 
 unsafe fn add_buttons() -> windows::core::Result<()> {
-    let Some(s) = STATE.get() else {
+    let Some(m) = STATE.get() else {
         return Err(windows::core::Error::from_win32());
     };
+    let s = m.lock().unwrap();
     s.taskbar.HrInit()?;
     let playing = s.playing.load(Ordering::SeqCst);
     let buttons = [
@@ -202,11 +256,82 @@ unsafe extern "system" fn subclass_proc(
             BTN_NEXT => Some("next"),
             _ => None,
         };
-        if let (Some(action), Some(s)) = (action, STATE.get()) {
-            let _ = s.app.emit("tray", action);
+        if let Some(action) = action {
+            if let Some(m) = STATE.get() {
+                let s = m.lock().unwrap();
+                let _ = s.app.emit("tray", action);
+            }
         }
+    } else if msg == WM_SETTINGCHANGE && immersive_color_set(lparam) {
+        // 系统浅/深色主题切换广播：重建图标颜色并刷新按钮
+        rebuild_icons_on_theme_change();
     }
     DefSubclassProc(hwnd, msg, wparam, lparam)
+}
+
+/// WM_SETTINGCHANGE 的 lParam 指向引起变化的设置项名（宽字符串），
+/// 系统浅/深色模式切换时广播的字符串为 "ImmersiveColorSet"。
+unsafe fn immersive_color_set(lparam: LPARAM) -> bool {
+    if lparam.0 == 0 {
+        return false;
+    }
+    let p = lparam.0 as *const u16;
+    let needle = "ImmersiveColorSet";
+    let mut i = 0usize;
+    for wc in needle.encode_utf16() {
+        // 字符串在匹配到完整名称前结束则不是目标广播
+        if *p.add(i) != wc {
+            return false;
+        }
+        i += 1;
+    }
+    // 名称需在此结束，排除 "ImmersiveColorSet..." 之类的前缀
+    *p.add(i) == 0
+}
+
+/// 系统主题切换时在主线程重建四个按钮图标：按新主题重绘，
+/// 刷新成功后销毁旧图标并替换（失败则保留旧图标继续生效）。
+unsafe fn rebuild_icons_on_theme_change() {
+    let Some(m) = STATE.get() else { return };
+    let mut s = m.lock().unwrap();
+    let light_ui = uses_light_ui();
+    let playing = s.playing.load(Ordering::SeqCst);
+    let icons = [
+        make_icon(IconKind::Prev, s.size, light_ui),
+        make_icon(IconKind::Play, s.size, light_ui),
+        make_icon(IconKind::Pause, s.size, light_ui),
+        make_icon(IconKind::Next, s.size, light_ui),
+    ];
+    // 任一生成失败则整体放弃（保留旧图标），并释放已成功的句柄避免泄漏
+    if icons.iter().any(|h| h.is_none()) {
+        for h in icons.into_iter().flatten() {
+            let _ = DestroyIcon(h.into());
+        }
+        return;
+    }
+    let [h_prev, h_play, h_pause, h_next] = icons.map(Option::unwrap);
+    let buttons = [
+        thumb_button(BTN_PREV, h_prev, "上一首"),
+        thumb_button(BTN_TOGGLE, if playing { h_pause } else { h_play }, "播放 / 暂停"),
+        thumb_button(BTN_NEXT, h_next, "下一首"),
+    ];
+    if s.taskbar.ThumbBarUpdateButtons(s.hwnd, &buttons).is_ok() {
+        // 任务栏已持有新图标，替换 State 后再销毁旧句柄
+        let old = (s.icon_prev, s.icon_play, s.icon_pause, s.icon_next);
+        s.icon_prev = h_prev;
+        s.icon_play = h_play;
+        s.icon_pause = h_pause;
+        s.icon_next = h_next;
+        drop(s);
+        for h in [old.0, old.1, old.2, old.3] {
+            let _ = DestroyIcon(h.into());
+        }
+    } else {
+        drop(s);
+        for h in [h_prev, h_play, h_pause, h_next] {
+            let _ = DestroyIcon(h.into());
+        }
+    }
 }
 
 // ---------- 图标绘制 ----------
@@ -219,9 +344,11 @@ enum IconKind {
     Next,
 }
 
-/// 用代码绘制白色形状并生成带 alpha 通道的 HICON（背景透明）。
-unsafe fn make_icon(kind: IconKind, size: i32) -> Option<HICON> {
-    let rgba = render(kind, size);
+/// 用代码绘制形状（浅色主题用深色前景、深色主题用白色）并生成带 alpha 通道的 HICON（背景透明）。
+unsafe fn make_icon(kind: IconKind, size: i32, light_ui: bool) -> Option<HICON> {
+    // 浅色主题按钮底色浅 → 用柔和深灰前景（纯黑太突兀）；深色主题按钮底色深 → 白色前景
+    let fg = if light_ui { (0x4D, 0x4D, 0x4D) } else { (255, 255, 255) };
+    let rgba = render(kind, size, fg);
 
     let mut bits: *mut core::ffi::c_void = std::ptr::null_mut();
     let bmi = BITMAPINFO {
@@ -253,8 +380,8 @@ unsafe fn make_icon(kind: IconKind, size: i32) -> Option<HICON> {
     icon
 }
 
-/// 按归一化坐标绘制各形状（白色不透明，其余全透明）。
-fn render(kind: IconKind, size: i32) -> Vec<u8> {
+/// 按归一化坐标绘制各形状。`fg` 为前景 RGB（图形不透明色，其余全透明）。
+fn render(kind: IconKind, size: i32, fg: (u8, u8, u8)) -> Vec<u8> {
     let s = size as f32;
     let mut buf = vec![0u8; (size * size) as usize * 4];
     for y in 0..size {
@@ -279,9 +406,9 @@ fn render(kind: IconKind, size: i32) -> Vec<u8> {
             };
             if on {
                 let i = ((y * size + x) * 4) as usize;
-                buf[i] = 255;
-                buf[i + 1] = 255;
-                buf[i + 2] = 255;
+                buf[i] = fg.0;
+                buf[i + 1] = fg.1;
+                buf[i + 2] = fg.2;
                 buf[i + 3] = 255;
             }
         }
