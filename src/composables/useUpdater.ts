@@ -1,6 +1,7 @@
 import { ref } from 'vue'
 import { check, type Update } from '@tauri-apps/plugin-updater'
 import { relaunch } from '@tauri-apps/plugin-process'
+import { getVersion } from '@tauri-apps/api/app'
 import { toast } from '@/composables/useToast'
 
 /**
@@ -24,6 +25,10 @@ export type UpdateStatus =
   | 'uptodate' // 已是最新
 
 const status = ref<UpdateStatus>('idle')
+/** 更新弹窗开关：发现新版本时自动打开，稍后/关闭后可在「设置 → 关于」重新触发 */
+const dialogOpen = ref(false)
+/** 当前版本号（getVersion()，失败时为空串，UI 降级不显示） */
+const currentVersion = ref('')
 /** 新版本号 */
 const newVersion = ref('')
 /** 新版说明（Release body） */
@@ -35,10 +40,21 @@ const totalMb = ref(0)
 
 let update: Update | null = null
 
+/** 读取当前版本号（只取一次，取不到留空，UI 自动隐藏该段） */
+async function loadCurrentVersion(): Promise<void> {
+  if (currentVersion.value) return
+  try {
+    currentVersion.value = await getVersion()
+  } catch {
+    currentVersion.value = ''
+  }
+}
+
 /** 检查更新。silent=true 用于启动时静默检查（有更新才提示，出错不弹框） */
 async function checkForUpdate(silent = false): Promise<boolean> {
   if (status.value === 'checking' || status.value === 'downloading') return false
   status.value = 'checking'
+  void loadCurrentVersion()
   try {
     // check() 内部会对比本地与远端版本，远端更高才返回 Update
     update = (await check()) ?? null
@@ -47,7 +63,8 @@ async function checkForUpdate(silent = false): Promise<boolean> {
       releaseNotes.value = update.body ?? ''
       status.value = 'available'
       progress.value = -1
-      if (silent) toast(`发现新版本 v${update.version}，可到「设置 → 关于」更新`)
+      // 发现新版本：弹出更新弹窗（无论启动静默检查还是手动检查）
+      dialogOpen.value = true
       return true
     }
     status.value = 'uptodate'
@@ -94,6 +111,17 @@ async function downloadAndInstall(): Promise<void> {
   }
 }
 
+/** 打开/关闭更新弹窗 */
+function openUpdateDialog(): void {
+  if (status.value === 'available' || status.value === 'downloading' || status.value === 'ready') {
+    void loadCurrentVersion()
+    dialogOpen.value = true
+  }
+}
+function closeUpdateDialog(): void {
+  dialogOpen.value = false
+}
+
 /** 重启应用使更新生效 */
 async function restartToUpdate(): Promise<void> {
   await relaunch()
@@ -102,6 +130,8 @@ async function restartToUpdate(): Promise<void> {
 export function useUpdater() {
   return {
     status,
+    dialogOpen,
+    currentVersion,
     newVersion,
     releaseNotes,
     progress,
@@ -110,5 +140,7 @@ export function useUpdater() {
     checkForUpdate,
     downloadAndInstall,
     restartToUpdate,
+    openUpdateDialog,
+    closeUpdateDialog,
   }
 }

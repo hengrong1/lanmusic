@@ -6,6 +6,7 @@ import TopBar from '@/components/TopBar.vue'
 import PlayerBar from '@/components/PlayerBar.vue'
 import QueuePanel from '@/components/QueuePanel.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import UpdateDialog from '@/components/UpdateDialog.vue'
 import NowPlayingView from '@/components/NowPlayingView.vue'
 import Toast from '@/components/Toast.vue'
 import MvPlayer from '@/components/MvPlayer.vue'
@@ -181,7 +182,7 @@ function nowPlayingLeave(el: Element, done: () => void) {
 onMounted(() => {
   void library.init()
   void player.restore()
-  // 启动时静默检查应用更新（有新版本 toast 提示，失败不打扰）
+  // 启动时静默检查应用更新（有新版本弹出更新弹窗，失败不打扰）
   void useUpdater().checkForUpdate(true)
 })
 
@@ -238,6 +239,7 @@ window.addEventListener('keydown', (e) => {
     />
     <Toast />
     <ConfirmDialog />
+    <UpdateDialog />
     <MvPlayer />
     <!-- 播放页环境：全窗渐变（含播放条背后）+ 上滑的内容层。z-15 低于播放条，播放条透明浮于其上 -->
     <div class="pointer-events-none absolute inset-0 z-[15] overflow-hidden" :style="{ '--np-accent': npAccent }">
