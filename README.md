@@ -3,17 +3,17 @@
 本地 + 局域网音乐播放器（桌面端）。技术栈：**Tauri 2 + Vue 3 + TypeScript + Rust + SQLite**。
 
 > 产品设计文档见 [docs/产品设计文档.md](docs/产品设计文档.md)。
-> 当前进度：**M0-M3 已完成**（本地播放闭环 / 歌单 / 歌词 / 最近播放 / 托盘 / WebDAV 源），开发范围已**定稿**——剩余规划项不再实现，详见文末「路线图」。
+> 当前进度：**本地播放闭环 / 歌单 / 歌词 / 最近播放 / 托盘 / WebDAV 源已完成**，应用已进入稳定维护阶段。
 >
-> 最新功能：风格视图、本地目录监听自动增量扫描、WebDAV 凭证入系统钥匙串、封面缓存容量控制、播放倍速、队列另存为歌单、播放页 Hi-Res 音质徽标、单实例启动、歌词时间轴校准（播放页控件 + 快捷键，按曲目记忆）、专注模式、应用内更新（GitHub Releases）、图标库迁移 Solar Icons、界面卡片化布局。
+> 主要能力：本地与 WebDAV 音乐库、歌词（外挂 .lrc / 内嵌）、歌单、最近播放、风格视图、播放倍速与淡入淡出、专注模式、桌面歌词浮窗、封面缓存、Windows 任务栏缩略图控制、系统托盘、应用内更新（GitHub Releases）。
 
 ## 界面预览
 
-| 歌曲库 | 专辑视图 | 艺人视图 |
+| 全部歌曲 | 播放页 | 设置页 |
 |:---:|:---:|:---:|
-| ![歌曲库](docs/screenshots/library.jpg) | ![专辑](docs/screenshots/albums.jpg) | ![艺人](docs/screenshots/artists.jpg) |
+| ![全部歌曲](docs/screenshots/tracks.png) | ![播放页](docs/screenshots/nowplaying.png) | ![设置页](docs/screenshots/settings.png) |
 
-> 更多界面：风格视图、播放页、设置页可在运行应用后自行查看。
+> 界面预览使用内置演示曲库，不含任何真实音乐数据；其余界面可在运行应用后自行查看。
 
 ## 技术栈
 
@@ -112,7 +112,7 @@ pnpm tauri:build      # 打包安装程序
 
 - Release 版本号取自 `src-tauri/tauri.conf.json` 的 `version`，打 tag 时保持与之一致（如 `v0.1.0`）；**发新版记得同步更新该 version**，应用内更新靠版本号对比判定；
 - `tauri-action` 会随安装包一起上传 `latest.json` 与各包的 `.sig` 签名文件（`createUpdaterArtifacts: true` + `includeUpdaterJson: true`）；
-- 安装包均**未做 OS 代码签名**（范围定稿）：macOS 首次打开需右键 → 打开（或 `xattr -cr /Applications/LanMusic.app`）；Windows SmartScreen 提示选择「仍要运行」；
+- 安装包均**未做 OS 代码签名**：macOS 首次打开需右键 → 打开（或 `xattr -cr /Applications/LanMusic.app`）；Windows SmartScreen 提示选择「仍要运行」；
 - 若需要 macOS 通用二进制（一个包同时跑两种架构），把两个 macOS 条目的 `target` 都改为 `universal-apple-darwin` 即可（包体积约增大一倍）。
 
 
@@ -304,30 +304,15 @@ SQLite（WAL 模式，外键开启），建表与列迁移见 `src-tauri/src/db.
 |---|---|
 | WebDAV 的 M4A 缺时长 | moov box 在文件尾，头部 1MB 解析不到；属于已知取舍 |
 | 封面显示错乱（旧版本库） | 启动时会一次性自愈清空封面缓存（`covers.selfheal.v1`），之后惰性重建 |
-| Windows 首次运行提示 SmartScreen | 安装包未签名（已定稿不计划签名），选择「仍要运行」即可 |
+| Windows 首次运行提示 SmartScreen | 安装包未签名，选择「仍要运行」即可 |
 | 某些歌曲显示文件名而非标签 | 标签解析失败已降级入库；对来源执行「完整解析」重试 |
 
-## 路线图（开发范围已定稿）
+## 已知取舍
 
-功能开发到此为止，**以下规划项明确不再实现**：
-
-| 功能 | 不做的理由 |
-|---|---|
-| 系统媒体键（SMTC/MPRIS） | 已有应用内快捷键、系统托盘菜单、Windows 任务栏缩略图按钮，覆盖控制需求 |
-| 打包签名（OS 代码签名） | 依赖付费开发者账号与代码签名证书（外部资源），不做；更新包签名用 Tauri 自带 minisign 密钥（免费），已用于应用内更新 |
-| FTS 全文搜索（含拼音首字母） | 现 LIKE 搜索在十万级曲库下体验可接受 |
-| 文件夹视图 | 专辑/艺人/风格视图已覆盖浏览需求 |
-| 歌词编辑器 | 歌词为只读展示，不提供编辑 |
-| 转码兜底（symphonia） | 主流格式 WebView 已可解码，非主流格式明确标注 |
-| 智能歌单 | 规则歌单需求可用现有歌单手动维护替代 |
-| Rust 音频引擎（gapless / ReplayGain / EQ / DSD） | 替换播放内核属重写级工程，收益/风险比不划算 |
-| DLNA/UPnP、SMB 原生客户端、远程控制 Web 页 | P2 规划整体取消 |
-
-- **已完成**：M0-M3 全部 + 歌单升级（添加歌曲面板、封面、简介、批量操作、加入时间排序）、歌词时间轴校准（控件 + `[`/`]` 快捷键 + 按曲目持久化 + toast 去重）、专注模式、播放倍速、队列另存为歌单、播放页 Hi-Res 音质徽标、风格视图、本地目录监听自动增量扫描、WebDAV 凭证入系统钥匙串、封面缓存容量控制、单实例启动、应用内更新（GitHub Releases）、图标库迁移 Solar Icons、界面卡片化布局与视觉细节统一、导航相同路由去重、侧栏收起动画优化、主题图标优化（自动=SunMoon/暗=Moon/亮=Sun）
-- **已移除**：局域网共享模式与设备发现（历史实现见 git 记录）
-- 已知取舍：
-  - WebDAV 标签解析基于文件头部 1MB（moov 在尾部的 M4A 可能缺时长）
-  - 歌词为只读展示（不提供编辑器）
-  - WebDAV 源无法目录监听（远端文件系统变化对本机不可见），需手动「重新扫描」
-  - 安装包不计划签名，Windows 首次运行 SmartScreen 提示属正常现象
+- 局域网共享模式与设备发现不提供（历史实现见 git 记录）
+- WebDAV 标签解析基于文件头部 1MB（moov 在尾部的 M4A 可能缺时长）
+- 歌词为只读展示，不提供编辑器
+- WebDAV 源无法目录监听（远端文件系统变化对本机不可见），需手动「重新扫描」
+- 安装包未做 OS 代码签名，Windows 首次运行 SmartScreen 提示属正常现象
+- 播放控制未接系统媒体键（SMTC/MPRIS），由应用内快捷键、托盘菜单与 Windows 任务栏缩略图按钮承担
 
