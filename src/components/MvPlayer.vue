@@ -3,6 +3,8 @@ import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Plyr from 'plyr'
 import 'plyr/dist/plyr.css'
+// 控件图标 sprite 本地化：默认 iconUrl 指向 cdn.plyr.io，打包后会被 CSP(connect-src 'self') 拦截导致图标全空
+import plyrIconUrl from '@/assets/plyr.svg?url'
 import { CloseIcon as X } from '@solar-icons/vue/linear/close'
 import { toast } from '@/composables/useToast'
 import { useMvPlayer } from '@/composables/useMvPlayer'
@@ -36,6 +38,7 @@ async function initPlyr() {
   if (!videoEl.value) return
   plyr = new Plyr(videoEl.value, {
     ratio: '16:9',
+    iconUrl: plyrIconUrl,
     controls: ['play-large', 'play', 'progress', 'current-time', 'duration', 'mute', 'volume', 'settings', 'pip', 'fullscreen'],
     // 语言跟随应用语言设置（设置 → 语言，存 lm.locale）
     i18n: locale.value === 'zh' ? PLYR_I18N_ZH : {},
