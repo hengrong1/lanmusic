@@ -10,6 +10,8 @@ mod network;
 mod scanner;
 mod scheme;
 mod state;
+#[cfg(target_os = "macos")]
+mod transcode;
 #[cfg(windows)]
 mod thumbbar;
 mod watcher;
@@ -161,6 +163,13 @@ pub fn run() {
             {
                 let app_handle = app.handle().clone();
                 std::thread::spawn(move || covers::enforce_limit_with_setting(&app_handle));
+            }
+
+            // Ogg 转码缓存清理：启动时清空上次会话的 WAV 缓存（后台执行；仅 macOS 编译）
+            #[cfg(target_os = "macos")]
+            {
+                let app_handle = app.handle().clone();
+                std::thread::spawn(move || transcode::cleanup_cache(&app_handle));
             }
 
             // 系统托盘：点击图标弹出自定义菜单弹窗（类似 QQ 音乐）。

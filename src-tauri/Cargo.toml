@@ -57,4 +57,7 @@ windows = { version = "0.61", features = [
 
 [target."cfg(target_os = \"macos\")".dependencies]
 objc2-app-kit = { version = "0.3.2", features = ["NSColor", "NSWindow", "objc2-core-foundation"] }
+# macOS WKWebView 不支持 Ogg(Vorbis) 解码：播放前在 Rust 侧转码为 WAV（见 transcode.rs）。
+# 注意 symphonia 0.5 尚未发布 Opus 解码器，Opus-in-Ogg 暂不支持（失败时降级原样供流）
+symphonia = { version = "0.5", default-features = false, features = ["ogg", "vorbis"] }
 

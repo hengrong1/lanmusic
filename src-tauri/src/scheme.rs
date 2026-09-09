@@ -6,6 +6,7 @@
 //! - webdav → reqwest 代理转发（附带 Basic 认证，规避 WebView 跨域/凭证暴露）
 //!
 //! WebDAV 下载复用 network::webdav 的 HTTP 客户端。
+//! macOS 上 WebView 解不了的格式（Ogg 系）先经 transcode 转码为 WAV 再供流。
 
 use std::io::{Read, Seek, SeekFrom};
 use std::path::PathBuf;
@@ -98,6 +99,27 @@ pub(crate) fn route_track<R: Runtime>(
         "local" => {
             let Some(base) = base_path else { return not_found() };
             let full = PathBuf::from(base).join(&rel);
+            // macOS：WKWebView 解不了 Ogg(Vorbis/Opus)，先转码为 WAV 再按文件供流（见 transcode.rs）
+            #[cfg(target_os = "macos")]
+            {
+                if crate::transcode::needs_transcode(format.as_deref()) {
+                    let fingerprint = std::fs::metadata(&full)
+                        .map(|m| {
+                            let mtime = m
+                                .modified()
+                                .ok()
+                                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                                .map(|d| d.as_secs())
+                                .unwrap_or(0);
+                            format!("{}-{mtime}", m.len())
+                        })
+                        .unwrap_or_else(|_| "na".to_string());
+                    return match std::fs::read(&full) {
+                        Ok(bytes) => crate::transcode::serve_transcoded(app, id, &fingerprint, &bytes, range),
+                        Err(_) => not_found(),
+                    };
+                }
+            }
             let Ok(file) = std::fs::File::open(&full) else { return not_found() };
             let size = if size > 0 { size as u64 } else { file.metadata().map(|m| m.len()).unwrap_or(0) };
             serve_file_response(file, mime_of(format.as_deref()), size, range)
@@ -109,10 +131,28 @@ pub(crate) fn route_track<R: Runtime>(
                 bu.set_path(&format!("{}/", bu.path()));
             }
             let Some(url) = bu.join(&rel).ok().map(|u| u.to_string()) else { return not_found() };
-            let auth = match network::webdav::Auth::from_source(config.as_deref(), source_id) {
-                Some(a) => ProxyAuth::Basic(a.username, a.password),
+            let webdav_auth = network::webdav::Auth::from_source(config.as_deref(), source_id);
+            let auth = match &webdav_auth {
+                Some(a) => ProxyAuth::Basic(a.username.clone(), a.password.clone()),
                 None => ProxyAuth::None,
             };
+            // macOS：WKWebView 解不了 Ogg(Vorbis/Opus)，整文件下载后转码为 WAV 供流（见 transcode.rs）
+            #[cfg(target_os = "macos")]
+            {
+                if crate::transcode::needs_transcode(format.as_deref()) {
+                    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+                    std::hash::Hasher::write(&mut hasher, url.as_bytes());
+                    let fingerprint = format!("{:016x}-{}", std::hash::Hasher::finish(&hasher), size);
+                    return match network::webdav::download(
+                        &bu.join(&rel).unwrap_or_else(|_| bu.clone()),
+                        webdav_auth.as_ref(),
+                        None,
+                    ) {
+                        Ok(bytes) => crate::transcode::serve_transcoded(app, id, &fingerprint, &bytes, range),
+                        Err(_) => bad_gateway(),
+                    };
+                }
+            }
             proxy_response(&url, range, auth)
         }
         _ => not_found(),
@@ -185,6 +225,38 @@ pub(crate) enum ProxyAuth {
     None,
     Basic(String, String),
 }
+
+/// 兜底路径：原样字节流 + Range（transcode 失败时降级使用，协议行为与 serve_file_response 一致）
+pub(crate) fn serve_raw(data: &[u8], range_header: Option<&str>) -> Response<Vec<u8>> {
+    let size = data.len() as u64;
+    let mime = "application/octet-stream";
+    match range_header.and_then(|s| parse_range(s, size)) {
+        Some((start, end)) => {
+            let s = start as usize;
+            let e = (end + 1) as usize;
+            Response::builder()
+                .status(StatusCode::PARTIAL_CONTENT)
+                .header(CONTENT_TYPE, mime)
+                .header(ACCEPT_RANGES, "bytes")
+                .header(CONTENT_RANGE, format!("bytes {}-{}/{}", start, end, size))
+                .header(CONTENT_LENGTH, e - s)
+                .header(CACHE_CONTROL, "no-store")
+                .header("Access-Control-Allow-Origin", "*")
+                .body(data[s..e].to_vec())
+                .unwrap_or_else(|_| server_error())
+        }
+        None => Response::builder()
+            .status(StatusCode::OK)
+            .header(CONTENT_TYPE, mime)
+            .header(ACCEPT_RANGES, "bytes")
+            .header(CONTENT_LENGTH, size)
+            .header(CACHE_CONTROL, "no-store")
+            .header("Access-Control-Allow-Origin", "*")
+            .body(data.to_vec())
+            .unwrap_or_else(|_| server_error()),
+    }
+}
+
 
 /// 经 Rust 代理远程音频流：转发 Range 并按 CHUNK 封顶，附带认证头。
 fn client() -> &'static reqwest::blocking::Client {
