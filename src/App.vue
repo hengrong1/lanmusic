@@ -21,7 +21,8 @@ import { useLibraryStore } from '@/stores/library'
 import { usePlayerStore } from '@/stores/player'
 import { useNav } from '@/composables/useNav'
 import { useAmbient } from '@/composables/useAmbient'
-import { useSkinOpen } from '@/composables/useSkin'
+import { useSkin, useSkinOpen } from '@/composables/useSkin'
+import { ensureAnalyser } from '@/composables/useSpectrum'
 import { useDesktopLyrics } from '@/composables/useDesktopLyrics'
 import { useTrayMenu } from '@/composables/useTrayMenu'
 import { useMvPlayer } from '@/composables/useMvPlayer'
@@ -30,7 +31,28 @@ const library = useLibraryStore()
 const player = usePlayerStore()
 const nav = useNav()
 const mv = useMvPlayer()
-const { palette } = useAmbient()
+const { palette, setAlbum } = useAmbient()
+
+// 环境色预热：切歌后立即在后台提取专辑主色（原先等到进入播放页才提取，
+// 首次进入要现拉大图 + 解码，会和进场动画撞车造成卡顿）
+watch(
+  () => player.current?.albumId,
+  (id) => void setAlbum(id),
+  { immediate: true },
+)
+
+const skin = useSkin()
+// 频谱链路预热：开启频谱（皮肤）时，首次开始播放就建立 Web Audio 链路。
+// 若等到进入播放页挂载频谱画布时才 createMediaElementSource，WebKit 重配置音频管线
+// 会让正在播放的歌曲停顿约半秒（表现为进场动画结束后声音才恢复）；播放前重路由则无感知。
+// （ensureAnalyser 内部有用户手势检查，无手势时自动推迟，不会创建出静音的挂起 context）
+watch(
+  [() => player.playing, () => skin.value.on],
+  ([playing, on]) => {
+    if (playing && on) ensureAnalyser()
+  },
+  { immediate: true },
+)
 
 const queueOpen = ref(false)
 const nowPlaying = ref(false)

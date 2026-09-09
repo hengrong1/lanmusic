@@ -44,6 +44,13 @@ export async function extractAmbient(url: string): Promise<AmbientPalette | null
       image.src = url
     })
     if (!img) return null
+    // 异步解码到位后再取样：未渲染过的大图首次 drawImage 会同步解码（主线程卡顿），
+    // decode() 让 WebKit 提前在解码线程完成，取样时直接用现成位图
+    try {
+      await img.decode()
+    } catch {
+      /* 旧内核不支持时忽略，仍走 drawImage */
+    }
 
     const size = 16
     const canvas = document.createElement('canvas')
