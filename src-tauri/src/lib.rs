@@ -177,8 +177,7 @@ pub fn run() {
                     .focused(false)
                     .visible(false)
                     .inner_size(TRAY_MENU_W, TRAY_MENU_H);
-            // 透明背景：Windows/Linux 支持圆角+投影；macOS 需 macos-private-api feature，v1 暂不启用
-            #[cfg(any(windows, target_os = "linux"))]
+            // 透明背景：托盘弹窗圆角浮窗需要（macOS 已启用 macos-private-api，见 Cargo.toml / tauri.conf.json）
             let tray_builder = tray_builder.transparent(true);
             let tray_window = tray_builder.build()?;
 

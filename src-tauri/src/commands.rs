@@ -750,8 +750,8 @@ pub async fn desktop_lyrics_set(app: AppHandle, enabled: bool) -> Result<bool, S
     .shadow(false)
     .focused(false)
     .inner_size(760.0, 170.0);
-    // 透明背景：Windows/Linux 支持；macOS 需 macos-private-api feature，v1 暂不启用
-    #[cfg(any(windows, target_os = "linux"))]
+    // 透明背景：歌词浮窗必须透明（否则 macOS 显示 WKWebView 默认白底）。
+    // macOS 需要 macos-private-api feature，已在 Cargo.toml 与 tauri.conf.json(macOSPrivateApi) 启用
     let builder = builder.transparent(true);
     let win = builder.build().map_err(|e| e.to_string())?;
 
