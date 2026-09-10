@@ -49,10 +49,16 @@ export const useLibraryStore = defineStore('library', () => {
     stats.value = await api.libraryStats()
   }
 
+  /** 当前列表请求序号：慢回包直接丢弃，防止旧查询结果覆盖新查询 */
+  let trackReq = 0
   async function loadTracks(append = false) {
+    const my = ++trackReq
+    // append 翻页把页号带进请求：期间若 setQuery 重置了 page，旧页回包不再拼接到新查询下
+    const reqPage = query.value.page
     loading.value = true
     try {
       const page = await api.queryTracks({ ...query.value })
+      if (my !== trackReq || reqPage !== query.value.page) return
       if (append) {
         trackPage.value = {
           total: page.total,
@@ -62,7 +68,7 @@ export const useLibraryStore = defineStore('library', () => {
         trackPage.value = page
       }
     } finally {
-      loading.value = false
+      if (my === trackReq) loading.value = false
     }
   }
 

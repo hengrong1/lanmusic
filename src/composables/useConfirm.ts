@@ -28,8 +28,12 @@ const state = ref<ConfirmState>({
   resolve: null,
 })
 
-/** 应用内确认弹窗（替代原生 ask()，保证中文界面） */
+/** 应用内确认弹窗（替代原生 ask()，保证中文界面）。
+ * 单例弹窗同一时刻只能显示一个：新确认覆盖旧确认时，先用 false 结算旧调用，
+ * 否则上一个 await 会永远悬挂。 */
 export function confirmDialog(opts: ConfirmOptions): Promise<boolean> {
+  // 有未结算的旧确认：视为取消，避免调用方永久挂起
+  state.value.resolve?.(false)
   return new Promise<boolean>((resolve) => {
     state.value = {
       open: true,

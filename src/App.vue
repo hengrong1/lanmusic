@@ -239,7 +239,10 @@ window.addEventListener('keydown', (e) => {
 </script>
 
 <template>
-  <div class="relative flex h-screen select-none flex-col overflow-hidden bg-zinc-100 text-zinc-900 dark:bg-zinc-900 dark:text-zinc-100">
+  <div
+    class="relative flex h-screen select-none flex-col overflow-hidden bg-zinc-100 text-zinc-900 dark:bg-zinc-900 dark:text-zinc-100"
+    :class="npFocus ? 'cursor-none [&_*]:!cursor-none' : ''"
+  >
     <div class="flex min-h-0 flex-1">
       <Sidebar />
       <div class="flex min-w-0 flex-1 flex-col">

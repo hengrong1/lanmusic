@@ -81,7 +81,10 @@ async function checkForUpdate(silent = false): Promise<boolean> {
 async function downloadAndInstall(): Promise<void> {
   if (!update || status.value !== 'available') return
   status.value = 'downloading'
+  // 进度计数归零：上次失败/重试不能从旧值累加
   progress.value = -1
+  downloadedMb.value = 0
+  totalMb.value = 0
   try {
     await update.downloadAndInstall((event) => {
       switch (event.event) {

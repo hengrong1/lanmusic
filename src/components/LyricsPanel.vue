@@ -6,6 +6,13 @@ import { usePlayerStore } from '@/stores/player'
 const player = usePlayerStore()
 const container = ref<HTMLElement | null>(null)
 
+/** 用户手动滚动后暂停自动跟随 8s（翻看歌词不被拽回）；切歌/歌词重载时立即恢复跟随 */
+const FOLLOW_RESUME_MS = 8000
+let lastManualScroll = 0
+function onUserScroll() {
+  lastManualScroll = Date.now()
+}
+
 const hasSynced = computed(() => !!player.lyricsLines?.length)
 
 /** 时间戳文字：秒 → m:ss（与播放条时间显示一致） */
@@ -32,6 +39,8 @@ onMounted(() => {
 onBeforeUnmount(() => resizeObserver?.disconnect())
 
 function scrollToActive() {
+  // 用户 8s 内手动滚动过：暂停自动跟随，避免想往上翻看歌词时被拽回来
+  if (Date.now() - lastManualScroll < FOLLOW_RESUME_MS) return
   const idx = player.activeLyricIndex
   if (idx < 0 || !container.value || !player.lyricsLines) return
   const el = container.value.querySelector(`[data-idx="${idx}"]`) as HTMLElement | null
@@ -41,10 +50,13 @@ function scrollToActive() {
 }
 
 watch(() => player.activeLyricIndex, () => void nextTick(scrollToActive))
-// 歌词行加载完成 / 切歌后立即定位到当前行
+// 歌词行加载完成 / 切歌后立即定位到当前行（并恢复自动跟随）
 watch(
   () => player.lyricsLines,
-  () => void nextTick(scrollToActive),
+  () => {
+    lastManualScroll = 0
+    void nextTick(scrollToActive)
+  },
 )
 onMounted(() => void nextTick(scrollToActive))
 </script>
@@ -55,6 +67,8 @@ onMounted(() => void nextTick(scrollToActive))
     class="no-scrollbar relative h-full scroll-smooth px-6"
     :class="hasSynced ? 'overflow-y-auto' : 'flex flex-col items-center justify-center overflow-hidden'"
     :style="hasSynced ? { paddingTop: pad + 'px', paddingBottom: pad + 'px' } : undefined"
+    @wheel.passive="onUserScroll"
+    @touchmove.passive="onUserScroll"
   >
     <!-- 加载中 -->
     <p v-if="player.lyricsLoading" class="text-center text-sm text-zinc-500">歌词加载中…</p>

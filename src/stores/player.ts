@@ -12,6 +12,19 @@ import { applyPowerGuard } from '@/composables/usePowerGuard'
 
 export type PlayMode = 'order' | 'loop' | 'one' | 'shuffle'
 
+/** 播放模式白名单：存档被外部改坏时回退到 order，避免 UI 图标与实际行为对不上 */
+const PLAY_MODES: PlayMode[] = ['order', 'loop', 'one', 'shuffle']
+function normalizeMode(v: unknown): PlayMode {
+  return PLAY_MODES.includes(v as PlayMode) ? (v as PlayMode) : 'order'
+}
+
+/** 音量归一化：存档损坏（NaN/越界）时回退 1，避免 audio.volume = NaN 抛 TypeError */
+function normalizeVolume(v: unknown): number {
+  const n = Number(v)
+  if (!Number.isFinite(n)) return 1
+  return Math.min(1, Math.max(0, n))
+}
+
 const LS = {
   volume: 'lm.volume',
   mode: 'lm.mode',
@@ -53,8 +66,8 @@ export const usePlayerStore = defineStore('player', () => {
   const buffering = ref(false)
   const position = ref(0)
   const duration = ref(0)
-  const mode = ref<PlayMode>((localStorage.getItem(LS.mode) as PlayMode) || 'order')
-  const volume = ref(Number(localStorage.getItem(LS.volume) ?? 1))
+  const mode = ref<PlayMode>(normalizeMode(localStorage.getItem(LS.mode)))
+  const volume = ref(normalizeVolume(localStorage.getItem(LS.volume) ?? 1))
   const muted = ref(localStorage.getItem(LS.muted) === '1')
   /** 播放倍速：持久化；换歌加载新 src 时由 defaultPlaybackRate 延续 */
   const rate = ref(normalizeRate(Number(localStorage.getItem(LS.rate) ?? 1)))
@@ -69,14 +82,20 @@ export const usePlayerStore = defineStore('player', () => {
     lyricsLines.value ? activeLineIndex(lyricsLines.value, position.value - lyricOffset.value) : -1,
   )
 
+  /** 歌词请求序号：连续切歌时旧请求的慢回包直接丢弃，防止 A 的歌词写到 B 身上 */
+  let lyricsSeq = 0
   async function loadLyrics(t: Track) {
+    const my = ++lyricsSeq
+    const trackId = t.id
     lyricsLines.value = null
     lyricsPlain.value = null
-    lyricOffset.value = readLrcOffset(t.id)
+    lyricOffset.value = readLrcOffset(trackId)
     lyricsLoading.value = true
     try {
       // 不以 hasLyrics 标志为前置条件：旧库的标志可能过期（快速导入/旧版本扫描）
-      const raw = await api.getLyrics(t.id)
+      const raw = await api.getLyrics(trackId)
+      // 切歌后旧回包直接丢弃（歌词与偏移都是按曲目记的，不能落到新歌上）
+      if (my !== lyricsSeq || current.value?.id !== trackId) return
       if (!raw) return
       const { lines, synced } = parseLrc(raw)
       if (synced) {
@@ -87,7 +106,8 @@ export const usePlayerStore = defineStore('player', () => {
     } catch {
       /* 歌词获取失败静默忽略 */
     } finally {
-      lyricsLoading.value = false
+      // 只有最新请求能关 loading：旧请求的 finally 不能灭掉新歌的加载态
+      if (my === lyricsSeq) lyricsLoading.value = false
     }
   }
 
@@ -226,6 +246,9 @@ export const usePlayerStore = defineStore('player', () => {
     buffering.value = false
   })
   audio.addEventListener('ended', () => {
+    // 手动切歌的淡出正在进行（fadeOut 的 600ms 窗口内旧曲自然播完）：
+    // 以用户的手动选择为准，自动推进作废，否则会取消掉用户刚点的歌
+    if (fadeRaf !== 0) return
     if (mode.value === 'one') {
       audio.currentTime = 0
       void audio.play().catch(() => {})
@@ -235,8 +258,7 @@ export const usePlayerStore = defineStore('player', () => {
   })
   audio.addEventListener('error', () => {
     if (!current.value) return
-    buffering.value = false
-    playing.value = false
+    resetPlaybackState()
     toast(`播放失败：${current.value.title}`, 'error')
     // 连续失败保护：整轮队列都失败则停止，避免死循环
     errorStreak++
@@ -380,8 +402,14 @@ export const usePlayerStore = defineStore('player', () => {
 
   function seek(t: number) {
     if (!Number.isFinite(t)) return
-    audio.currentTime = t
-    position.value = t
+    // 元数据未就绪时 duration 为 0：直接透传 currentTime，不能被钳死在 0
+    const target = duration.value > 0 ? Math.min(Math.max(0, t), duration.value) : Math.max(0, t)
+    try {
+      audio.currentTime = target
+    } catch {
+      /* 元数据未就绪时浏览器可能拒绝 seek，忽略 */
+    }
+    position.value = target
   }
 
   function setVolume(v: number) {
@@ -391,6 +419,14 @@ export const usePlayerStore = defineStore('player', () => {
 
   function toggleMute() {
     muted.value = !muted.value
+  }
+
+  /** 播放失败兜底：清掉坏歌残留的时长/进度（queue/index 已指向坏歌，不能留上一首的值误导 UI） */
+  function resetPlaybackState() {
+    position.value = 0
+    duration.value = 0
+    buffering.value = false
+    playing.value = false
   }
 
   /** 设置播放倍速（不在可选列表内的值回退到 1x） */
@@ -546,10 +582,15 @@ export const usePlayerStore = defineStore('player', () => {
       // 先把进度同步到 UI：媒体是分块流式加载，seek 校准可能要等数秒，
       // 期间用户不应看到进度归零
       position.value = pos
+      const restoreSrc = audio.src
       const apply = () => {
+        // 触发即摘除（非 once 监听）：若此刻 src 已被切歌替换，说明用户在恢复曲目
+        // 元数据加载完成前就点了新歌——进度绝不能应用到新歌上（否则新歌从旧进度开播）
+        audio.removeEventListener('loadedmetadata', apply)
+        if (audio.src !== restoreSrc) return
         if (pos < (audio.duration || Infinity)) audio.currentTime = pos
       }
-      audio.addEventListener('loadedmetadata', apply, { once: true })
+      audio.addEventListener('loadedmetadata', apply)
     }
   }
 

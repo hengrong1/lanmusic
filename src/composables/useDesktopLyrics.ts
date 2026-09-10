@@ -135,9 +135,13 @@ export function useDesktopLyrics() {
 
   if (!started) {
     started = true
-    // 歌词行/配置变化：持久化 + 推送到歌词浮窗
+    // 歌词行变化：只推送到浮窗（高频，每句切行一次，不写磁盘）
+    watch(deskLines, () => {
+      push(deskLines.value.lines, deskLines.value.active)
+    })
+    // 配置变化：持久化 + 推送（低频，仅用户改设置时）
     watch(
-      [deskLines, config],
+      config,
       () => {
         persist()
         push(deskLines.value.lines, deskLines.value.active)

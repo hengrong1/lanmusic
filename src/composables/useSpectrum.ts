@@ -6,6 +6,11 @@ import { usePlayerStore } from '@/stores/player'
 // 否则跨域媒体被视为污染源，节点会输出静音。
 let ctx: AudioContext | null = null
 let analyser: AnalyserNode | null = null
+/**
+ * createMediaElementSource 对同一 audio 元素终身只能调用一次（第二次抛 InvalidStateError）。
+ * 首次创建中途失败后必须标记不再重试，否则每次都会抛异常且永远无频谱。
+ */
+let createFailed = false
 
 function resumeIfNeeded() {
   if (ctx && ctx.state === 'suspended') void ctx.resume().catch(() => {})
@@ -36,6 +41,8 @@ export function ensureAnalyser(): AnalyserNode | null {
     resumeIfNeeded()
     return analyser
   }
+  // 之前创建失败过：直接降级，不再重复抛异常
+  if (createFailed) return null
   if (!hasUserGesture()) {
     // 推迟到首次用户手势时创建
     const tryCreate = () => {
@@ -60,7 +67,8 @@ export function ensureAnalyser(): AnalyserNode | null {
     analyser.connect(ctx.destination)
     armGesture()
   } catch {
-    // 创建失败时静默降级为无频谱，不影响播放
+    // 创建失败时静默降级为无频谱，不影响播放；并标记不再重试
+    createFailed = true
     ctx = null
     analyser = null
     return null
