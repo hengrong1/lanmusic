@@ -201,6 +201,30 @@ function nowPlayingLeave(el: Element, done: () => void) {
   gsap.to(el, { yPercent: 100, duration: 0.42, ease: 'power3.in', onComplete: done })
 }
 
+/** 播放条显隐：未载入任何歌曲（从未播放且无启动恢复）时隐藏 */
+const playerBarVisible = computed(() => player.current != null)
+// 播放条消失时收起依附于它的浮层（播放页 / 队列面板），避免悬空显示
+watch(playerBarVisible, (v) => {
+  if (!v) {
+    nowPlaying.value = false
+    queueOpen.value = false
+  }
+})
+
+// ---- GSAP 过渡：底部播放条从窗口底缘滑入 / 滑出 ----
+// 同步动画 yPercent 与负 marginBottom：条滑入的同时布局高度展开（内容区不被瞬间挤压），
+// 滑出时反向收回，之后组件卸载不会造成布局跳变。h-20 = 80px，与 PLAYER_BAR_H 一致。
+function playerBarEnter(el: Element, done: () => void) {
+  gsap.fromTo(
+    el,
+    { yPercent: 100, marginBottom: -PLAYER_BAR_H },
+    { yPercent: 0, marginBottom: 0, duration: 0.5, ease: 'power3.out', onComplete: done },
+  )
+}
+function playerBarLeave(el: Element, done: () => void) {
+  gsap.to(el, { yPercent: 100, marginBottom: -PLAYER_BAR_H, duration: 0.35, ease: 'power3.in', onComplete: done })
+}
+
 onMounted(() => {
   void library.init()
   void player.restore()
@@ -256,12 +280,16 @@ window.addEventListener('keydown', (e) => {
       </div>
       <QueuePanel :open="queueOpen" @close="queueOpen = false" />
     </div>
-    <PlayerBar
-      :now-playing-open="nowPlaying"
-      :focus-hidden="npFocus"
-      @toggle-queue="queueOpen = !queueOpen"
-      @toggle-now-playing="nowPlaying = !nowPlaying"
-    />
+    <!-- 底部播放条：未载入任何歌曲时隐藏；双击播放 / 启动恢复上一首时从底部滑入 -->
+    <Transition :css="false" @enter="playerBarEnter" @leave="playerBarLeave">
+      <PlayerBar
+        v-if="playerBarVisible"
+        :now-playing-open="nowPlaying"
+        :focus-hidden="npFocus"
+        @toggle-queue="queueOpen = !queueOpen"
+        @toggle-now-playing="nowPlaying = !nowPlaying"
+      />
+    </Transition>
     <Toast />
     <ConfirmDialog />
     <UpdateDialog />

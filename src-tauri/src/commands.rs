@@ -1,5 +1,7 @@
 //! IPC 命令层：薄封装，参数校验后操作数据库 / 触发扫描。
 
+use std::collections::HashMap;
+
 use rusqlite::{params, params_from_iter, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State};
@@ -1082,6 +1084,131 @@ pub fn set_setting(state: State<'_, AppState>, key: String, value: String) -> Re
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     db::set_setting(&conn, &key, &value).map_err(|e| e.to_string())?;
     Ok(())
+}
+
+// ---------- 艺人分隔符 ----------
+
+/// 单首曲目艺人拆分的变更（调整分隔符后返回给前端展示）
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ArtistSplitChange {
+    pub track_id: i64,
+    pub title: String,
+    pub old_artists: Vec<String>,
+    pub new_artists: Vec<String>,
+}
+
+/// 当前启用的多艺人分隔符串（无设置时为默认全集），形如 ";&、&，,/"
+#[tauri::command]
+pub fn get_artist_separators(state: State<'_, AppState>) -> Result<String, String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    Ok(db::get_setting(&conn, scanner::ARTIST_SEPARATORS_KEY)
+        .map(|s| scanner::parse_separators(&s).into_iter().collect())
+        .unwrap_or_else(|| scanner::SEPARATOR_CANDIDATES.iter().collect()))
+}
+
+/// 设置多艺人分隔符并立即按新分隔符重拆曲库，返回受影响曲目的变更列表。
+/// raw_artist 尚未回填的曲目（待下次扫描完整解析）不在本次重拆范围内。
+#[tauri::command]
+pub fn set_artist_separators(
+    state: State<'_, AppState>,
+    value: String,
+) -> Result<Vec<ArtistSplitChange>, String> {
+    let seps = scanner::parse_separators(&value);
+    let mut conn = state.db.lock().map_err(|e| e.to_string())?;
+    db::set_setting(&conn, scanner::ARTIST_SEPARATORS_KEY, &seps.iter().collect::<String>())
+        .map_err(|e| e.to_string())?;
+
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+
+    // 现有关联：track_id → [(artist_id, name)]（按 ord 排序）
+    let mut current: HashMap<i64, Vec<(i64, String)>> = HashMap::new();
+    {
+        let mut stmt = tx
+            .prepare(
+                "SELECT ta.track_id, a.id, a.name FROM track_artists ta \
+                 JOIN artists a ON a.id = ta.artist_id ORDER BY ta.track_id, ta.ord",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?, r.get::<_, String>(2)?))
+            })
+            .map_err(|e| e.to_string())?;
+        for row in rows {
+            let (tid, aid, name) = row.map_err(|e| e.to_string())?;
+            current.entry(tid).or_default().push((aid, name));
+        }
+    }
+
+    // 待重拆的曲目：已保存原始艺人标签的完整解析行
+    struct Row {
+        id: i64,
+        title: String,
+        raw: String,
+    }
+    let rows: Vec<Row> = {
+        let mut stmt = tx
+            .prepare("SELECT id, title, raw_artist FROM tracks WHERE raw_artist IS NOT NULL")
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok(Row { id: r.get(0)?, title: r.get(1)?, raw: r.get(2)? })
+            })
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?
+    };
+
+    let mut changes: Vec<ArtistSplitChange> = Vec::new();
+    let mut cache: HashMap<String, i64> = HashMap::new();
+    for r in rows {
+        let new_names = scanner::split_artists(&r.raw, &seps);
+        let old_names: Vec<String> = current
+            .get(&r.id)
+            .map(|v| v.iter().map(|(_, n)| n.clone()).collect())
+            .unwrap_or_default();
+        // 与现有关联一致（大小写不敏感）则无需改动
+        let same = old_names.len() == new_names.len()
+            && old_names.iter().zip(&new_names).all(|(a, b)| a.eq_ignore_ascii_case(b));
+        if same {
+            continue;
+        }
+
+        let ids: Vec<i64> = new_names
+            .iter()
+            .map(|n| scanner::get_or_create_artist(&tx, &mut cache, n))
+            .collect::<Result<Vec<i64>, String>>()?;
+        tx.execute("DELETE FROM track_artists WHERE track_id = ?1", params![r.id])
+            .map_err(|e| e.to_string())?;
+        for (i, aid) in ids.iter().enumerate() {
+            tx.execute(
+                "INSERT OR IGNORE INTO track_artists (track_id, artist_id, ord) VALUES (?1, ?2, ?3)",
+                params![r.id, aid, i as i64],
+            )
+            .map_err(|e| e.to_string())?;
+        }
+        tx.execute("UPDATE tracks SET artist_id = ?1 WHERE id = ?2", params![ids.first().copied().unwrap_or(0), r.id])
+            .map_err(|e| e.to_string())?;
+
+        changes.push(ArtistSplitChange {
+            track_id: r.id,
+            title: r.title,
+            old_artists: old_names,
+            new_artists: new_names,
+        });
+    }
+
+    // 回收不再被引用的孤儿艺人（与来源移除后的清理口径一致）
+    tx.execute(
+        "DELETE FROM artists WHERE id NOT IN (SELECT DISTINCT artist_id FROM tracks)
+         AND id NOT IN (SELECT DISTINCT artist_id FROM track_artists)
+         AND id NOT IN (SELECT DISTINCT artist_id FROM albums)",
+        [],
+    )
+    .map_err(|e| e.to_string())?;
+    tx.commit().map_err(|e| e.to_string())?;
+
+    Ok(changes)
 }
 
 // ================================================================ WebDAV 来源（M3）

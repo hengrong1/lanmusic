@@ -38,6 +38,14 @@ export interface TrackArtistRef {
   name: string
 }
 
+/** 调整艺人分隔符后单首曲目的拆分变更 */
+export interface ArtistSplitChange {
+  trackId: number
+  title: string
+  oldArtists: string[]
+  newArtists: string[]
+}
+
 export interface Page<T> {
   total: number
   items: T[]

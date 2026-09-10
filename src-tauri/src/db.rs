@@ -123,6 +123,8 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
     ensure_column(conn, "tracks", "fav", "INTEGER NOT NULL DEFAULT 0")?;
     ensure_column(conn, "playlist_items", "added_at", "INTEGER")?;
     ensure_column(conn, "playlists", "description", "TEXT")?;
+    // 原始艺人标签（未按分隔符拆分），用于调整分隔符后重新拆分艺人
+    ensure_column(conn, "tracks", "raw_artist", "TEXT")?;
     // 旧数据无加入时间：回填 0 视为最早加入，倒序时排在最前
     conn.execute("UPDATE playlist_items SET added_at = 0 WHERE added_at IS NULL", [])?;
 
@@ -144,6 +146,16 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
     if get_setting(conn, "track_artists_migrated").is_none() {
         conn.execute("UPDATE tracks SET meta_state = 0", [])?;
         set_setting(conn, "track_artists_migrated", "1")?;
+    }
+
+    // raw_artist（原始艺人标签）上线：没有该值的已解析行需要重新读标签回填，
+    // 之后调整艺人分隔符时可直接基于它重拆，无需再读文件（一次性）。
+    if get_setting(conn, "raw_artist_migrated").is_none() {
+        conn.execute(
+            "UPDATE tracks SET meta_state = 0 WHERE raw_artist IS NULL AND meta_state = 1",
+            [],
+        )?;
+        set_setting(conn, "raw_artist_migrated", "1")?;
     }
     Ok(())
 }

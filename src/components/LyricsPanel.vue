@@ -23,6 +23,21 @@ function fmt(s: number) {
   return `${m}:${String(sec).padStart(2, '0')}`
 }
 
+/**
+ * 歌词字号随与当前行的距离阶梯递减（px）：[当前行, ±1, ±2, ±3, ±4]，更远的行保持末档。
+ * 行高仍由 text-base 固定，滚动布局不随字号变化跳动。
+ */
+const LYRIC_FONT_STEPS = [20, 18, 16.5, 15.5, 15]
+const LYRIC_BASE_PX = 16
+function lyricFontSize(i: number, hasText: string | undefined): string | undefined {
+  if (!hasText) return undefined // 间奏占位行保持原有小字号
+  const active = player.activeLyricIndex
+  if (active < 0) return `${LYRIC_BASE_PX}px` // 尚无激活行（未开播）：全部基础字号
+  const d = Math.abs(i - active)
+  const px = d < LYRIC_FONT_STEPS.length ? LYRIC_FONT_STEPS[d] : LYRIC_FONT_STEPS[LYRIC_FONT_STEPS.length - 1]
+  return `${px}px`
+}
+
 /** 上下留白 = 容器半高：首行歌词正好从垂直中心开始，滚动连续无跳变 */
 const pad = ref(0)
 let resizeObserver: ResizeObserver | null = null
@@ -94,7 +109,7 @@ onMounted(() => void nextTick(scrollToActive))
           {{ fmt(line.time) }}
         </button>
         <p
-          class="min-w-0 w-full text-center transition-[color,transform,text-shadow] duration-300 ease-out"
+          class="min-w-0 w-full text-center transition-[color,font-size,transform,text-shadow] duration-300 ease-out"
           :class="[
             line.text ? 'text-base' : 'text-xs leading-none',
             i === player.activeLyricIndex
@@ -103,8 +118,12 @@ onMounted(() => void nextTick(scrollToActive))
           ]"
           :style="
             i === player.activeLyricIndex
-              ? { color: 'var(--np-accent, #ffffff)', textShadow: '0 0 22px var(--np-accent, #ffffff)' }
-              : undefined
+              ? {
+                  fontSize: lyricFontSize(i, line.text),
+                  color: 'var(--np-accent, #ffffff)',
+                  textShadow: '0 0 22px var(--np-accent, #ffffff)',
+                }
+              : { fontSize: lyricFontSize(i, line.text) }
           "
         >
           <template v-if="line.text">{{ line.text }}</template>

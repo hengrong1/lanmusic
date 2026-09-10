@@ -20,7 +20,7 @@ import { getPreventSleep, setPreventSleepSetting } from '@/composables/usePowerG
 import { useUpdater } from '@/composables/useUpdater'
 import { usePlayerStore } from '@/stores/player'
 import { api } from '@/api/commands'
-import type { Source } from '@/types'
+import type { ArtistSplitChange, Source } from '@/types'
 import { setLocale } from '@/i18n'
 import { useI18n } from 'vue-i18n'
 
@@ -77,6 +77,51 @@ onMounted(() => {
     })
     .catch(() => {})
 })
+
+// ---- 曲库：多艺人分隔符 ----
+/** 可选分隔符候选集（与 Rust 侧 SEPARATOR_CANDIDATES 对应；顺序即展示顺序） */
+const SEPARATOR_CANDIDATES = [';', '；', '、', '&', '，', ',', '/'] as const
+/** 恒定开启的分隔符：feat. / ft. / featuring 归一为 ';' 后按它拆分 */
+const FIXED_SEPARATOR = ';'
+const artistSeparators = ref<Set<string>>(new Set(SEPARATOR_CANDIDATES))
+/** 最近一次调整分隔符后的艺人变更列表（null = 尚未调整过） */
+const splitChanges = ref<ArtistSplitChange[] | null>(null)
+const splitApplying = ref(false)
+
+onMounted(() => {
+  api.getArtistSeparators()
+    .then((v) => (artistSeparators.value = new Set(v.split(''))))
+    .catch(() => {})
+})
+
+async function onSeparatorToggle(sep: string) {
+  if (sep === FIXED_SEPARATOR || splitApplying.value) return
+  const next = new Set(artistSeparators.value)
+  if (next.has(sep)) next.delete(sep)
+  else next.add(sep)
+  artistSeparators.value = next
+  splitApplying.value = true
+  try {
+    const value = SEPARATOR_CANDIDATES.filter((c) => next.has(c)).join('')
+    const changes = await api.setArtistSeparators(value)
+    splitChanges.value = changes
+    if (changes.length > 0) {
+      toast(`已按新分隔符重新拆分 ${changes.length} 首歌曲的艺人`)
+      // 艺人归属变了，刷新曲库统计与当前列表
+      await Promise.all([library.loadStats(), library.loadTracks()])
+    } else {
+      toast('分隔符已更新，曲库中没有歌曲的艺人受影响')
+    }
+  } catch (e) {
+    toast(String(e), 'error')
+    // 失败时回读实际生效的设置，保持 UI 与后端一致
+    api.getArtistSeparators()
+      .then((v) => (artistSeparators.value = new Set(v.split(''))))
+      .catch(() => {})
+  } finally {
+    splitApplying.value = false
+  }
+}
 
 /** 桌面歌词设置项可选项 */
 const dlLineOptions = [
@@ -479,6 +524,63 @@ const scannedSourceIds = computed(() => new Set(Object.keys(library.scanProgress
             </button>
           </div>
           <p class="text-xs text-zinc-400">播放期间保持系统与屏幕常亮；暂停 / 停止后自动恢复（默认开启）。Windows 通过系统电源 API 实现，其他平台尝试 Web Wake Lock。</p>
+        </div>
+      </section>
+
+      <!-- 曲库 -->
+      <section data-stagger>
+        <h2 class="mb-3 text-sm font-semibold text-zinc-800 dark:text-zinc-100">曲库</h2>
+        <div class="rounded-xl border border-zinc-200 bg-white p-4 text-sm dark:border-zinc-800 dark:bg-zinc-900">
+          <!-- 多艺人分隔符 -->
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <span class="text-zinc-600 dark:text-zinc-300">多艺人分隔符</span>
+            <div class="flex flex-wrap gap-2">
+              <button
+                v-for="sep in SEPARATOR_CANDIDATES"
+                :key="sep"
+                class="min-w-9 cursor-pointer rounded-full px-3 py-1.5 transition"
+                :class="
+                  artistSeparators.has(sep)
+                    ? 'bg-violet-500 font-medium text-white'
+                    : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700'
+                "
+                :title="sep === FIXED_SEPARATOR ? '固定分隔符：feat. / ft. / featuring 等合作标注按它拆分' : `启用后按「${sep}」拆分多艺人`"
+                :disabled="splitApplying"
+                @click="onSeparatorToggle(sep)"
+              >
+                {{ sep }}
+              </button>
+            </div>
+          </div>
+          <p class="mt-2 text-xs text-zinc-400">
+            歌曲标签里的艺人按所选分隔符拆分为独立艺人；分号「;」为固定分隔符（feat. / ft. / featuring 也会按它拆分）。
+            关闭某分隔符后，含该符号的艺人名将保持完整（如 AC/DC），保存后立即对整个曲库生效。
+          </p>
+
+          <!-- 变更报告：保存后展示受影响歌曲的艺人变化 -->
+          <template v-if="splitChanges !== null">
+            <div class="mt-3 border-t border-zinc-100 pt-3 dark:border-zinc-800">
+              <p class="text-xs font-medium" :class="splitChanges.length > 0 ? 'text-violet-500' : 'text-zinc-400'">
+                {{
+                  splitChanges.length > 0
+                    ? `本次更新了 ${splitChanges.length} 首歌曲的艺人拆分`
+                    : '曲库中没有歌曲的艺人受此次分隔符变更影响'
+                }}
+              </p>
+              <ul v-if="splitChanges.length > 0" class="mt-2 max-h-56 space-y-1.5 overflow-y-auto pr-1">
+                <li v-for="c in splitChanges.slice(0, 200)" :key="c.trackId" class="flex min-w-0 flex-wrap items-baseline gap-x-1 text-xs">
+                  <span class="font-medium text-zinc-700 dark:text-zinc-200">{{ c.title }}</span>
+                  <span class="text-zinc-400">：</span>
+                  <span class="text-zinc-400 line-through">{{ c.oldArtists.join(' / ') }}</span>
+                  <span class="text-violet-500">→</span>
+                  <span class="text-zinc-600 dark:text-zinc-300">{{ c.newArtists.join(' / ') }}</span>
+                </li>
+              </ul>
+              <p v-if="splitChanges.length > 200" class="mt-1 text-xs text-zinc-400">
+                其余 {{ splitChanges.length - 200 }} 首歌曲的艺人也已同步更新。
+              </p>
+            </div>
+          </template>
         </div>
       </section>
 

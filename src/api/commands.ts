@@ -2,6 +2,7 @@ import { invoke } from '@tauri-apps/api/core'
 import type {
   AlbumItem,
   ArtistItem,
+  ArtistSplitChange,
   GenreItem,
   LibraryStats,
   Page,
@@ -79,6 +80,10 @@ export const api = {
   // 设置（M2/M3）
   getSetting: (key: string) => invoke<string | null>('get_setting', { key }),
   setSetting: (key: string, value: string) => invoke<void>('set_setting', { key, value }),
+
+  // 艺人分隔符（设置后立即按新分隔符重拆曲库，返回受影响曲目的变更列表）
+  getArtistSeparators: () => invoke<string>('get_artist_separators'),
+  setArtistSeparators: (value: string) => invoke<ArtistSplitChange[]>('set_artist_separators', { value }),
 
   // WebDAV（M3）
   webdavAddSource: (url: string, username: string, password: string, name?: string) =>

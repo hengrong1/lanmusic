@@ -494,6 +494,11 @@ fn consume_and_write(
     cover_map: Option<&HashMap<String, String>>,
     total: usize,
 ) -> Result<(usize, usize), String> {
+    // 艺人分隔符设置：扫描开始时读取一次，本批全部沿用
+    let seps = {
+        let s = db::get_setting(conn, ARTIST_SEPARATORS_KEY).unwrap_or_default();
+        parse_separators(&s)
+    };
     let mut caches = load_caches(conn)?;
     let covers_dir = app.state::<AppState>().covers_dir.clone();
     let now = now_secs();
@@ -511,11 +516,11 @@ fn consume_and_write(
         batch.push(row);
         done += 1;
         if batch.len() >= BATCH {
-            write_batch(conn, &mut caches, source_id, now, &mut batch, existing, &covers_dir, lrc_map, cover_map)?;
+            write_batch(conn, &mut caches, source_id, now, &mut batch, existing, &covers_dir, lrc_map, cover_map, &seps)?;
             emit_parse(app, source_id, done, total);
         }
     }
-    write_batch(conn, &mut caches, source_id, now, &mut batch, existing, &covers_dir, lrc_map, cover_map)?;
+    write_batch(conn, &mut caches, source_id, now, &mut batch, existing, &covers_dir, lrc_map, cover_map, &seps)?;
     emit_parse(app, source_id, done, total);
     Ok((added, updated))
 }
@@ -530,6 +535,7 @@ fn write_batch(
     covers_dir: &Path,
     lrc_map: Option<&HashMap<String, String>>,
     cover_map: Option<&HashMap<String, String>>,
+    seps: &[char],
 ) -> Result<(), String> {
     if batch.is_empty() {
         return Ok(());
@@ -537,7 +543,7 @@ fn write_batch(
     let tx = conn.transaction().map_err(|e| e.to_string())?;
     for row in batch.drain(..) {
         // 多艺人拆分："A / B" → [A, B]，首个作为主艺人（tracks.artist_id，兼容旧查询/排序）
-        let artist_ids = split_artists(&row.artist)
+        let artist_ids = split_artists(&row.artist, seps)
             .iter()
             .map(|n| get_or_create_artist(&tx, &mut caches.artists, n))
             .collect::<Result<Vec<i64>, String>>()?;
@@ -568,15 +574,16 @@ fn write_batch(
         tx.execute(
             "INSERT INTO tracks (source_id, path, title, artist_id, album_id, genre, track_no, disc_no,
                                   year, duration, bitrate, sample_rate, channels, bit_depth,
-                                  has_embedded_lyrics, has_mv, mtime, file_size, format, added_at, meta_state)
-             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21)
+                                  has_embedded_lyrics, has_mv, mtime, file_size, format, added_at, meta_state, raw_artist)
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22)
              ON CONFLICT(source_id, path) DO UPDATE SET
                 title=excluded.title, artist_id=excluded.artist_id, album_id=excluded.album_id,
                 genre=excluded.genre, track_no=excluded.track_no, disc_no=excluded.disc_no,
                 year=excluded.year, duration=excluded.duration, bitrate=excluded.bitrate,
                 sample_rate=excluded.sample_rate, channels=excluded.channels, bit_depth=excluded.bit_depth,
                 has_embedded_lyrics=excluded.has_embedded_lyrics, has_mv=excluded.has_mv,
-                mtime=excluded.mtime, file_size=excluded.file_size, format=excluded.format, meta_state=excluded.meta_state",
+                mtime=excluded.mtime, file_size=excluded.file_size, format=excluded.format, meta_state=excluded.meta_state,
+                raw_artist=excluded.raw_artist",
             params![
                 source_id,
                 row.rel,
@@ -599,6 +606,8 @@ fn write_batch(
                 row.format,
                 now,
                 row.meta_state,
+                // 原始艺人标签：仅完整解析行记录（快速导入行取自目录名，重拆无意义，留空待解析）
+                if row.meta_state == 1 { Some(row.artist.as_str()) } else { None },
             ],
         )
         .map_err(|e| e.to_string())?;
@@ -650,7 +659,7 @@ fn write_batch(
     tx.commit().map_err(|e| e.to_string())
 }
 
-fn get_or_create_artist(
+pub(crate) fn get_or_create_artist(
     tx: &rusqlite::Transaction,
     cache: &mut HashMap<String, i64>,
     name: &str,
@@ -800,12 +809,37 @@ fn file_name_of(rel: &str) -> String {
         .unwrap_or_default()
 }
 
-/// 多艺人分隔符（含中文标点与常见合作标注；拆分前 feat./ft./featuring 会先归一为 ';'）
-const ARTIST_SEPARATORS: &[char] = &[';', '；', '、', '&', '，', ',', '/'];
+/// 多艺人分隔符默认集（含中文标点与常见合作标注；拆分前 feat./ft./featuring 会先归一为 ';'）。
+/// 用户可在设置里按候选集开关，无设置时使用全集。
+pub const ARTIST_SEPARATORS: &[char] = &[';', '；', '、', '&', '，', ',', '/'];
+
+/// 设置页可选的分隔符候选集（与默认集一致）
+pub const SEPARATOR_CANDIDATES: &[char] = ARTIST_SEPARATORS;
+
+/// 艺人分隔符设置在 app_settings 中的键
+pub const ARTIST_SEPARATORS_KEY: &str = "lm.artistSeparators";
+
+/// 解析分隔符设置串：只保留候选字符并去重。
+/// ';'（含 feat. 归一目标）恒定保留；无任何候选字符（未设置）时回退默认全集。
+pub fn parse_separators(s: &str) -> Vec<char> {
+    let mut seps: Vec<char> = Vec::new();
+    for c in s.chars() {
+        if SEPARATOR_CANDIDATES.contains(&c) && !seps.contains(&c) {
+            seps.push(c);
+        }
+    }
+    if seps.is_empty() {
+        return ARTIST_SEPARATORS.to_vec();
+    }
+    if !seps.contains(&';') {
+        seps.insert(0, ';');
+    }
+    seps
+}
 
 /// 把 "A / B"、"A & B"、"A feat. B" 这类多艺人字符串拆成独立艺人名。
 /// 拆不出多个时原样返回（单元素）。
-fn split_artists(name: &str) -> Vec<String> {
+pub fn split_artists(name: &str, seps: &[char]) -> Vec<String> {
     let trimmed = name.trim();
     if trimmed.is_empty() {
         return vec![name.to_string()];
@@ -844,7 +878,7 @@ fn split_artists(name: &str) -> Vec<String> {
 
     // 按分隔符拆分 + 清洗 + 去重（大小写不敏感，保持原始顺序）
     let mut parts: Vec<String> = Vec::new();
-    for p in normalized.split(ARTIST_SEPARATORS) {
+    for p in normalized.split(seps) {
         let p = p.trim();
         if p.is_empty() {
             continue;
@@ -867,43 +901,66 @@ fn split_artists(name: &str) -> Vec<String> {
 
 #[cfg(test)]
 mod split_artists_tests {
-    use super::split_artists;
+    use super::{split_artists, ARTIST_SEPARATORS, parse_separators};
 
     #[test]
     fn keeps_single_artist() {
-        assert_eq!(split_artists("周杰伦"), vec!["周杰伦"]);
-        assert_eq!(split_artists("未知艺人"), vec!["未知艺人"]);
+        assert_eq!(split_artists("周杰伦", ARTIST_SEPARATORS), vec!["周杰伦"]);
+        assert_eq!(split_artists("未知艺人", ARTIST_SEPARATORS), vec!["未知艺人"]);
     }
 
     #[test]
     fn splits_common_separators() {
-        assert_eq!(split_artists("周杰伦 / 费玉清"), vec!["周杰伦", "费玉清"]);
-        assert_eq!(split_artists("A & B"), vec!["A", "B"]);
-        assert_eq!(split_artists("A、B、C"), vec!["A", "B", "C"]);
-        assert_eq!(split_artists("A；B"), vec!["A", "B"]);
-        assert_eq!(split_artists("A，B"), vec!["A", "B"]);
+        assert_eq!(split_artists("周杰伦 / 费玉清", ARTIST_SEPARATORS), vec!["周杰伦", "费玉清"]);
+        assert_eq!(split_artists("A & B", ARTIST_SEPARATORS), vec!["A", "B"]);
+        assert_eq!(split_artists("A、B、C", ARTIST_SEPARATORS), vec!["A", "B", "C"]);
+        assert_eq!(split_artists("A；B", ARTIST_SEPARATORS), vec!["A", "B"]);
+        assert_eq!(split_artists("A，B", ARTIST_SEPARATORS), vec!["A", "B"]);
     }
 
     #[test]
     fn splits_featuring_tokens() {
-        assert_eq!(split_artists("A feat. B"), vec!["A", "B"]);
-        assert_eq!(split_artists("A Feat. B"), vec!["A", "B"]);
-        assert_eq!(split_artists("A featuring B"), vec!["A", "B"]);
-        assert_eq!(split_artists("A ft. B"), vec!["A", "B"]);
+        assert_eq!(split_artists("A feat. B", ARTIST_SEPARATORS), vec!["A", "B"]);
+        assert_eq!(split_artists("A Feat. B", ARTIST_SEPARATORS), vec!["A", "B"]);
+        assert_eq!(split_artists("A featuring B", ARTIST_SEPARATORS), vec!["A", "B"]);
+        assert_eq!(split_artists("A ft. B", ARTIST_SEPARATORS), vec!["A", "B"]);
         // 词中包含 feat 字样的艺人名不应被拆；结尾悬空的 "feat" 视为残留标注，拆掉后清理
-        assert_eq!(split_artists("Feature"), vec!["Feature"]);
-        assert_eq!(split_artists("Mo feat"), vec!["Mo"]);
+        assert_eq!(split_artists("Feature", ARTIST_SEPARATORS), vec!["Feature"]);
+        assert_eq!(split_artists("Mo feat", ARTIST_SEPARATORS), vec!["Mo"]);
     }
 
     #[test]
     fn dedupes_and_trims() {
-        assert_eq!(split_artists("A / a"), vec!["A"]);
-        assert_eq!(split_artists("  A  /  B  "), vec!["A", "B"]);
+        assert_eq!(split_artists("A / a", ARTIST_SEPARATORS), vec!["A"]);
+        assert_eq!(split_artists("  A  /  B  ", ARTIST_SEPARATORS), vec!["A", "B"]);
     }
 
     #[test]
     fn empty_falls_back_to_original() {
-        assert_eq!(split_artists(""), vec![""]);
+        assert_eq!(split_artists("", ARTIST_SEPARATORS), vec![""]);
+    }
+
+    #[test]
+    fn respects_custom_separators() {
+        // 关闭 '/'：AC/DC 这类含斜杠的艺人名保持完整
+        let seps = parse_separators("&");
+        assert_eq!(split_artists("AC/DC & A", &seps), vec!["AC/DC", "A"]);
+        assert_eq!(split_artists("AC/DC", &seps), vec!["AC/DC"]);
+        // 关闭 '/' 但启用 '、'：仅按启用的分隔符拆
+        let seps = parse_separators("、&");
+        assert_eq!(split_artists("A、B / C", &seps), vec!["A", "B / C"]);
+        // feat. 归一目标 ';' 恒定生效
+        assert_eq!(split_artists("A feat. B", &seps), vec!["A", "B"]);
+    }
+
+    #[test]
+    fn parses_separator_setting() {
+        // 只保留候选字符、去重
+        assert_eq!(parse_separators("a&/x&,"), vec![';', '&', '/', ',']);
+        // 空串回退默认全集
+        assert_eq!(parse_separators(""), ARTIST_SEPARATORS.to_vec());
+        // 全部停用也至少保留 ';'（feat. 归一目标）
+        assert_eq!(parse_separators("、&"), vec![';', '、', '&']);
     }
 }
 

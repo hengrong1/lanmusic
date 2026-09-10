@@ -226,7 +226,9 @@ pub(crate) enum ProxyAuth {
     Basic(String, String),
 }
 
-/// 兜底路径：原样字节流 + Range（transcode 失败时降级使用，协议行为与 serve_file_response 一致）
+/// 兜底路径：原样字节流 + Range（transcode 失败时降级使用，协议行为与 serve_file_response 一致）。
+/// 唯一调用方是 macOS 的 transcode 模块，加同样 cfg 避免 Windows 构建报 dead_code。
+#[cfg(target_os = "macos")]
 pub(crate) fn serve_raw(data: &[u8], range_header: Option<&str>) -> Response<Vec<u8>> {
     let size = data.len() as u64;
     let mime = "application/octet-stream";
