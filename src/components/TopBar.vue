@@ -219,7 +219,7 @@ defineExpose({ focusSearch })
         <X class="h-3 w-3" />
       </button>
 
-      <!-- 最近搜索下拉（聚焦空输入框时展示，最多 50 条） -->
+      <!-- 最近搜索下拉（聚焦空输入框时展示，最多 50 条，横向标签排列） -->
       <Transition
         enter-active-class="transition duration-150 ease-out"
         enter-from-class="opacity-0 -translate-y-1"
@@ -227,7 +227,7 @@ defineExpose({ focusSearch })
         leave-to-class="opacity-0 -translate-y-1"
       >
         <div
-          v-if="showRecent && recentSearches.length"
+          v-if="showRecent"
           class="absolute top-full z-50 mt-2 w-full overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-xl dark:border-zinc-700 dark:bg-zinc-800"
         >
           <div class="flex items-center justify-between px-3 py-2">
@@ -235,22 +235,29 @@ defineExpose({ focusSearch })
               <History class="h-3.5 w-3.5" /> 最近搜索
             </span>
             <button
+              v-if="recentSearches.length"
               class="cursor-pointer rounded px-1.5 py-0.5 text-xs text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-700 dark:hover:text-zinc-200"
               @mousedown.prevent="clearRecent"
             >清空</button>
           </div>
-          <ul class="max-h-64 overflow-y-auto pb-1">
-            <li v-for="s in recentSearches" :key="s">
-              <button
-                class="flex w-full cursor-pointer items-center gap-2 truncate px-3 py-1.5 text-left text-sm text-zinc-600 transition hover:bg-violet-50 hover:text-violet-600 dark:text-zinc-300 dark:hover:bg-zinc-700 dark:hover:text-violet-300"
-                :title="s"
-                @mousedown.prevent="applyRecent(s)"
-              >
-                <History class="h-3.5 w-3.5 shrink-0 text-zinc-300 dark:text-zinc-500" />
-                <span class="truncate">{{ s }}</span>
-              </button>
-            </li>
-          </ul>
+
+          <!-- 有记录：横向标签排列 -->
+          <div v-if="recentSearches.length" class="flex flex-wrap gap-1.5 px-3 pb-3">
+            <button
+              v-for="s in recentSearches"
+              :key="s"
+              class="cursor-pointer truncate rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1 text-xs text-zinc-600 transition hover:border-violet-300 hover:bg-violet-50 hover:text-violet-600 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-300 dark:hover:border-violet-500 dark:hover:bg-zinc-600 dark:hover:text-violet-300"
+              :title="s"
+              @mousedown.prevent="applyRecent(s)"
+            >
+              {{ s }}
+            </button>
+          </div>
+
+          <!-- 无记录：提示文字 -->
+          <div v-else class="px-3 pb-4 pt-2 text-center text-xs text-zinc-400 dark:text-zinc-500">
+            暂无搜索记录
+          </div>
         </div>
       </Transition>
 

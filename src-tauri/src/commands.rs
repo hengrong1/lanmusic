@@ -285,6 +285,29 @@ pub fn remove_source(app: AppHandle, state: State<'_, AppState>, id: i64) -> Res
         .ok();
     // 先删来源（ON DELETE CASCADE 级联移除 tracks）
     conn.execute("DELETE FROM sources WHERE id = ?1", params![id]).map_err(|e| e.to_string())?;
+    // 显式清理属于该来源的 tracks 的子表引用（兼容未配置 ON DELETE CASCADE 的旧数据库，避免 FOREIGN KEY constraint failed）
+    conn.execute(
+        "DELETE FROM track_artists WHERE track_id IN (SELECT id FROM tracks WHERE source_id = ?1)",
+        params![id],
+    )
+    .map_err(|e| e.to_string())?;
+    conn.execute(
+        "DELETE FROM playlist_items WHERE track_id IN (SELECT id FROM tracks WHERE source_id = ?1)",
+        params![id],
+    )
+    .map_err(|e| e.to_string())?;
+    conn.execute(
+        "DELETE FROM lrc_files WHERE track_id IN (SELECT id FROM tracks WHERE source_id = ?1)",
+        params![id],
+    )
+    .map_err(|e| e.to_string())?;
+    conn.execute(
+        "DELETE FROM lyrics_index WHERE track_id IN (SELECT id FROM tracks WHERE source_id = ?1)",
+        params![id],
+    )
+    .map_err(|e| e.to_string())?;
+    // 显式删除属于该来源的 tracks（如果 CASCADE 未生效）
+    conn.execute("DELETE FROM tracks WHERE source_id = ?1", params![id]).map_err(|e| e.to_string())?;
     // 级联完成后再查真正的孤儿专辑（包含：原就没被引用的 + 因级联 tracks 被删后新变成孤儿的）
     let orphan_albums: Vec<i64> = {
         let mut stmt = conn

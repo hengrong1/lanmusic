@@ -283,6 +283,29 @@ let sql = format!(
     }
     hits.retain(|h| h.score > 0);
 
+    // 按 track_id 去重：保留最高分的一条（防御性，防止 JOIN 意外产生重复行）
+    {
+        let mut best_by_id: HashMap<i64, usize> = HashMap::new();
+        for (i, h) in hits.iter().enumerate() {
+            best_by_id
+                .entry(h.track.id)
+                .and_modify(|e| {
+                    if h.score > hits[*e].score {
+                        *e = i;
+                    }
+                })
+                .or_insert(i);
+        }
+        let mut idxs: Vec<usize> = best_by_id.into_values().collect();
+        idxs.sort_unstable();
+        let mut deduped: Vec<Hit> = Vec::with_capacity(idxs.len());
+        for i in idxs.into_iter().rev() {
+            deduped.push(hits.swap_remove(i));
+        }
+        deduped.reverse();
+        hits = deduped;
+    }
+
     // ----- 排序偏好 -----
     match sort_pref {
         "added" => hits.sort_by(|a, b| {

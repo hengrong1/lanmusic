@@ -436,7 +436,7 @@ const theme = computed(() =>
         <!-- 行2：当前歌词（过长滚动），无歌词时显示专辑名；纯展示，不响应点击 -->
         <div
           v-if="player.current"
-          class="w-full text-left transition-colors duration-500"
+          class="w-full text-left text-xs leading-tight transition-colors duration-500 [-webkit-font-smoothing:antialiased]"
           :class="theme.artist"
           :style="accent && player.lyricsLines?.length ? { color: accent } : undefined"
         >

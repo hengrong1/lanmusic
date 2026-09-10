@@ -613,7 +613,14 @@ fn write_batch(
             ],
         )
         .map_err(|e| e.to_string())?;
-        let track_id = tx.last_insert_rowid();
+        // 通过查询获取正确的 track_id（ON CONFLICT DO UPDATE 时 last_insert_rowid 不更新）
+        let track_id: i64 = tx
+            .query_row(
+                "SELECT id FROM tracks WHERE source_id = ?1 AND path = ?2",
+                params![source_id, row.rel],
+                |r| r.get(0),
+            )
+            .map_err(|e| e.to_string())?;
 
         // 多艺人关联：先清后插保证重复扫描幂等（更新行会重建关联）
         tx.execute("DELETE FROM track_artists WHERE track_id = ?1", params![track_id])
@@ -714,6 +721,35 @@ fn delete_missing(
     let mut removed = 0usize;
     for chunk in to_remove.chunks(500) {
         let tx = conn.transaction().map_err(|e| e.to_string())?;
+
+        // 先收集要删除的 track_ids，并显式清理子表引用
+        //（兼容未配置 ON DELETE CASCADE 的旧数据库，避免 FOREIGN KEY constraint failed）
+        let mut track_ids: Vec<i64> = Vec::with_capacity(chunk.len());
+        for rel in chunk {
+            let tid: Option<i64> = tx
+                .query_row(
+                    "SELECT id FROM tracks WHERE source_id = ?1 AND path = ?2",
+                    params![source_id, rel],
+                    |r| r.get(0),
+                )
+                .optional()
+                .map_err(|e| e.to_string())?;
+            if let Some(id) = tid {
+                track_ids.push(id);
+            }
+        }
+        // 显式删除子表引用（track_artists, playlist_items, lrc_files, lyrics_index）
+        for tid in &track_ids {
+            tx.execute("DELETE FROM track_artists WHERE track_id = ?1", params![tid])
+                .map_err(|e| e.to_string())?;
+            tx.execute("DELETE FROM playlist_items WHERE track_id = ?1", params![tid])
+                .map_err(|e| e.to_string())?;
+            tx.execute("DELETE FROM lrc_files WHERE track_id = ?1", params![tid])
+                .map_err(|e| e.to_string())?;
+            tx.execute("DELETE FROM lyrics_index WHERE track_id = ?1", params![tid])
+                .map_err(|e| e.to_string())?;
+        }
+        // 然后删除 tracks
         for rel in chunk {
             tx.execute(
                 "DELETE FROM tracks WHERE source_id = ?1 AND path = ?2",
