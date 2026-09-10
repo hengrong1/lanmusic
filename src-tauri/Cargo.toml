@@ -28,6 +28,8 @@ tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
 rusqlite = { version = "0.40.2", features = ["bundled"] }
 lofty = "0.25.1"
+# 拼音搜索：汉字转全拼/首字母（搜索匹配用，见 search.rs）
+pinyin = "0.10"
 walkdir = "2.5.0"
 notify = "7"
 keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service"] }

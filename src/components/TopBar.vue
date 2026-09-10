@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref, watch, computed } from 'vue'
 import { ArrowLeftIcon as ArrowLeft } from '@solar-icons/vue/linear/arrow-left'
+import { HistoryIcon as History } from '@solar-icons/vue/linear/history'
 import { MoonIcon as Moon } from '@solar-icons/vue/linear/moon'
 import { SidebarIcon as PanelLeftClose } from '@solar-icons/vue/linear/sidebar'
 import { SidebarIcon as PanelLeftOpen } from '@solar-icons/vue/linear/sidebar'
@@ -12,8 +13,12 @@ import { CloseIcon as X } from '@solar-icons/vue/linear/close'
 import { useNav } from '@/composables/useNav'
 import { useSidebar } from '@/composables/useSidebar'
 import { useTheme } from '@/composables/useTheme'
+import { getSearchSettings } from '@/composables/useSearchSettings'
+import { api } from '@/api/commands'
+import type { Track } from '@/types'
 import { CUSTOM_WINDOW_CONTROLS } from '@/utils/platform'
 import WindowControls from '@/components/WindowControls.vue'
+import HighlightText from '@/components/HighlightText.vue'
 
 const { collapsed } = useSidebar()
 function toggleSidebar() {
@@ -29,10 +34,120 @@ watch(
   (s) => (input.value = s ?? ''),
 )
 
+// ---- 最近搜索（最多 50 条，localStorage）+ 弹出层实时搜索结果 ----
+const RECENT_KEY = 'lm.recentSearches'
+const MAX_RECENT = 50
+const recentSearches = ref<string[]>(loadRecent())
+/** 搜索下拉是否展开（聚焦且未失焦） */
+const searchFocused = ref(false)
+/** 实时搜索结果（最多 20 条预览） */
+const results = ref<Track[]>([])
+const resultTotal = ref(0)
+const searching = ref(false)
+let searchSeq = 0
+
+function loadRecent(): string[] {
+  try {
+    const raw = localStorage.getItem(RECENT_KEY)
+    if (raw) {
+      const arr = JSON.parse(raw)
+      if (Array.isArray(arr)) return arr.filter((x): x is string => typeof x === 'string').slice(0, MAX_RECENT)
+    }
+  } catch {
+    /* 损坏回退空 */
+  }
+  return []
+}
+function saveRecent(list: string[]) {
+  recentSearches.value = list.slice(0, MAX_RECENT)
+  localStorage.setItem(RECENT_KEY, JSON.stringify(recentSearches.value))
+}
+function recordSearch(q: string) {
+  const t = q.trim()
+  if (!t) return
+  saveRecent([t, ...recentSearches.value.filter((x) => x !== t)])
+}
+function clearRecent() {
+  saveRecent([])
+}
+function closeDropdown() {
+  searchFocused.value = false
+}
+
+/** 防抖实时查询：不改路由，结果只在输入框下方弹出层展示 */
+async function runSearch(q: string) {
+  const my = ++searchSeq
+  const t = q.trim()
+  if (!t) {
+    results.value = []
+    resultTotal.value = 0
+    searching.value = false
+    return
+  }
+  searching.value = true
+  try {
+    // api.queryTracks 会自动附加搜索设置（范围/拼音/排序偏好）
+    const page = await api.queryTracks({ view: 'all', search: t, pageSize: 20 })
+    if (my !== searchSeq) return // 旧回包丢弃
+    results.value = page.items
+    resultTotal.value = page.total
+  } catch {
+    if (my === searchSeq) results.value = []
+  } finally {
+    if (my === searchSeq) searching.value = false
+  }
+}
+
+/** 是否展示最近搜索（聚焦且输入为空） */
+const showRecent = computed(() => searchFocused.value && !input.value.trim())
+/** 是否展示搜索结果（聚焦且有输入内容） */
+const showResults = computed(() => searchFocused.value && input.value.trim())
+
+function applyRecent(s: string) {
+  input.value = s
+  replaceSearch(s)
+  recordSearch(s)
+  closeDropdown()
+}
+function onFocus() {
+  searchFocused.value = true
+}
+function onBlur() {
+  // 延迟收起，给 mousedown.prevent 选中项留出时间（此处不记录历史，只在明确提交时记录）
+  setTimeout(() => (searchFocused.value = false), 150)
+}
+/** Enter：进入完整搜索结果页 */
+function onEnter() {
+  const v = input.value.trim()
+  if (v) {
+    replaceSearch(v)
+    recordSearch(v)
+  }
+  closeDropdown()
+}
+/** 点击弹出层中的一条搜索结果：进入完整搜索结果页（与 Enter 行为一致） */
+function playResult(_t: Track) {
+  const v = input.value.trim()
+  if (v) {
+    replaceSearch(v)
+    recordSearch(v)
+  }
+  closeDropdown()
+}
+/** 查看全部结果 */
+function viewAll() {
+  const v = input.value.trim()
+  if (!v) return
+  replaceSearch(v)
+  recordSearch(v)
+  closeDropdown()
+}
+
 let timer: ReturnType<typeof setTimeout> | undefined
 function onInput() {
   clearTimeout(timer)
-  timer = setTimeout(() => replaceSearch(input.value.trim()), 300)
+  // 防抖时长可在设置中调整，避免打字过快导致频繁查询卡顿
+  timer = setTimeout(() => runSearch(input.value), getSearchSettings().debounceMs)
 }
 
 function clearSearch() {
@@ -87,9 +202,13 @@ defineExpose({ focusSearch })
       <input
         id="search-input"
         v-model="input"
+        autocomplete="off"
         class="h-9 w-full rounded-full border border-transparent bg-white/60 pr-8 pl-9 text-sm text-zinc-800 outline-none transition placeholder:text-zinc-400 focus:border-violet-400 focus:bg-white dark:bg-zinc-800/70 dark:text-zinc-100 dark:focus:bg-zinc-800"
         placeholder="搜索歌曲、艺人、专辑 (Ctrl+F)"
+        @focus="onFocus"
+        @blur="onBlur"
         @input="onInput"
+        @keydown.enter="onEnter"
         @keydown.esc="clearSearch"
       />
       <button
@@ -99,6 +218,109 @@ defineExpose({ focusSearch })
       >
         <X class="h-3 w-3" />
       </button>
+
+      <!-- 最近搜索下拉（聚焦空输入框时展示，最多 50 条） -->
+      <Transition
+        enter-active-class="transition duration-150 ease-out"
+        enter-from-class="opacity-0 -translate-y-1"
+        leave-active-class="transition duration-100 ease-in"
+        leave-to-class="opacity-0 -translate-y-1"
+      >
+        <div
+          v-if="showRecent && recentSearches.length"
+          class="absolute top-full z-50 mt-2 w-full overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-xl dark:border-zinc-700 dark:bg-zinc-800"
+        >
+          <div class="flex items-center justify-between px-3 py-2">
+            <span class="flex items-center gap-1.5 text-xs font-medium text-zinc-400">
+              <History class="h-3.5 w-3.5" /> 最近搜索
+            </span>
+            <button
+              class="cursor-pointer rounded px-1.5 py-0.5 text-xs text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-700 dark:hover:text-zinc-200"
+              @mousedown.prevent="clearRecent"
+            >清空</button>
+          </div>
+          <ul class="max-h-64 overflow-y-auto pb-1">
+            <li v-for="s in recentSearches" :key="s">
+              <button
+                class="flex w-full cursor-pointer items-center gap-2 truncate px-3 py-1.5 text-left text-sm text-zinc-600 transition hover:bg-violet-50 hover:text-violet-600 dark:text-zinc-300 dark:hover:bg-zinc-700 dark:hover:text-violet-300"
+                :title="s"
+                @mousedown.prevent="applyRecent(s)"
+              >
+                <History class="h-3.5 w-3.5 shrink-0 text-zinc-300 dark:text-zinc-500" />
+                <span class="truncate">{{ s }}</span>
+              </button>
+            </li>
+          </ul>
+        </div>
+      </Transition>
+
+      <!-- 搜索结果弹出层（聚焦且有输入时展示，在搜索框下方弹出） -->
+      <Transition
+        enter-active-class="transition duration-150 ease-out"
+        enter-from-class="opacity-0 -translate-y-1"
+        leave-active-class="transition duration-100 ease-in"
+        leave-to-class="opacity-0 -translate-y-1"
+      >
+        <div
+          v-if="showResults && (results.length || searching)"
+          class="absolute top-full z-50 mt-2 w-full overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-xl dark:border-zinc-700 dark:bg-zinc-800"
+        >
+          <!-- 搜索中提示 -->
+          <div v-if="searching && !results.length" class="flex items-center justify-center px-3 py-6 text-sm text-zinc-400">
+            <span>搜索中...</span>
+          </div>
+
+          <!-- 结果列表 -->
+          <ul v-else class="max-h-80 overflow-y-auto py-1">
+            <li v-for="t in results" :key="t.id">
+              <button
+                class="flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-left transition hover:bg-violet-50 dark:hover:bg-zinc-700"
+                @mousedown.prevent="playResult(t)"
+              >
+                <!-- 音符占位 -->
+                <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded bg-zinc-200 dark:bg-zinc-700">
+                  <span class="text-sm text-zinc-400">♪</span>
+                </div>
+                <!-- 信息 -->
+                <div class="min-w-0 flex-1">
+                  <div class="flex items-center gap-1.5">
+                    <HighlightText
+                      :text="t.title || '未知歌曲'"
+                      :keyword="input.trim()"
+                      class="truncate text-sm font-medium text-zinc-800 dark:text-zinc-100"
+                    />
+                    <!-- 匹配字段徽标 -->
+                    <span
+                      v-if="t.matchedFields?.includes('lyrics')"
+                      class="shrink-0 rounded-full bg-green-100 px-1.5 py-0.5 text-[10px] font-medium text-green-700 dark:bg-green-900/40 dark:text-green-300"
+                    >歌词</span>
+                    <span
+                      v-else-if="t.matchedFields?.includes('filename')"
+                      class="shrink-0 rounded-full bg-purple-100 px-1.5 py-0.5 text-[10px] font-medium text-purple-700 dark:bg-purple-900/40 dark:text-purple-300"
+                      :title="t.path"
+                    >文件名</span>
+                  </div>
+                  <div class="mt-0.5 flex items-center gap-1 truncate text-xs text-zinc-500 dark:text-zinc-400">
+                    <HighlightText v-if="t.artist" :text="t.artist" :keyword="input.trim()" class="truncate" />
+                    <span v-if="t.artist && t.album" class="shrink-0">·</span>
+                    <HighlightText v-if="t.album" :text="t.album" :keyword="input.trim()" class="truncate" />
+                  </div>
+                </div>
+              </button>
+            </li>
+          </ul>
+
+          <!-- 底部：查看全部结果 -->
+          <div v-if="resultTotal > 0" class="border-t border-zinc-100 px-3 py-2 dark:border-zinc-700">
+            <button
+              class="w-full cursor-pointer text-left text-xs text-violet-500 transition hover:text-violet-600 dark:text-violet-400 dark:hover:text-violet-300"
+              @mousedown.prevent="viewAll"
+            >
+              查看全部 {{ resultTotal }} 条结果
+            </button>
+          </div>
+        </div>
+      </Transition>
     </div>
 
     <button

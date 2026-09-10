@@ -87,6 +87,12 @@ CREATE TABLE IF NOT EXISTS lrc_files (
   path TEXT
 );
 
+-- 歌词搜索索引：扫描时写入（内嵌歌词 + 外挂 .lrc 内容），存量库启动时后台回填
+CREATE TABLE IF NOT EXISTS lyrics_index (
+  track_id INTEGER PRIMARY KEY REFERENCES tracks(id) ON DELETE CASCADE,
+  text TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS app_settings (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL

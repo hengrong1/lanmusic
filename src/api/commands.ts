@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core'
+import { getSearchSettings } from '@/composables/useSearchSettings'
 import type {
   AlbumItem,
   ArtistItem,
@@ -23,7 +24,15 @@ export const api = {
     invoke<void>('set_source_fast_import', { id, enabled }),
 
   // 库查询
-  queryTracks: (q: TrackQuery) => invoke<Page<Track>>('query_tracks', { q }),
+  queryTracks: (q: TrackQuery) => {
+    // 搜索时自动附加搜索设置（范围/拼音/排序偏好），调用方无需关心
+    let merged = q
+    if (q.search) {
+      const s = getSearchSettings()
+      merged = { ...q, fields: s.fields, pinyin: s.pinyin, sort: s.sort }
+    }
+    return invoke<Page<Track>>('query_tracks', { q: merged })
+  },
   queryAlbums: (search?: string, page = 0, pageSize = 120) =>
     invoke<Page<AlbumItem>>('query_albums', { search, page, pageSize }),
   queryArtists: (search?: string, page = 0, pageSize = 300) =>

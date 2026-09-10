@@ -48,6 +48,8 @@ pub struct Track {
     pub fav: bool,
     /// 完整艺人列表（含合作艺人，按标签顺序）；单艺人曲目同样返回
     pub artists: Vec<TrackArtistRef>,
+    /// 命中的搜索字段（title/artist/album/lyrics/filename），仅搜索时非空
+    pub matched_fields: Vec<String>,
 }
 
 /// 曲目关联艺人（track_artists）
@@ -111,6 +113,10 @@ pub struct TrackQuery {
     pub sort: Option<String>,
     pub page: Option<u32>,
     pub page_size: Option<u32>,
+    /// 搜索范围（title/artist/album/lyrics/filename）；缺省 = 标题/艺人/专辑
+    pub fields: Option<Vec<String>>,
+    /// 是否启用拼音匹配（默认前端设置控制）
+    pub pinyin: Option<bool>,
 }
 
 // ---------- 行映射 ----------
@@ -141,12 +147,13 @@ fn row_track(r: &rusqlite::Row) -> rusqlite::Result<Track> {
         has_mv: r.get::<_, i64>(15)? != 0,
         fav: r.get::<_, i64>(16)? != 0,
         artists: Vec::new(),
+        matched_fields: Vec::new(),
     })
 }
 
 /// 批量附加每首曲目的完整艺人列表（track_artists 关联，按 ord 排序）。
 /// 多艺人时用 " / " 连接覆盖 artist 显示串（首个为主艺人）。
-fn attach_artists(conn: &rusqlite::Connection, tracks: &mut [Track]) -> Result<(), String> {
+pub(crate) fn attach_artists(conn: &rusqlite::Connection, tracks: &mut [Track]) -> Result<(), String> {
     if tracks.is_empty() {
         return Ok(());
     }
@@ -365,10 +372,8 @@ fn collect_rows<T>(
     Ok(out)
 }
 
-#[tauri::command]
-pub fn query_tracks(state: State<'_, AppState>, q: TrackQuery) -> Result<Page<Track>, String> {
-    let conn = state.db.lock().map_err(|e| e.to_string())?;
-
+/// 视图过滤条件（专辑/艺人/喜欢/风格），供普通查询与搜索路径共用
+pub(crate) fn view_filter(q: &TrackQuery) -> (String, Vec<Box<dyn rusqlite::ToSql>>) {
     let mut wheres: Vec<String> = Vec::new();
     let mut args: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
     match q.view.as_deref().unwrap_or("all") {
@@ -400,18 +405,26 @@ pub fn query_tracks(state: State<'_, AppState>, q: TrackQuery) -> Result<Page<Tr
         }
         _ => {}
     }
-    if let Some(s) = q.search.as_deref().filter(|s| !s.trim().is_empty()) {
-        let like = format!("%{}%", s.trim());
-        wheres.push("(t.title LIKE ? OR IFNULL(a.name,'') LIKE ? OR IFNULL(al.title,'') LIKE ?)".into());
-        args.push(Box::new(like.clone()));
-        args.push(Box::new(like.clone()));
-        args.push(Box::new(like));
-    }
     let where_sql = if wheres.is_empty() {
         String::new()
     } else {
         format!("WHERE {}", wheres.join(" AND "))
     };
+    (where_sql, args)
+}
+
+#[tauri::command]
+pub fn query_tracks(state: State<'_, AppState>, q: TrackQuery) -> Result<Page<Track>, String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+
+    // 搜索路径：多字段 + 拼音 + 歌词/文件名匹配、相关度评分（见 search.rs）
+    if q.search.as_deref().map(|s| !s.trim().is_empty()).unwrap_or(false) {
+        return crate::search::search_tracks(&conn, &q);
+    }
+
+    let (view_where, mut args) = view_filter(&q);
+    let args = &mut args;
+    let where_sql = view_where;
     // 排序：支持 "-" 前缀表示降序（表头点击排序）
     let order_sql = match q.sort.as_deref() {
         Some("-title") => "ORDER BY t.title COLLATE NOCASE DESC",

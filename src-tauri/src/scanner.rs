@@ -90,6 +90,8 @@ struct ParsedTrack {
     size: i64,
     /// 0 = 快速导入（仅文件名，待补全解析），1 = 完整解析
     meta_state: i64,
+    /// 内嵌歌词原文（用于歌词搜索索引；无内嵌歌词为 None）
+    lyrics_text: Option<String>,
 }
 
 /// 在后台线程中调用（见 commands::add_local_source / rescan_source 等）
@@ -626,14 +628,39 @@ fn write_batch(
 
         // 歌词关联：local/webdav 存同名 .lrc 的本地路径或完整 URL
         let lrc_target = lrc_map.and_then(|m| m.get(&stem_key(&row.rel)).cloned());
-        if let Some(target) = lrc_target {
-            let p = if target.is_empty() { None } else { Some(target) };
+        if let Some(target) = lrc_target.as_ref() {
+            let p = if target.is_empty() { None } else { Some(target.as_str()) };
             tx.execute(
                 "INSERT INTO lrc_files (track_id, path) VALUES (?1, ?2)
                  ON CONFLICT(track_id) DO UPDATE SET path = excluded.path",
                 params![track_id, p],
             )
             .map_err(|e| e.to_string())?;
+        }
+
+        // 歌词搜索索引：优先内嵌歌词原文，其次读外挂 .lrc 文件内容（小文件，批次内读取开销可忽略）；
+        // 完整解析后仍无歌词则清除旧索引（歌词被移除的情况）
+        let lyrics_text = row.lyrics_text.clone().or_else(|| {
+            lrc_target
+                .as_ref()
+                .filter(|p| !p.is_empty())
+                .and_then(|p| std::fs::read(p).ok())
+                .map(|b| String::from_utf8_lossy(&b).into_owned())
+        });
+        match lyrics_text {
+            Some(text) if !text.trim().is_empty() => {
+                tx.execute(
+                    "INSERT INTO lyrics_index (track_id, text) VALUES (?1, ?2)
+                     ON CONFLICT(track_id) DO UPDATE SET text = excluded.text",
+                    params![track_id, text],
+                )
+                .map_err(|e| e.to_string())?;
+            }
+            _ if row.meta_state == 1 => {
+                tx.execute("DELETE FROM lyrics_index WHERE track_id = ?1", params![track_id])
+                    .map_err(|e| e.to_string())?;
+            }
+            _ => {}
         }
 
         // WebDAV 封面 URL（首个出现的曲目决定，条件更新保证幂等）
@@ -993,6 +1020,7 @@ fn fast_track(rel: &str, mtime: i64, size: i64, has_mv: bool) -> ParsedTrack {
         mtime,
         size,
         meta_state: 0,
+        lyrics_text: None,
     }
 }
 
@@ -1019,6 +1047,7 @@ fn fallback_track(rel: &str, mtime: i64, size: i64, has_mv: bool) -> ParsedTrack
         mtime,
         size,
         meta_state: 1,
+        lyrics_text: None,
     }
 }
 
@@ -1052,5 +1081,6 @@ fn parsed_from_meta(rel: &str, meta: TrackMeta, mtime: i64, size: i64, has_mv: b
         mtime,
         size,
         meta_state: 1,
+        lyrics_text: meta.lyrics,
     }
 }

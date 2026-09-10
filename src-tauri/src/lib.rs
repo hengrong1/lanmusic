@@ -9,6 +9,7 @@ mod metadata;
 mod network;
 mod scanner;
 mod scheme;
+mod search;
 mod state;
 #[cfg(target_os = "macos")]
 mod transcode;
@@ -158,6 +159,12 @@ pub fn run() {
                 }
             }
             watcher::init(app.handle().clone());
+
+            // 歌词搜索索引：启动时后台回填存量曲目（跨启动续跑，不阻塞 UI）
+            {
+                let app_handle = app.handle().clone();
+                std::thread::spawn(move || search::backfill_lyrics_index(&app_handle));
+            }
 
             // 封面缓存容量控制：启动时清理一次（后台执行，扫描结束时也会再执行）
             {

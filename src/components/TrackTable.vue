@@ -15,6 +15,7 @@ import { VideoFramePlayHorizontalIcon as VideoFramePlay } from '@solar-icons/vue
 import type { Track } from '@/types'
 import VirtualList from '@/components/VirtualList.vue'
 import ContextMenu from '@/components/ContextMenu.vue'
+import HighlightText from '@/components/HighlightText.vue'
 import type { MenuItem } from '@/components/ContextMenu.vue'
 import { usePlayerStore } from '@/stores/player'
 import { useLibraryStore } from '@/stores/library'
@@ -36,6 +37,9 @@ const player = usePlayerStore()
 const library = useLibraryStore()
 const nav = useNav()
 const mv = useMvPlayer()
+
+/** 当前搜索关键词（高亮命中字用） */
+const searchTerm = computed(() => nav.current.value.search ?? '')
 
 // ---- 表头点击排序（传入 sort 属性时启用；歌单视图保持拖拽顺序不启用）----
 const vlist = ref<{ scrollToTop: () => void; scrollToIndex: (i: number) => void } | null>(null)
@@ -361,7 +365,18 @@ function onDragEnd() {
               </span>
             </div>
             <div class="flex min-w-0 items-center gap-1.5" :class="player.current?.id === t.id ? 'font-medium text-violet-600 dark:text-violet-400' : 'text-zinc-800 dark:text-zinc-100'">
-              <span class="truncate">{{ t.title }}</span>
+              <span class="truncate"><HighlightText :text="t.title" :keyword="searchTerm" /></span>
+              <!-- 命中字段徽标：歌词 / 文件名 -->
+              <span
+                v-if="t.matchedFields?.includes('lyrics')"
+                class="shrink-0 rounded-full bg-violet-100 px-1.5 py-px text-[10px] font-medium text-violet-600 dark:bg-violet-500/20 dark:text-violet-300"
+                title="歌词命中"
+              >歌词</span>
+              <span
+                v-if="t.matchedFields?.includes('filename')"
+                class="shrink-0 rounded-full bg-emerald-100 px-1.5 py-px text-[10px] font-medium text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-300"
+                :title="`文件名命中：${t.path}`"
+              >文件名</span>
               <button
                 v-if="t.hasMv"
                 class="shrink-0 rounded-full p-0.5 text-fuchsia-500 transition hover:bg-fuchsia-50 dark:hover:bg-fuchsia-900/30"
@@ -380,8 +395,8 @@ function onDragEnd() {
                   class="max-w-full cursor-pointer truncate transition hover:text-violet-600 hover:underline dark:hover:text-violet-400"
                   :title="`查看艺人：${a.name}`"
                   @click.stop="openArtist(a)"
-                >{{ a.name }}</button>
-                <span v-else>{{ a.name }}</span>
+                ><HighlightText :text="a.name" :keyword="searchTerm" /></button>
+                <span v-else><HighlightText :text="a.name" :keyword="searchTerm" /></span>
                 <span v-if="i < artistLinks(t).length - 1" class="opacity-50"> / </span>
               </template>
             </div>
@@ -390,7 +405,7 @@ function onDragEnd() {
                 class="max-w-full cursor-pointer truncate transition hover:text-violet-600 hover:underline dark:hover:text-violet-400"
                 :title="`查看专辑：${t.album ?? '未知专辑'}`"
                 @click.stop="openAlbum(t)"
-              >{{ t.album ?? '未知专辑' }}</button>
+              ><HighlightText :text="t.album ?? '未知专辑'" :keyword="searchTerm" /></button>
             </div>
             <div class="text-right font-mono text-xs tabular-nums transition-colors" :class="player.current?.id === t.id ? 'text-violet-500' : 'text-zinc-500 dark:text-zinc-400'">
               {{ fmtDuration(t.duration) }}

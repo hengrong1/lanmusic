@@ -30,6 +30,8 @@ export interface Track {
   fav: boolean
   /** 完整艺人列表（合作曲目按标签顺序拆分为独立艺人） */
   artists?: TrackArtistRef[]
+  /** 命中的搜索字段（title/artist/album/lyrics/filename），仅搜索结果非空 */
+  matchedFields?: string[]
 }
 
 /** 曲目关联艺人 */
@@ -105,6 +107,10 @@ export interface TrackQuery {
   sort?: string
   page?: number
   pageSize?: number
+  /** 搜索范围（title/artist/album/lyrics/filename） */
+  fields?: string[]
+  /** 是否启用拼音搜索 */
+  pinyin?: boolean
 }
 
 export type ViewName = 'tracks' | 'albums' | 'artists' | 'genres' | 'playlist' | 'settings'

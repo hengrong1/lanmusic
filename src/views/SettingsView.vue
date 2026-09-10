@@ -20,6 +20,7 @@ import { getPreventSleep, setPreventSleepSetting } from '@/composables/usePowerG
 import { useUpdater } from '@/composables/useUpdater'
 import { usePlayerStore } from '@/stores/player'
 import { api } from '@/api/commands'
+import { getSearchSettings, setSearchSettings, type SearchSettings } from '@/composables/useSearchSettings'
 import type { ArtistSplitChange, Source } from '@/types'
 import { setLocale } from '@/i18n'
 import { useI18n } from 'vue-i18n'
@@ -77,6 +78,44 @@ onMounted(() => {
     })
     .catch(() => {})
 })
+
+// ---- 搜索设置 ----
+const searchSettings = ref<SearchSettings>(getSearchSettings())
+const searchFieldOptions = [
+  { value: 'title', label: '标题' },
+  { value: 'artist', label: '艺术家' },
+  { value: 'album', label: '专辑' },
+  { value: 'lyrics', label: '歌词' },
+  { value: 'filename', label: '文件名' },
+]
+const searchSortOptions: { value: SearchSettings['sort']; label: string }[] = [
+  { value: 'relevance', label: '相关度优先' },
+  { value: 'added', label: '时间添加优先' },
+  { value: 'plays', label: '播放次数优先' },
+]
+/** 保存到 localStorage（每次变更即时生效，无 toast 打扰） */
+function saveSearchSettings() {
+  setSearchSettings(searchSettings.value)
+}
+function toggleSearchField(v: string) {
+  const fields = searchSettings.value.fields
+  if (fields.includes(v)) {
+    // 至少保留一项
+    if (fields.length === 1) return
+    searchSettings.value = { ...searchSettings.value, fields: fields.filter((x) => x !== v) }
+  } else {
+    searchSettings.value = { ...searchSettings.value, fields: [...fields, v] }
+  }
+  saveSearchSettings()
+}
+function togglePinyin() {
+  searchSettings.value = { ...searchSettings.value, pinyin: !searchSettings.value.pinyin }
+  saveSearchSettings()
+}
+function onDebounceChange(e: Event) {
+  searchSettings.value = { ...searchSettings.value, debounceMs: Number((e.target as HTMLSelectElement).value) }
+  saveSearchSettings()
+}
 
 // ---- 曲库：多艺人分隔符 ----
 /** 可选分隔符候选集（与 Rust 侧 SEPARATOR_CANDIDATES 对应；顺序即展示顺序） */
@@ -581,6 +620,85 @@ const scannedSourceIds = computed(() => new Set(Object.keys(library.scanProgress
               </p>
             </div>
           </template>
+        </div>
+      </section>
+
+      <!-- 搜索 -->
+      <section data-stagger>
+        <h2 class="mb-3 text-sm font-semibold text-zinc-800 dark:text-zinc-100">搜索</h2>
+        <div class="space-y-4 rounded-xl border border-zinc-200 bg-white p-4 text-sm dark:border-zinc-800 dark:bg-zinc-900">
+          <!-- 搜索范围 -->
+          <div>
+            <p class="mb-2 text-xs font-medium text-zinc-400">搜索范围</p>
+            <div class="flex flex-wrap gap-x-5 gap-y-2">
+              <label
+                v-for="opt in searchFieldOptions"
+                :key="opt.value"
+                class="flex cursor-pointer items-center gap-1.5 text-zinc-600 dark:text-zinc-300"
+              >
+                <input
+                  type="checkbox"
+                  class="h-3.5 w-3.5 cursor-pointer accent-violet-500"
+                  :checked="searchSettings.fields.includes(opt.value)"
+                  :disabled="searchSettings.fields.length === 1 && searchSettings.fields.includes(opt.value)"
+                  @change="toggleSearchField(opt.value)"
+                />
+                {{ opt.label }}
+              </label>
+            </div>
+          </div>
+          <p class="-mt-2 text-xs text-zinc-400">勾选后搜索将在对应字段内匹配；至少保留一项。</p>
+
+          <!-- 拼音搜索 -->
+          <div class="flex items-center justify-between">
+            <span class="text-zinc-600 dark:text-zinc-300">拼音搜索</span>
+            <button
+              class="relative h-5 w-9 cursor-pointer rounded-full transition"
+              :class="searchSettings.pinyin ? 'bg-violet-500' : 'bg-zinc-200 dark:bg-zinc-700'"
+              title="开启后可用拼音或首字母搜索中文歌曲"
+              @click="togglePinyin"
+            >
+              <span
+                class="absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all"
+                :class="searchSettings.pinyin ? 'left-[18px]' : 'left-0.5'"
+              ></span>
+            </button>
+          </div>
+          <p class="-mt-2 text-xs text-zinc-400">开启后可用拼音或首字母搜索中文歌曲（如输入 zhou 匹配 周杰伦）。</p>
+
+          <!-- 排序偏好 -->
+          <div class="flex items-center justify-between">
+            <span class="text-zinc-600 dark:text-zinc-300">排序偏好</span>
+            <div class="flex gap-2">
+              <button
+                v-for="o in searchSortOptions"
+                :key="o.value"
+                class="cursor-pointer rounded-full px-3 py-1.5 text-xs transition"
+                :class="
+                  searchSettings.sort === o.value
+                    ? 'bg-violet-500 font-medium text-white'
+                    : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700'
+                "
+                @click="searchSettings.sort = o.value; saveSearchSettings()"
+              >{{ o.label }}</button>
+            </div>
+          </div>
+
+          <!-- 输入防抖 -->
+          <div class="flex items-center justify-between">
+            <span class="text-zinc-600 dark:text-zinc-300">输入防抖</span>
+            <select
+              class="h-9 cursor-pointer rounded-lg border border-zinc-200 bg-transparent px-2 text-sm text-zinc-700 outline-none focus:border-violet-400 dark:border-zinc-700 dark:text-zinc-200"
+              :value="searchSettings.debounceMs"
+              @change="onDebounceChange"
+            >
+              <option :value="150">150ms</option>
+              <option :value="300">300ms</option>
+              <option :value="500">500ms</option>
+              <option :value="800">800ms</option>
+            </select>
+          </div>
+          <p class="-mt-2 text-xs text-zinc-400">打字停顿超过该时长才发起搜索，避免输入过快导致频繁查询卡顿。</p>
         </div>
       </section>
 
