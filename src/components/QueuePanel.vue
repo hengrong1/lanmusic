@@ -141,7 +141,7 @@ watch(
           </div>
           <div class="flex items-center gap-1">
             <button
-              class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-zinc-500 hover:bg-zinc-100 hover:text-violet-500 disabled:cursor-default disabled:opacity-40 dark:hover:bg-zinc-800"
+              class="transition-colors duration-150 flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-zinc-500 hover:bg-zinc-100 hover:text-violet-500 disabled:cursor-default disabled:opacity-40 dark:hover:bg-zinc-800"
               :title="$t('queue.saveAsPlaylistHint')"
               :disabled="saving"
               @click="saveAsPlaylist"
@@ -149,14 +149,14 @@ watch(
               <ListPlus class="h-4 w-4" />
             </button>
             <button
-              class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-zinc-500 hover:bg-zinc-100 hover:text-red-500 dark:hover:bg-zinc-800"
+              class="transition-colors duration-150 flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-zinc-500 hover:bg-zinc-100 hover:text-red-500 dark:hover:bg-zinc-800"
               :title="$t('queue.clearQueue')"
               @click="player.clearQueue()"
             >
               <Trash2 class="h-4 w-4" />
             </button>
             <button
-              class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+              class="transition-colors duration-150 flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800"
               :title="$t('common.close')"
               @click="$emit('close')"
             >
@@ -204,7 +204,7 @@ watch(
               :class="i === player.index ? 'text-violet-500' : 'text-zinc-400'"
             >{{ fmt(t.duration) }}</span>
             <button
-              class="flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-lg text-zinc-400 opacity-0 hover:bg-zinc-200 hover:text-zinc-600 group-hover:opacity-100 dark:hover:bg-zinc-700"
+              class="transition-colors duration-150 flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-lg text-zinc-400 opacity-0 hover:bg-zinc-200 hover:text-zinc-600 group-hover:opacity-100 dark:hover:bg-zinc-700"
               :title="$t('player.removeFromQueue')"
               @click="player.removeFromQueue(i)"
             >

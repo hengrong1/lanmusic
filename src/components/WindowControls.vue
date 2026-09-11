@@ -2,9 +2,9 @@
 /// Windows/Linux 无边框窗口的自绘窗口控制按钮（macOS 用原生红绿灯，不渲染本组件）
 /// ambient=true 时用于深色环境（如播放页），文字/悬停改用白色系
 import { onMounted, onUnmounted, ref } from 'vue'
-import { MaximizeIcon as Maximize } from '@solar-icons/vue/linear/maximize'
+import { FullScreenIcon as Maximize } from '@solar-icons/vue/linear/full-screen'
 import { MinusIcon as Minus } from '@solar-icons/vue/linear/minus'
-import { MinimizeIcon as Minimize } from '@solar-icons/vue/linear/minimize'
+import { QuitFullScreenIcon as Minimize } from '@solar-icons/vue/linear/quit-full-screen'
 import { CloseIcon as X } from '@solar-icons/vue/linear/close'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 

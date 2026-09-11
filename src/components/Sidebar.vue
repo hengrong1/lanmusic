@@ -1,5 +1,10 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { HistoryIcon as HistoryBold } from '@solar-icons/vue/bold/history'
+import { HeartIcon as HeartBold } from '@solar-icons/vue/bold/heart'
+import { MicrophoneIcon as MicBold } from '@solar-icons/vue/bold/microphone'
+import { MusicNoteIcon as MusicBold } from '@solar-icons/vue/bold/music-note'
+import { VinylRecordIcon as Disc3Bold } from '@solar-icons/vue/bold/vinyl-record'
 import { VinylRecordIcon as Disc3 } from '@solar-icons/vue/linear/vinyl-record'
 import { HeartIcon as Heart } from '@solar-icons/vue/linear/heart'
 import { HistoryIcon as History } from '@solar-icons/vue/linear/history'
@@ -110,15 +115,17 @@ interface NavEntry {
   route: NavRoute
   label: string
   icon: typeof Music
+  /** 选中态使用的 bold 图标（与 icon 同形不同粗细） */
+  iconActive: typeof MusicBold
   count?: () => number
 }
 
 const entries = computed<NavEntry[]>(() => [
-  { route: { view: 'tracks' }, label: t('library.allTracks'), icon: Music, count: () => library.stats.tracks },
-  { route: { view: 'tracks', favorites: true }, label: t('library.myFavorites'), icon: Heart, count: () => library.stats.favorites },
-  { route: { view: 'albums' }, label: t('library.albums'), icon: Disc3, count: () => library.stats.albums },
-  { route: { view: 'artists' }, label: t('library.artists'), icon: Mic, count: () => library.stats.artists },
-  { route: { view: 'tracks', recent: true }, label: t('nav.recent'), icon: History },
+  { route: { view: 'tracks' }, label: t('library.allTracks'), icon: Music, iconActive: MusicBold, count: () => library.stats.tracks },
+  { route: { view: 'tracks', favorites: true }, label: t('library.myFavorites'), icon: Heart, iconActive: HeartBold, count: () => library.stats.favorites },
+  { route: { view: 'albums' }, label: t('library.albums'), icon: Disc3, iconActive: Disc3Bold, count: () => library.stats.albums },
+  { route: { view: 'artists' }, label: t('library.artists'), icon: Mic, iconActive: MicBold, count: () => library.stats.artists },
+  { route: { view: 'tracks', recent: true }, label: t('nav.recent'), icon: History, iconActive: HistoryBold },
 ])
 
 function isActive(e: NavEntry) {
@@ -209,7 +216,7 @@ function openPlaylistMenu(e: MouseEvent, p: { id: number; name: string }) {
 <template>
   <nav
     ref="navEl"
-    class="flex shrink-0 flex-col overflow-hidden bg-zinc-100 dark:bg-zinc-900"
+    class="flex shrink-0 flex-col overflow-hidden rounded-2xl bg-white dark:bg-zinc-900"
   >
     <!-- Logo：固定左内边距 14px，收起态（60px）恰好居中，避免随 collapsed 切换 justify 而左右闪动 -->
     <div class="flex h-14 shrink-0 items-center gap-2 pl-3.5 pr-3" :data-tauri-drag-region="IS_WIN ? '' : undefined">
@@ -238,7 +245,7 @@ function openPlaylistMenu(e: MouseEvent, p: { id: number; name: string }) {
         :disabled="!collapsed"
       >
         <button
-          class="mb-0.5 flex h-9 w-full shrink-0 cursor-pointer items-center rounded-lg text-sm transition"
+          class="group mb-0.5 flex h-9 w-full shrink-0 cursor-pointer items-center rounded-lg text-sm transition"
           :class="[
             showText ? 'gap-2.5 px-2.5' : 'justify-center px-0',
             isActive(e)
@@ -248,9 +255,9 @@ function openPlaylistMenu(e: MouseEvent, p: { id: number; name: string }) {
           @click="go(e.route)"
         >
           <component
-            :is="e.icon"
-            class="nav-icon h-4 w-4 shrink-0"
-            :class="isActive(e) ? 'text-violet-500' : 'text-zinc-400'"
+            :is="isActive(e) ? e.iconActive : e.icon"
+            class="nav-icon h-4 w-4 shrink-0 transition-colors duration-150"
+            :class="isActive(e) ? 'text-violet-500' : 'text-zinc-400 group-hover:text-violet-500 dark:group-hover:text-violet-400'"
           />
           <span v-if="showText" class="sidebar-fade flex-1 text-left">{{ e.label }}</span>
           <span v-if="showText && e.count" class="sidebar-fade text-xs tabular-nums text-zinc-400">{{ e.count() }}</span>
@@ -263,7 +270,7 @@ function openPlaylistMenu(e: MouseEvent, p: { id: number; name: string }) {
       <div class="flex items-center justify-between px-2 pb-1">
         <p class="sidebar-fade text-[11px] font-semibold tracking-wider text-zinc-400 uppercase dark:text-zinc-600">{{ $t('playlist.title') }}</p>
         <button
-          class="sidebar-fade flex h-5 w-5 cursor-pointer items-center justify-center rounded-lg text-zinc-400 hover:bg-zinc-200 hover:text-zinc-600 disabled:cursor-default dark:hover:bg-zinc-700 dark:hover:text-zinc-300"
+          class="transition-colors duration-150 sidebar-fade flex h-5 w-5 cursor-pointer items-center justify-center rounded-lg text-zinc-400 hover:bg-zinc-200 hover:text-zinc-600 disabled:cursor-default dark:hover:bg-zinc-700 dark:hover:text-zinc-300"
           :title="$t('playlist.createNew')"
           :disabled="collapsed"
           @click="startCreate"

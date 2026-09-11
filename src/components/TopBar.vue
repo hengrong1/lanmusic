@@ -3,9 +3,10 @@ import { ref, watch, computed } from 'vue'
 import { ArrowLeftIcon as ArrowLeft } from '@solar-icons/vue/linear/arrow-left'
 import { HistoryIcon as History } from '@solar-icons/vue/linear/history'
 import { MoonIcon as Moon } from '@solar-icons/vue/linear/moon'
-import { SidebarIcon as PanelLeftClose } from '@solar-icons/vue/linear/sidebar'
-import { SidebarIcon as PanelLeftOpen } from '@solar-icons/vue/linear/sidebar'
+import { SidebarMinimalisticIcon as SidebarCollapse } from '@solar-icons/vue/linear/sidebar-minimalistic'
+import { SidebarIcon as SidebarExpand } from '@solar-icons/vue/linear/sidebar'
 import { MagnifierIcon as Search } from '@solar-icons/vue/linear/magnifier'
+import { SettingsIcon as SettingsBold } from '@solar-icons/vue/bold/settings'
 import { SettingsIcon as Settings } from '@solar-icons/vue/linear/settings'
 import { SunIcon as Sun } from '@solar-icons/vue/linear/sun'
 import { MonitorIcon as SunMoon } from '@solar-icons/vue/linear/monitor'
@@ -180,20 +181,21 @@ defineExpose({ focusSearch })
   -->
   <header
     data-tauri-drag-region
-    class="flex h-14 shrink-0 items-center gap-3 bg-zinc-100 pl-4 dark:bg-zinc-900"
+    class="flex h-14 shrink-0 items-center gap-3 rounded-2xl bg-white pl-4 dark:bg-zinc-900"
     :class="CUSTOM_WINDOW_CONTROLS ? 'pr-0' : 'pr-4'"
   >
     <button
-      class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-zinc-500 transition hover:bg-zinc-200/70 dark:hover:bg-zinc-800 dark:text-zinc-400"
+      class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-zinc-500 transition hover:bg-zinc-200/70 hover:text-violet-500 dark:hover:bg-zinc-800 dark:text-zinc-400 dark:hover:text-violet-400"
       :title="collapsed ? $t('settings.sidebarExpanded') : $t('settings.sidebarCollapsed')"
       @click="toggleSidebar"
     >
-      <PanelLeftOpen v-if="!collapsed" class="h-4 w-4" />
-      <PanelLeftClose v-else class="h-4 w-4" />
+      <!-- 侧栏展开时显示「折叠」（sidebar-minimalistic），收起时显示「展开」（sidebar） -->
+      <SidebarCollapse v-if="!collapsed" class="h-4 w-4" />
+      <SidebarExpand v-else class="h-4 w-4" />
     </button>
 
     <button
-      class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-zinc-500 transition hover:bg-zinc-200/70 dark:hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-30 dark:text-zinc-400"
+      class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-zinc-500 transition hover:bg-zinc-200/70 hover:text-violet-500 disabled:cursor-not-allowed disabled:opacity-30 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-violet-400"
       :disabled="!canBack"
       :title="$t('common.back')"
       @click="back()"
@@ -207,7 +209,7 @@ defineExpose({ focusSearch })
         id="search-input"
         v-model="input"
         autocomplete="off"
-        class="h-9 w-full rounded-full border border-transparent bg-white/60 pr-8 pl-9 text-sm text-zinc-800 outline-none transition placeholder:text-zinc-400 focus:border-violet-400 focus:bg-white dark:bg-zinc-800/70 dark:text-zinc-100 dark:focus:bg-zinc-800"
+        class="h-9 w-full rounded-full border border-zinc-200/70 bg-zinc-100 pr-8 pl-9 text-sm text-zinc-800 outline-none transition placeholder:text-zinc-400 hover:border-zinc-300 hover:bg-zinc-200/60 focus:border-violet-400 focus:bg-white dark:border-transparent dark:bg-zinc-800/70 dark:text-zinc-100 dark:hover:bg-zinc-800 dark:focus:bg-zinc-800"
         :placeholder="$t('library.searchPlaceholder') + ' (Ctrl+F)'"
         @focus="onFocus"
         @blur="onBlur"
@@ -217,7 +219,7 @@ defineExpose({ focusSearch })
       />
       <button
         v-if="input"
-        class="absolute top-1/2 right-2 flex h-5 w-5 cursor-pointer -translate-y-1/2 items-center justify-center rounded-lg text-zinc-400 hover:bg-zinc-200 hover:text-zinc-600 dark:hover:bg-zinc-700"
+        class="transition-colors duration-150 absolute top-1/2 right-2 flex h-5 w-5 cursor-pointer -translate-y-1/2 items-center justify-center rounded-lg text-zinc-400 hover:bg-zinc-200 hover:text-zinc-600 dark:hover:bg-zinc-700"
         @click="clearSearch"
       >
         <X class="h-3 w-3" />
@@ -335,7 +337,7 @@ defineExpose({ focusSearch })
     </div>
 
     <button
-      class="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg text-zinc-500 transition hover:bg-zinc-200/70 dark:text-zinc-400 dark:hover:bg-zinc-800"
+      class="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg text-zinc-500 transition hover:bg-zinc-200/70 hover:text-violet-500 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-violet-400"
       :title="$t('settings.theme') + ' · ' + (mode === 'dark' ? $t('settings.themeDark') : mode === 'light' ? $t('settings.themeLight') : $t('settings.themeSystem'))"
       @click="cycleTheme"
     >
@@ -346,12 +348,14 @@ defineExpose({ focusSearch })
     </button>
 
     <button
-      class="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg transition hover:bg-zinc-200/70 dark:hover:bg-zinc-800"
+      class="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg transition hover:bg-zinc-200/70 hover:text-violet-500 dark:hover:bg-zinc-800 dark:hover:text-violet-400"
       :class="current.view === 'settings' ? 'text-violet-500' : 'text-zinc-500 dark:text-zinc-400'"
       :title="$t('nav.settings')"
       @click="go({ view: 'settings' })"
     >
-      <Settings class="h-4 w-4" />
+      <!-- 设置入口：当前在设置页时图标用 bold 变体（与侧栏选中态一致） -->
+      <SettingsBold v-if="current.view === 'settings'" class="h-4 w-4" />
+      <Settings v-else class="h-4 w-4" />
     </button>
 
     <WindowControls v-if="CUSTOM_WINDOW_CONTROLS" />

@@ -4,11 +4,12 @@ import gsap from 'gsap'
 import { AltArrowDownIcon as ChevronDown } from '@solar-icons/vue/linear/alt-arrow-down'
 import { AltArrowUpIcon as ChevronUp } from '@solar-icons/vue/linear/alt-arrow-up'
 import { HeartIcon as Heart } from '@solar-icons/vue/linear/heart'
-import { PlaylistIcon as ListMusic } from '@solar-icons/vue/linear/playlist'
+import { PlaylistMinimalistic3Icon as ListMusic } from '@solar-icons/vue/linear/playlist-minimalistic-3'
 import { RefreshIcon as LoaderCircle } from '@solar-icons/vue/linear/refresh'
-import { PaletteIcon as Palette } from '@solar-icons/vue/linear/palette'
+import { TShirtIcon as TShirt } from '@solar-icons/vue/linear/t-shirt'
 import { PauseIcon as Pause } from '@solar-icons/vue/bold/pause'
 import { PlayIcon as Play } from '@solar-icons/vue/bold/play'
+import { ListIcon as List } from '@solar-icons/vue/linear/list'
 import { RepeatIcon as Repeat } from '@solar-icons/vue/linear/repeat'
 import { RepeatOneIcon as Repeat1 } from '@solar-icons/vue/linear/repeat-one'
 import { ShuffleIcon as Shuffle } from '@solar-icons/vue/linear/shuffle'
@@ -17,7 +18,7 @@ import { SkipNextIcon as SkipForward } from '@solar-icons/vue/bold/skip-next'
 import { HeartIcon as HeartBold } from '@solar-icons/vue/bold/heart'
 import { VolumeSmallIcon as Volume1 } from '@solar-icons/vue/linear/volume-small'
 import { VolumeLoudIcon as Volume2 } from '@solar-icons/vue/linear/volume-loud'
-import { VolumeCrossIcon as VolumeX } from '@solar-icons/vue/linear/volume-cross'
+import { MutedIcon as VolumeX } from '@solar-icons/vue/linear/muted'
 import { SubtitlesIcon as Subtitles } from '@solar-icons/vue/linear/subtitles'
 import { usePlayerStore, PLAYBACK_RATES, type PlayMode } from '@/stores/player'
 import { useDesktopLyrics } from '@/composables/useDesktopLyrics'
@@ -319,8 +320,9 @@ function onProgressMove(e: MouseEvent) {
   bubbleLeftPx.value = Math.min(Math.max(60, local), rect.width - 60)
 }
 
-const modeMeta = computed<Record<PlayMode, { label: string; icon: typeof Repeat }>>(() => ({
-  order: { label: tr('player.sequence'), icon: Repeat },
+const modeMeta = computed<Record<PlayMode, { label: string; icon: typeof Repeat | typeof List }>>(() => ({
+  // 顺序播放（列表播放）用 list-linear，与列表循环的 repeat 区分
+  order: { label: tr('player.sequence'), icon: List },
   loop: { label: tr('player.repeat'), icon: Repeat },
   one: { label: tr('player.repeatOne'), icon: Repeat1 },
   shuffle: { label: tr('player.shuffle'), icon: Shuffle },
@@ -371,19 +373,20 @@ const theme = computed(() =>
         time: 'text-white/40',
         title: 'text-white',
         artist: 'text-white/50',
-        iconBtn: 'text-white/70 hover:bg-white/10 hover:text-white',
-        plainBtn: 'text-white/80 hover:bg-white/10',
+        iconBtn: 'text-white/70 hover:bg-white/10 hover:text-[var(--accent)]',
+        plainBtn: 'text-white/80 hover:bg-white/10 hover:text-[var(--accent)]',
         playBtn: 'bg-violet-500 text-white hover:bg-violet-400',
         trackRow: '',
       }
     : {
-        bar: 'bg-zinc-100 dark:bg-zinc-900',
+        bar: 'bg-white dark:bg-zinc-900',
         time: 'text-zinc-400',
         title: 'text-zinc-800 dark:text-zinc-100',
         artist: 'text-zinc-500 dark:text-zinc-400',
         iconBtn:
-          'text-zinc-500 hover:bg-zinc-200/70 hover:text-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100',
-        plainBtn: 'text-zinc-600 hover:bg-zinc-200/70 dark:text-zinc-300 dark:hover:bg-zinc-800',
+          'text-zinc-500 hover:bg-zinc-200/70 hover:text-violet-600 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-violet-300',
+        plainBtn:
+          'text-zinc-600 hover:bg-zinc-200/70 hover:text-violet-600 dark:text-zinc-300 dark:hover:bg-zinc-800 dark:hover:text-violet-300',
         playBtn: 'bg-violet-500 text-white hover:bg-violet-400',
         trackRow: '',
       },
@@ -393,7 +396,7 @@ const theme = computed(() =>
 <template>
   <footer
     ref="footerEl"
-    class="relative z-20 flex h-20 shrink-0 items-center gap-4 px-4 transition-colors duration-500"
+    class="relative z-20 flex h-20 shrink-0 items-center gap-4 rounded-2xl px-4 transition-colors duration-500"
     :class="theme.bar"
     :style="accentVarStyle"
   >
@@ -461,7 +464,7 @@ const theme = computed(() =>
     <div class="flex min-w-0 flex-1 flex-col items-center gap-1">
       <div class="flex items-center gap-2">
         <button
-          class="relative flex h-8 w-8 cursor-pointer items-center justify-center rounded-full transition-colors duration-500"
+          class="relative flex h-8 w-8 cursor-pointer items-center justify-center rounded-full transition-colors duration-500 hover:duration-200"
           :class="[theme.iconBtn, player.mode !== 'order' && !props.nowPlayingOpen ? '!text-violet-500 dark:!text-violet-400' : '']"
           :style="accent && player.mode !== 'order' ? { color: accent } : undefined"
           :title="modeMeta[player.mode].label"
@@ -470,7 +473,7 @@ const theme = computed(() =>
           <component :is="modeMeta[player.mode].icon" class="h-4 w-4" />
         </button>
         <button
-          class="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full transition-colors duration-500"
+          class="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full transition-colors duration-500 hover:duration-200"
           :class="theme.plainBtn"
           :title="$t('player.prev') + ' (P)'"
           @click="player.prev()"
@@ -515,7 +518,7 @@ const theme = computed(() =>
           </Transition>
         </button>
         <button
-          class="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full transition-colors duration-500"
+          class="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full transition-colors duration-500 hover:duration-200"
           :class="theme.plainBtn"
           :title="$t('player.next') + ' (N)'"
           @click="player.next()"
@@ -523,7 +526,7 @@ const theme = computed(() =>
           <SkipForward class="h-4.5 w-4.5" />
         </button>
         <button
-          class="relative flex h-9 w-9 cursor-pointer items-center justify-center rounded-full transition-colors duration-500 disabled:cursor-not-allowed"
+          class="relative flex h-9 w-9 cursor-pointer items-center justify-center rounded-full transition-colors duration-500 hover:duration-200 disabled:cursor-not-allowed"
           :class="player.current?.fav ? 'text-red-500 hover:bg-red-500/10' : theme.plainBtn"
           :title="player.current?.fav ? $t('library.unlike') : $t('library.like')"
           :disabled="!player.current"
@@ -570,7 +573,7 @@ const theme = computed(() =>
     <div class="flex w-64 items-center justify-end gap-1">
       <!-- 倍速循环按钮：非 1x 时高亮提示当前处于变速播放 -->
       <button
-        class="flex h-8 w-9 shrink-0 cursor-pointer items-center justify-center rounded-full text-xs font-semibold tabular-nums transition-colors duration-500"
+        class="flex h-8 w-9 shrink-0 cursor-pointer items-center justify-center rounded-full text-xs font-semibold tabular-nums transition-colors duration-500 hover:duration-200"
         :class="player.rate === 1 ? theme.iconBtn : 'text-violet-500 hover:bg-violet-500/10'"
         :title="rateTip"
         @click="cycleRate"
@@ -580,12 +583,12 @@ const theme = computed(() =>
       <!-- 皮肤：频谱开关 + 样式选择（音量左侧；入口仅在播放页显示） -->
       <div v-if="props.nowPlayingOpen" ref="skinPop" class="relative">
         <button
-          class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full transition-colors duration-500"
+          class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full transition-colors duration-500 hover:duration-200"
           :class="theme.iconBtn"
           :title="$t('nowPlaying.skin')"
           @click="skinOpen = !skinOpen"
         >
-          <Palette class="h-4 w-4" />
+          <TShirt class="h-4 w-4" />
         </button>
         <Transition
           enter-active-class="transition duration-150 ease-out"
@@ -642,7 +645,7 @@ const theme = computed(() =>
       </div>
 
       <button
-        class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full transition-colors duration-500"
+        class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full transition-colors duration-500 hover:duration-200"
         :class="theme.iconBtn"
         :title="volTip"
         @click="player.toggleMute()"
@@ -677,7 +680,7 @@ const theme = computed(() =>
       </div>
       <!-- 桌面歌词开关：音量之后 -->
       <button
-        class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full transition-colors duration-500"
+        class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full transition-colors duration-500 hover:duration-200"
         :class="dlEnabled ? 'text-violet-500 hover:bg-violet-500/10' : theme.iconBtn"
         :title="dlEnabled ? $t('tray.disableDesktopLyrics') : $t('tray.enableDesktopLyrics')"
         @click="dlToggle()"
@@ -686,7 +689,7 @@ const theme = computed(() =>
       </button>
       <button
         data-queue-toggle
-        class="ml-2 flex h-8 w-8 cursor-pointer items-center justify-center rounded-full transition-colors duration-500"
+        class="ml-2 flex h-8 w-8 cursor-pointer items-center justify-center rounded-full transition-colors duration-500 hover:duration-200"
         :class="theme.iconBtn"
         :title="$t('queue.title')"
         @click="$emit('toggleQueue')"

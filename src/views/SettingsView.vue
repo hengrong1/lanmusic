@@ -2,6 +2,12 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { open as openDialog } from '@tauri-apps/plugin-dialog'
 import { getVersion } from '@tauri-apps/api/app'
+import { DatabaseIcon as HardDriveBold } from '@solar-icons/vue/bold/database'
+import { MagnifierIcon as SearchBold } from '@solar-icons/vue/bold/magnifier'
+import { PaletteIcon as PaletteBold } from '@solar-icons/vue/bold/palette'
+import { PlayIcon as PlayBold } from '@solar-icons/vue/bold/play'
+import { SettingsIcon as SettingsBold } from '@solar-icons/vue/bold/settings'
+import { SubtitlesIcon as SubtitlesBold } from '@solar-icons/vue/bold/subtitles'
 import { VerifiedCheckIcon as Check } from '@solar-icons/vue/linear/verified-check'
 import { FolderOpenIcon as FolderOpen } from '@solar-icons/vue/linear/folder-open'
 import { GlobeIcon as Globe } from '@solar-icons/vue/linear/globe'
@@ -62,12 +68,12 @@ const active = ref<CategoryId>(readActiveTab())
 watch(active, (v) => localStorage.setItem(SETTINGS_TAB_KEY, v))
 
 const categories = computed(() => [
-  { id: 'library' as const, icon: HardDrive, label: t('settings.library'), desc: t('settings.libraryDesc') },
-  { id: 'appearance' as const, icon: Palette, label: t('settings.appearance'), desc: t('settings.appearanceDesc') },
-  { id: 'playback' as const, icon: Play, label: t('settings.playback'), desc: t('settings.playbackDesc') },
-  { id: 'search' as const, icon: Search, label: t('settings.search'), desc: t('settings.searchDesc') },
-  { id: 'lyrics' as const, icon: Subtitles, label: t('settings.lyrics'), desc: t('settings.lyricsDesc') },
-  { id: 'general' as const, icon: Settings, label: t('settings.general'), desc: t('settings.generalDesc') },
+  { id: 'library' as const, icon: HardDrive, iconActive: HardDriveBold, label: t('settings.library'), desc: t('settings.libraryDesc') },
+  { id: 'appearance' as const, icon: Palette, iconActive: PaletteBold, label: t('settings.appearance'), desc: t('settings.appearanceDesc') },
+  { id: 'playback' as const, icon: Play, iconActive: PlayBold, label: t('settings.playback'), desc: t('settings.playbackDesc') },
+  { id: 'search' as const, icon: Search, iconActive: SearchBold, label: t('settings.search'), desc: t('settings.searchDesc') },
+  { id: 'lyrics' as const, icon: Subtitles, iconActive: SubtitlesBold, label: t('settings.lyrics'), desc: t('settings.lyricsDesc') },
+  { id: 'general' as const, icon: Settings, iconActive: SettingsBold, label: t('settings.general'), desc: t('settings.generalDesc') },
 ])
 const currentCategory = computed(() => categories.value.find((c) => c.id === active.value) ?? categories.value[0])
 
@@ -221,6 +227,44 @@ async function onSeparatorToggle(sep: string) {
   } finally {
     splitApplying.value = false
   }
+}
+
+/** 桌面歌词预设色板：播放行（鲜艳主题色）/ 未播放行（对比色），均为 6 位 hex */
+const DL_PLAY_PRESETS = ['#a78bfa', '#ffffff', '#22d3ee', '#4ade80', '#f472b6', '#fbbf24']
+const DL_PENDING_PRESETS = ['#22d3ee', '#f472b6', '#38bdf8', '#fbbf24', '#a78bfa', '#71717a', '#a1a1aa']
+
+/** 桌面歌词配色方案：每项一对明显不同的色值（播放行 / 未播放行），下拉点选即同时应用 */
+const DL_COLOR_SCHEMES: Record<string, { color: string; pendingColor: string }> = {
+  violet: { color: '#a78bfa', pendingColor: '#22d3ee' },
+  green: { color: '#4ade80', pendingColor: '#f472b6' },
+  pink: { color: '#f472b6', pendingColor: '#38bdf8' },
+  blue: { color: '#38bdf8', pendingColor: '#fbbf24' },
+  gray: { color: '#ffffff', pendingColor: '#71717a' },
+  yellow: { color: '#fbbf24', pendingColor: '#a78bfa' },
+}
+/** 当前配色命中的方案名；两色与所有方案都不匹配时为 custom（手动微调后自动回落） */
+const dlPreset = computed(() => {
+  const hit = Object.entries(DL_COLOR_SCHEMES).find(
+    ([, s]) =>
+      s.color.toLowerCase() === dlConfig.value.color.toLowerCase() &&
+      s.pendingColor.toLowerCase() === dlConfig.value.pendingColor.toLowerCase(),
+  )
+  return hit?.[0] ?? 'custom'
+})
+const dlPresetOptions = computed<SelectOption[]>(() => [
+  { value: 'custom', label: t('settings.dlPresetCustom') },
+  { value: 'violet', label: t('settings.dlPresetViolet') },
+  { value: 'green', label: t('settings.dlPresetGreen') },
+  { value: 'pink', label: t('settings.dlPresetPink') },
+  { value: 'blue', label: t('settings.dlPresetBlue') },
+  { value: 'gray', label: t('settings.dlPresetGray') },
+  { value: 'yellow', label: t('settings.dlPresetYellow') },
+])
+function onDlPresetChange(val: string | number) {
+  const scheme = DL_COLOR_SCHEMES[val as string]
+  if (!scheme) return
+  dlConfig.value.color = scheme.color
+  dlConfig.value.pendingColor = scheme.pendingColor
 }
 
 // ---- 桌面歌词：行数 / 对齐（分段控件，值为字符串，写入时转回）----
@@ -394,7 +438,7 @@ const scannedSourceIds = computed(() => new Set(Object.keys(library.scanProgress
 <template>
   <div ref="root" class="flex h-full min-h-0">
     <!-- 左侧：分类导航 -->
-    <aside class="flex w-56 shrink-0 flex-col border-r border-zinc-100 px-3 pt-5 pb-4 dark:border-zinc-900">
+    <aside class="flex w-56 shrink-0 flex-col border-r border-zinc-100 px-3 pt-5 pb-4 dark:border-zinc-800">
       <div class="px-3 pb-5">
         <p data-stagger class="text-xs font-semibold tracking-wider text-violet-500 uppercase">{{ t('settings.title') }}</p>
         <h1 data-stagger class="mt-0.5 text-2xl font-bold text-zinc-900 dark:text-zinc-50">{{ t('settings.preferences') }}</h1>
@@ -408,12 +452,13 @@ const scannedSourceIds = computed(() => new Set(Object.keys(library.scanProgress
           :class="
             active === c.id
               ? 'bg-violet-50 font-medium text-violet-600 dark:bg-violet-500/10 dark:text-violet-300'
-              : 'text-zinc-600 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-900'
+              : 'text-zinc-600 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-800'
           "
           :aria-current="active === c.id ? 'page' : undefined"
           @click="active = c.id"
         >
-          <component :is="c.icon" class="h-4 w-4 shrink-0" />
+          <!-- 选中分类的图标用 bold 变体，与左侧栏选中态一致 -->
+          <component :is="active === c.id ? c.iconActive : c.icon" class="h-4 w-4 shrink-0" />
           <span class="truncate">{{ c.label }}</span>
         </button>
       </nav>
@@ -679,20 +724,6 @@ const scannedSourceIds = computed(() => new Set(Object.keys(library.scanProgress
                     </div>
                     <p class="mt-1.5 text-xs leading-relaxed text-zinc-400">{{ t('settings.preventSleepDesc') }}</p>
                   </div>
-
-                  <!-- 关闭窗口行为 -->
-                  <div class="border-t border-zinc-100 pt-4 dark:border-zinc-800">
-                    <div class="flex flex-wrap items-center justify-between gap-3">
-                      <span class="text-zinc-600 dark:text-zinc-300">{{ t('settings.closeAction') }}</span>
-                      <BaseButtonGroup
-                        :model-value="closeAction"
-                        :items="closeActionItems"
-                        size="sm"
-                        @update:model-value="setCloseAction"
-                      />
-                    </div>
-                    <p class="mt-1.5 text-xs leading-relaxed text-zinc-400">{{ t('settings.closeActionDesc') }}</p>
-                  </div>
                 </div>
               </section>
             </template>
@@ -821,15 +852,30 @@ const scannedSourceIds = computed(() => new Set(Object.keys(library.scanProgress
                     <span class="h-px flex-1 bg-zinc-100 dark:bg-zinc-800"></span>
                   </div>
                   <div class="grid grid-cols-1 gap-x-8 gap-y-4 sm:grid-cols-2">
+                    <!-- 预设配色（独占一行）：点选后同时更新播放行 / 未播放行颜色 -->
+                    <div class="flex items-center justify-between gap-3 sm:col-span-2">
+                      <span class="shrink-0 text-zinc-600 dark:text-zinc-300">{{ t('settings.dlPreset') }}</span>
+                      <div class="w-28 shrink-0">
+                        <BaseSelect :model-value="dlPreset" :options="dlPresetOptions" size="sm" @update:model-value="onDlPresetChange" />
+                      </div>
+                    </div>
                     <!-- 播放行颜色 -->
                     <div class="flex items-center justify-between gap-3">
                       <span class="text-zinc-600 dark:text-zinc-300">{{ t('settings.dlPlayColor') }}</span>
-                      <BaseColorPicker v-model="dlConfig.color" :title="t('settings.dlPlayColor')" />
+                      <BaseColorPicker
+                        v-model="dlConfig.color"
+                        :presets="DL_PLAY_PRESETS"
+                        :title="t('settings.dlPlayColor')"
+                      />
                     </div>
                     <!-- 未播放行颜色 -->
                     <div class="flex items-center justify-between gap-3">
                       <span class="text-zinc-600 dark:text-zinc-300">{{ t('settings.dlPendingColor') }}</span>
-                      <BaseColorPicker v-model="dlConfig.pendingColor" :title="t('settings.dlPendingColor')" />
+                      <BaseColorPicker
+                        v-model="dlConfig.pendingColor"
+                        :presets="DL_PENDING_PRESETS"
+                        :title="t('settings.dlPendingColor')"
+                      />
                     </div>
                     <!-- 描边 -->
                     <div class="flex items-center justify-between gap-3">
@@ -894,6 +940,22 @@ const scannedSourceIds = computed(() => new Set(Object.keys(library.scanProgress
                     <div class="w-40 shrink-0">
                       <BaseSelect :model-value="locale" :options="languageOptions" size="sm" @update:model-value="onLocaleChange" />
                     </div>
+                  </div>
+                </div>
+              </section>
+
+              <!-- 关闭窗口时（原「播放」分类迁入） -->
+              <section>
+                <h3 class="mb-2.5 text-sm font-semibold text-zinc-800 dark:text-zinc-100">{{ t('settings.closeAction') }}</h3>
+                <div class="rounded-xl border border-zinc-200 bg-white p-4 text-sm text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900">
+                  <div class="flex flex-wrap items-center justify-between gap-3">
+                    <span>{{ t('settings.closeActionDesc') }}</span>
+                    <BaseButtonGroup
+                      :model-value="closeAction"
+                      :items="closeActionItems"
+                      size="sm"
+                      @update:model-value="setCloseAction"
+                    />
                   </div>
                 </div>
               </section>

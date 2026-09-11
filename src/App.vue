@@ -65,6 +65,7 @@ useTrayMenu()
 const npFocus = ref(false)
 const PLAYER_BAR_H = 80 // 播放条 h-20
 const HEADER_H = 56 // 顶栏 h-14
+const REGION_GAP = 12 // 卡片分区间距 p-3 / gap-3（与布局保持一致）
 let focusTimer: ReturnType<typeof setTimeout> | undefined
 
 /** 专注模式启用条件：播放页打开 且 正在播放（暂停时不做专注隐藏）；皮肤设置弹层展开时暂停专注，
@@ -92,8 +93,9 @@ window.addEventListener(
       armFocusTimer()
       return
     }
-    const inBarZone = e.clientY >= window.innerHeight - PLAYER_BAR_H
-    const inHeaderZone = e.clientY <= HEADER_H
+    // 卡片化布局：播放条卡片顶部在窗口底缘上方 PLAYER_BAR_H + REGION_GAP 处，顶栏卡片下缘在 HEADER_H + REGION_GAP 处
+    const inBarZone = e.clientY >= window.innerHeight - PLAYER_BAR_H - REGION_GAP
+    const inHeaderZone = e.clientY <= HEADER_H + REGION_GAP
     if (inBarZone || inHeaderZone) {
       // 鼠标在底部播放条 / 顶部控制区：保持控制可见
       clearTimeout(focusTimer)
@@ -210,16 +212,18 @@ watch(playerBarVisible, (v) => {
 
 // ---- GSAP 过渡：底部播放条从窗口底缘滑入 / 滑出 ----
 // 同步动画 yPercent 与负 marginBottom：条滑入的同时布局高度展开（内容区不被瞬间挤压），
-// 滑出时反向收回，之后组件卸载不会造成布局跳变。h-20 = 80px，与 PLAYER_BAR_H 一致。
+// 滑出时反向收回，之后组件卸载不会造成布局跳变。h-20 = 80px；收起时连卡片上方 12px 间距一起回收，
+// 只剩根容器 p-3 的 12px 底边距（与 PLAYER_BAR_H / REGION_GAP 对应）。
+const BAR_DISMISS = PLAYER_BAR_H + REGION_GAP
 function playerBarEnter(el: Element, done: () => void) {
   gsap.fromTo(
     el,
-    { yPercent: 100, marginBottom: -PLAYER_BAR_H },
+    { yPercent: 100, marginBottom: -BAR_DISMISS },
     { yPercent: 0, marginBottom: 0, duration: 0.5, ease: 'power3.out', onComplete: done },
   )
 }
 function playerBarLeave(el: Element, done: () => void) {
-  gsap.to(el, { yPercent: 100, marginBottom: -PLAYER_BAR_H, duration: 0.35, ease: 'power3.in', onComplete: done })
+  gsap.to(el, { yPercent: 100, marginBottom: -BAR_DISMISS, duration: 0.35, ease: 'power3.in', onComplete: done })
 }
 
 onMounted(() => {
@@ -261,15 +265,15 @@ window.addEventListener('keydown', (e) => {
 
 <template>
   <div
-    class="relative flex h-screen select-none flex-col overflow-hidden bg-zinc-100 text-zinc-900 dark:bg-zinc-900 dark:text-zinc-100"
+    class="relative flex h-screen select-none flex-col gap-3 overflow-hidden bg-zinc-100 p-3 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100"
     :class="npFocus ? 'cursor-none [&_*]:!cursor-none' : ''"
   >
-    <div class="flex min-h-0 flex-1">
+    <div class="flex min-h-0 flex-1 gap-3">
       <Sidebar />
-      <div class="flex min-w-0 flex-1 flex-col">
+      <div class="flex min-w-0 flex-1 flex-col gap-3">
         <TopBar />
-        <!-- 内容卡片：白色圆角浮于灰色底框上，与侧栏/顶栏/播放条形成圆角分区；右侧留出灰边距避免顶到窗口边 -->
-        <main class="mr-3 min-h-0 flex-1 overflow-hidden rounded-2xl bg-white dark:bg-zinc-950">
+        <!-- 内容卡片：白色圆角浮于灰色底框上，与侧栏/顶栏/播放条形成圆角卡片分区 -->
+        <main class="min-h-0 flex-1 overflow-hidden rounded-2xl bg-white dark:bg-zinc-900">
           <Transition :css="false" mode="out-in" @enter="viewEnter" @leave="viewLeave">
             <component :is="viewComponent" :key="viewKey" />
           </Transition>
@@ -277,7 +281,7 @@ window.addEventListener('keydown', (e) => {
       </div>
       <QueuePanel :open="queueOpen" @close="queueOpen = false" />
     </div>
-    <!-- 底部播放条：未载入任何歌曲时隐藏；双击播放 / 启动恢复上一首时从底部滑入 -->
+    <!-- 底部播放条卡片：未载入任何歌曲时隐藏；双击播放 / 启动恢复上一首时从底部滑入 -->
     <Transition :css="false" @enter="playerBarEnter" @leave="playerBarLeave">
       <PlayerBar
         v-if="playerBarVisible"
@@ -296,8 +300,9 @@ window.addEventListener('keydown', (e) => {
       <Transition :css="false" @enter="npBgEnter" @leave="npBgLeave">
         <div v-if="nowPlaying" class="absolute inset-0" :style="npBgStyle"></div>
       </Transition>
+      <!-- 内容层底缘对齐播放条卡片上沿（92px = 播放条 80px + 上方间距 12px） -->
       <Transition :css="false" @enter="nowPlayingEnter" @leave="nowPlayingLeave">
-        <div v-if="nowPlaying" class="pointer-events-auto absolute inset-x-0 top-0 bottom-20 overflow-hidden">
+        <div v-if="nowPlaying" class="pointer-events-auto absolute inset-x-0 top-0 bottom-23 overflow-hidden">
           <NowPlayingView :focus-hidden="npFocus" @close="nowPlaying = false" />
         </div>
       </Transition>
