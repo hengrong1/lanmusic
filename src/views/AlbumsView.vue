@@ -12,6 +12,7 @@ import { toast } from '@/composables/useToast'
 import { api } from '@/api/commands'
 import type { AlbumItem } from '@/types'
 import { useI18n } from 'vue-i18n'
+import { errorText } from '@/i18n/error'
 
 const { t } = useI18n()
 const library = useLibraryStore()
@@ -34,7 +35,7 @@ async function load() {
     albums.value = page.items
     total.value = page.total
   } catch (e) {
-    toast(String(e), 'error')
+    toast(errorText(e), 'error')
   } finally {
     loading.value = false
   }
@@ -51,7 +52,7 @@ async function playAlbum(album: AlbumItem) {
     const page = await api.queryTracks({ view: 'album', refId: album.id, sort: 'album', page: 0, pageSize: 2000 })
     if (page.items.length) player.playList(page.items, 0)
   } catch (e) {
-    toast(String(e), 'error')
+    toast(errorText(e), 'error')
   }
 }
 </script>

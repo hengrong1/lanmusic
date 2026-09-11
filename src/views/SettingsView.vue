@@ -40,6 +40,7 @@ import {
   BaseSlider,
 } from '@/components/ui'
 import type { ButtonGroupItem, SelectOption } from '@/components/ui'
+import { errorText } from '@/i18n/error'
 
 const library = useLibraryStore()
 const { mode, setTheme } = useTheme()
@@ -212,7 +213,7 @@ async function onSeparatorToggle(sep: string) {
       toast(t('settings.separatorUpdated'))
     }
   } catch (e) {
-    toast(String(e), 'error')
+    toast(errorText(e), 'error')
     // 失败时回读实际生效的设置，保持 UI 与后端一致
     api.getArtistSeparators()
       .then((v) => (artistSeparators.value = new Set(v.split(''))))
@@ -324,7 +325,7 @@ async function addFolder() {
   try {
     await library.addFolder(path as string)
   } catch (e) {
-    toast(String(e), 'error')
+    toast(errorText(e), 'error')
   } finally {
     adding.value = false
   }
@@ -342,7 +343,7 @@ async function submitWebdav() {
     showWebdav.value = false
     webdav.value = { url: '', username: '', password: '', name: '' }
   } catch (e) {
-    toast(String(e), 'error')
+    toast(errorText(e), 'error')
   } finally {
     webdavBusy.value = false
   }
@@ -359,16 +360,16 @@ async function remove(s: { id: number; name: string; trackCount: number }) {
   try {
     await library.removeSource(s.id)
   } catch (e) {
-    toast(String(e), 'error')
+    toast(errorText(e), 'error')
   }
 }
 
 function rescan(id: number) {
-  library.rescan(id).catch((e) => toast(String(e), 'error'))
+  library.rescan(id).catch((e) => toast(errorText(e), 'error'))
 }
 
 function rescanFull(s: Source) {
-  library.rescan(s.id, 'full').catch((e) => toast(String(e), 'error'))
+  library.rescan(s.id, 'full').catch((e) => toast(errorText(e), 'error'))
 }
 
 async function toggleFastImport(s: Source, val?: boolean) {
@@ -378,7 +379,7 @@ async function toggleFastImport(s: Source, val?: boolean) {
     await library.setFastImport(s.id, next)
     toast(next ? t('settings.quickImportOn') : t('settings.quickImportOff'))
   } catch (e) {
-    toast(String(e), 'error')
+    toast(errorText(e), 'error')
   }
 }
 

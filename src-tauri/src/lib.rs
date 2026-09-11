@@ -1,5 +1,6 @@
 mod commands;
 mod covers;
+mod error;
 #[cfg(windows)]
 mod fonts;
 mod db;

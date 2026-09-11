@@ -15,6 +15,7 @@ import { api } from '@/api/commands'
 import { toast } from '@/composables/useToast'
 import { t as tr } from '@/i18n/translate'
 import { usePlayerStore } from '@/stores/player'
+import { errorText } from '@/i18n/error'
 
 export const useLibraryStore = defineStore('library', () => {
   const sources = ref<Source[]>([])
@@ -187,7 +188,7 @@ export const useLibraryStore = defineStore('library', () => {
     await listen<{ sourceId: number; message: string }>('scan:error', (e) => {
       const { [e.payload.sourceId]: _removed, ...rest } = scanProgress.value
       scanProgress.value = rest
-      toast(tr('toast.scanFailedDetail', { message: e.payload.message }), 'error')
+      toast(tr('toast.scanFailedDetail', { message: errorText(e.payload.message) }), 'error')
     })
 
     await Promise.all([loadSources(), loadStats(), loadTracks(), loadPlaylists()])

@@ -24,6 +24,7 @@ import { useMvPlayer } from '@/composables/useMvPlayer'
 import { api } from '@/api/commands'
 import { toast } from '@/composables/useToast'
 import { useI18n } from 'vue-i18n'
+import { errorText } from '@/i18n/error'
 
 const props = defineProps<{ tracks: Track[]; playlistId?: number; favoritesView?: boolean; sort?: string; reorderable?: boolean; batchMode?: boolean }>()
 const emit = defineEmits<{
@@ -188,7 +189,7 @@ const menuItems = computed<MenuItem[]>(() => {
             void library.loadStats()
             if (props.favoritesView) emit('refresh')
           })
-          .catch((e) => toast(String(e), 'error')),
+          .catch((e) => toast(errorText(e), 'error')),
     },
   ]
 
@@ -200,7 +201,7 @@ const menuItems = computed<MenuItem[]>(() => {
         library
           .removeFromPlaylist(props.playlistId!, t.id)
           .then(() => emit('refresh'))
-          .catch((e) => toast(String(e), 'error'))
+          .catch((e) => toast(errorText(e), 'error'))
       },
     })
   } else {
@@ -210,7 +211,7 @@ const menuItems = computed<MenuItem[]>(() => {
         ? library.playlists.map((p) => ({
             label: p.name,
             action: () => {
-              library.addToPlaylist(p.id, [t.id]).catch((e) => toast(String(e), 'error'))
+              library.addToPlaylist(p.id, [t.id]).catch((e) => toast(errorText(e), 'error'))
             },
           }))
         : [{ label: tr('playlist.createFirstHint'), disabled: true }],
@@ -227,7 +228,7 @@ const menuItems = computed<MenuItem[]>(() => {
     {
       label: tr('common.revealInFolder'),
       icon: FolderOpen,
-      action: () => api.revealTrack(t.id).catch((e) => toast(String(e), 'error')),
+      action: () => api.revealTrack(t.id).catch((e) => toast(errorText(e), 'error')),
     },
   )
   return items

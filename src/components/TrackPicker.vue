@@ -10,6 +10,7 @@ import { api } from '@/api/commands'
 import { useLibraryStore } from '@/stores/library'
 import { toast } from '@/composables/useToast'
 import { useI18n } from 'vue-i18n'
+import { errorText } from '@/i18n/error'
 
 /**
  * 歌单选歌弹层：搜索曲库 + 多选添加。
@@ -67,7 +68,7 @@ async function load(reset = false) {
     items.value = reset ? p.items : [...items.value, ...p.items]
     page += 1
   } catch (e) {
-    toast(String(e), 'error')
+    toast(errorText(e), 'error')
   } finally {
     loading.value = false
   }
@@ -122,7 +123,7 @@ async function confirm() {
       emit('added', n)
     }
   } catch (e) {
-    toast(String(e), 'error')
+    toast(errorText(e), 'error')
   } finally {
     adding.value = false
   }

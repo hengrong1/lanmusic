@@ -65,9 +65,13 @@ pub mod webdav {
         let resp = req
             .body(r#"<?xml version="1.0"?><D:propfind xmlns:D="DAV:"><D:prop><D:resourcetype/><D:getcontentlength/></D:prop></D:propfind>"#)
             .send()
-            .map_err(|e| format!("PROPFIND 失败：{e}"))?;
+            .map_err(|e| crate::error::err1(crate::error::codes::WEBDAV_PROPFIND_FAILED, "error", e))?;
         if !resp.status().is_success() {
-            return Err(format!("PROPFIND 返回 {}", resp.status()));
+            return Err(crate::error::err1(
+                crate::error::codes::WEBDAV_PROPFIND_STATUS,
+                "status",
+                resp.status(),
+            ));
         }
         let xml = resp.text().map_err(|e| e.to_string())?;
         parse_propfind(&xml, dir)
@@ -163,7 +167,8 @@ pub mod webdav {
 
     /// 确保来源根 URL 以 / 结尾（join 语义需要）
     pub fn normalize_base(base: &str) -> Result<Url, String> {
-        let mut u = Url::parse(base).map_err(|e| format!("WebDAV 地址无效：{e}"))?;
+        let mut u = Url::parse(base)
+            .map_err(|e| crate::error::err1(crate::error::codes::WEBDAV_INVALID_URL, "error", e))?;
         if !u.path().ends_with('/') {
             u.set_path(&format!("{}/", u.path()));
         }
@@ -182,9 +187,15 @@ pub mod webdav {
         if let Some((s, e)) = range {
             req = req.header("Range", format!("bytes={s}-{e}"));
         }
-        let resp = req.send().map_err(|e| format!("下载失败：{e}"))?;
+        let resp = req
+            .send()
+            .map_err(|e| crate::error::err1(crate::error::codes::DOWNLOAD_FAILED, "error", e))?;
         if !resp.status().is_success() {
-            return Err(format!("下载返回 {}", resp.status()));
+            return Err(crate::error::err1(
+                crate::error::codes::DOWNLOAD_STATUS,
+                "status",
+                resp.status(),
+            ));
         }
         resp.bytes().map(|b| b.to_vec()).map_err(|e| e.to_string())
     }
@@ -194,12 +205,18 @@ pub mod webdav {
         if let Some(a) = auth {
             req = req.basic_auth(&a.username, Some(&a.password));
         }
-        let resp = req.send().map_err(|e| format!("下载歌词失败：{e}"))?;
+        let resp = req
+            .send()
+            .map_err(|e| crate::error::err1(crate::error::codes::LYRICS_DOWNLOAD_FAILED, "error", e))?;
         if resp.status() == reqwest::StatusCode::NOT_FOUND {
             return Ok(None);
         }
         if !resp.status().is_success() {
-            return Err(format!("下载歌词返回 {}", resp.status()));
+            return Err(crate::error::err1(
+                crate::error::codes::LYRICS_DOWNLOAD_STATUS,
+                "status",
+                resp.status(),
+            ));
         }
         let bytes = resp.bytes().map_err(|e| e.to_string())?;
         Ok(Some(String::from_utf8_lossy(&bytes).into_owned()))

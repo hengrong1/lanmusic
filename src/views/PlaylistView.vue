@@ -22,6 +22,7 @@ import { api } from '@/api/commands'
 import type { Track } from '@/types'
 import { BaseButton } from '@/components/ui'
 import { useI18n } from 'vue-i18n'
+import { errorText } from '@/i18n/error'
 
 const { t, locale } = useI18n()
 const library = useLibraryStore()
@@ -119,7 +120,7 @@ async function batchRemove() {
     exitBatch()
     await load()
   } catch (e) {
-    toast(String(e), 'error')
+    toast(errorText(e), 'error')
   }
 }
 
@@ -132,7 +133,7 @@ async function load() {
     // 歌单封面 = 最新加入歌曲的专辑封面
     coverAlbumId.value = await api.playlistCover(id)
   } catch (e) {
-    toast(String(e), 'error')
+    toast(errorText(e), 'error')
   } finally {
     loading.value = false
   }

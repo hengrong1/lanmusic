@@ -5,6 +5,7 @@ import { usePlayerStore } from '@/stores/player'
 import { getAppFont } from '@/composables/useAppFont'
 import { toast } from '@/composables/useToast'
 import { t } from '@/i18n/translate'
+import { errorText } from '@/i18n/error'
 
 /** 桌面歌词配置 */
 export interface DeskLyricsConfig {
@@ -131,7 +132,7 @@ export function useDesktopLyrics() {
       // 仅开启失败才提示（关闭成功时后端返回 false，属正常结果）
       if (next && !ok) toast(t('toast.desktopLyricsOpenFailed'), 'error')
     } catch (e) {
-      toast(t('toast.desktopLyricsFailed', { error: String(e) }), 'error')
+      toast(t('toast.desktopLyricsFailed', { error: errorText(e) }), 'error')
       enabled.value = false
     }
     persist()

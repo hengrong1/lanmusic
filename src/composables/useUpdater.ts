@@ -4,6 +4,7 @@ import { relaunch } from '@tauri-apps/plugin-process'
 import { getVersion } from '@tauri-apps/api/app'
 import { toast } from '@/composables/useToast'
 import { t } from '@/i18n/translate'
+import { errorText } from '@/i18n/error'
 
 /**
  * 应用内更新（tauri-plugin-updater + GitHub Releases）。
@@ -73,7 +74,7 @@ async function checkForUpdate(silent = false): Promise<boolean> {
     return false
   } catch (e) {
     status.value = 'idle'
-    if (!silent) toast(t('toast.checkUpdateFailed', { error: String(e) }), 'error')
+    if (!silent) toast(t('toast.checkUpdateFailed', { error: errorText(e) }), 'error')
     return false
   }
 }
@@ -111,7 +112,7 @@ async function downloadAndInstall(): Promise<void> {
     toast(t('settings.updateDownloadedHint'))
   } catch (e) {
     status.value = 'available'
-    toast(t('toast.updateDownloadFailed', { error: String(e) }), 'error')
+    toast(t('toast.updateDownloadFailed', { error: errorText(e) }), 'error')
   }
 }
 

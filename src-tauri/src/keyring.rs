@@ -6,18 +6,20 @@
 
 use rusqlite::Connection;
 
+use crate::error::{codes, err1};
+
 const SERVICE: &str = "com.lanmusic.desktop";
 
 fn entry(source_id: i64) -> Result<keyring::Entry, String> {
     keyring::Entry::new(SERVICE, &format!("webdav/{source_id}"))
-        .map_err(|e| format!("系统钥匙串不可用：{e}"))
+        .map_err(|e| err1(codes::KEYRING_UNAVAILABLE, "error", e))
 }
 
 /// 写入密码；失败返回 Err（调用方应回退为明文存储）
 pub fn set_password(source_id: i64, password: &str) -> Result<(), String> {
     entry(source_id)?
         .set_password(password)
-        .map_err(|e| format!("凭证写入钥匙串失败：{e}"))
+        .map_err(|e| err1(codes::KEYRING_WRITE_FAILED, "error", e))
 }
 
 /// 读取密码（无记录或钥匙串不可用时返回 None）

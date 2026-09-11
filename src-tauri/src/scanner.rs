@@ -106,7 +106,7 @@ pub fn scan_source(app: AppHandle, source_id: i64, full_rescan: bool) {
                 full_rescan,
             ),
             "webdav" => run_webdav_scan(&app, source_id, base_url, config, full_rescan),
-            other => Err(format!("未知来源类型：{other}")),
+            other => Err(crate::error::err1(crate::error::codes::SOURCE_KIND_UNKNOWN, "kind", other)),
         }
     });
 
@@ -306,7 +306,7 @@ fn run_webdav_scan(
     config: Option<String>,
     full_rescan: bool,
 ) -> Result<(usize, usize, usize), String> {
-    let Some(base_str) = base_url else { return Err("WebDAV 地址缺失".into()) };
+    let Some(base_str) = base_url else { return Err(crate::error::err(crate::error::codes::SOURCE_URL_MISSING)) };
     let base = webdav::normalize_base(&base_str)?;
     let auth = webdav::Auth::from_source(config.as_deref(), source_id);
     let base_path = decoded_url_path(&base).trim_end_matches('/').to_string();

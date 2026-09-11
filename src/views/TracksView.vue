@@ -15,6 +15,7 @@ import { toast } from '@/composables/useToast'
 import { BaseButton, BaseSelect } from '@/components/ui'
 import type { SelectOption } from '@/components/ui'
 import { useI18n } from 'vue-i18n'
+import { errorText } from '@/i18n/error'
 
 const { t } = useI18n()
 const library = useLibraryStore()
@@ -92,7 +93,7 @@ async function addFolder() {
   try {
     await library.addFolder(path as string)
   } catch (e) {
-    toast(String(e), 'error')
+    toast(errorText(e), 'error')
   } finally {
     adding.value = false
   }

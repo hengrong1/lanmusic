@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State};
 
 use crate::db;
+use crate::error::{codes, err};
 use crate::scanner;
 use crate::state::AppState;
 
@@ -207,7 +208,7 @@ fn row_source(r: &rusqlite::Row) -> rusqlite::Result<Source> {
 fn spawn_scan(app: &AppHandle, state: &AppState, id: i64, full_rescan: bool) -> Result<(), String> {
     let mut scanning = state.scanning.lock().map_err(|e| e.to_string())?;
     if !scanning.insert(id) {
-        return Err("该来源正在扫描中".into());
+        return Err(err(codes::SOURCE_SCANNING));
     }
     drop(scanning);
     let app2 = app.clone();
@@ -219,7 +220,7 @@ fn spawn_scan(app: &AppHandle, state: &AppState, id: i64, full_rescan: bool) -> 
 pub fn add_local_source(app: AppHandle, state: State<'_, AppState>, path: String) -> Result<Source, String> {
     let p = std::path::PathBuf::from(&path);
     if !p.is_dir() {
-        return Err("目录不存在".into());
+        return Err(err(codes::SOURCE_DIR_MISSING));
     }
     let name = p
         .file_name()
@@ -235,7 +236,7 @@ pub fn add_local_source(app: AppHandle, state: State<'_, AppState>, path: String
         )
         .ok();
     if exists.is_some() {
-        return Err("该文件夹已在音乐库中".into());
+        return Err(err(codes::SOURCE_DUPLICATE));
     }
     conn.execute("INSERT INTO sources (kind, name, base_path) VALUES ('local', ?1, ?2)", params![name, path])
         .map_err(|e| e.to_string())?;
@@ -268,7 +269,7 @@ pub fn list_sources(state: State<'_, AppState>) -> Result<Vec<Source>, String> {
 pub fn remove_source(app: AppHandle, state: State<'_, AppState>, id: i64) -> Result<(), String> {
     let state2 = app.state::<AppState>();
     if state2.scanning.lock().map_err(|e| e.to_string())?.contains(&id) {
-        return Err("该来源正在扫描中，请稍后再移除".into());
+        return Err(err(codes::SOURCE_SCANNING_BUSY));
     }
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     let kind: Option<String> = conn
@@ -347,7 +348,7 @@ pub fn rescan_source(app: AppHandle, state: State<'_, AppState>, id: i64, mode: 
             .query_row("SELECT id FROM sources WHERE id = ?1", params![id], |r| r.get(0))
             .ok();
         if exists.is_none() {
-            return Err("来源不存在".into());
+            return Err(err(codes::SOURCE_NOT_FOUND));
         }
     }
     spawn_scan(&app, &state, id, full)
@@ -622,7 +623,7 @@ pub fn get_stream_url(state: State<'_, AppState>, id: i64) -> Result<String, Str
             .query_row("SELECT id FROM tracks WHERE id = ?1", params![id], |r| r.get(0))
             .ok();
         if exists.is_none() {
-            return Err("曲目不存在".into());
+            return Err(err(codes::TRACK_NOT_FOUND));
         }
     }
     // Windows 上自定义协议以 http://{scheme}.localhost 形式访问
@@ -761,7 +762,7 @@ pub fn set_prevent_sleep(prevent: bool) -> Result<(), String> {
         // SAFETY: 在应用主线程调用，API 本身无内存安全前置条件
         let prev = unsafe { SetThreadExecutionState(flags) };
         if prev.0 == 0 {
-            return Err("SetThreadExecutionState 调用失败".into());
+            return Err(err(codes::PREVENT_SLEEP_FAILED));
         }
     }
     Ok(())
@@ -785,10 +786,10 @@ pub fn reveal_track(state: State<'_, AppState>, id: i64) -> Result<(), String> {
         )
         .map_err(|e| e.to_string())?
     };
-    let Some(base) = base else { return Err("仅本地曲目支持此操作".into()) };
+    let Some(base) = base else { return Err(err(codes::TRACK_NOT_LOCAL)) };
     let full = std::path::PathBuf::from(base).join(rel);
     if !full.exists() {
-        return Err("文件不存在".into());
+        return Err(err(codes::FILE_MISSING));
     }
     tauri_plugin_opener::reveal_item_in_dir(&full).map_err(|e| e.to_string())
 }
@@ -844,7 +845,7 @@ pub fn playlist_list(state: State<'_, AppState>) -> Result<Vec<Playlist>, String
 pub fn playlist_create(state: State<'_, AppState>, name: String) -> Result<Playlist, String> {
     let name = name.trim().to_string();
     if name.is_empty() {
-        return Err("歌单名不能为空".into());
+        return Err(err(codes::PLAYLIST_NAME_EMPTY));
     }
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -861,7 +862,7 @@ pub fn playlist_create(state: State<'_, AppState>, name: String) -> Result<Playl
 pub fn playlist_rename(state: State<'_, AppState>, id: i64, name: String) -> Result<(), String> {
     let name = name.trim().to_string();
     if name.is_empty() {
-        return Err("歌单名不能为空".into());
+        return Err(err(codes::PLAYLIST_NAME_EMPTY));
     }
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     conn.execute("UPDATE playlists SET name = ?1 WHERE id = ?2", params![name, id])
@@ -1205,7 +1206,7 @@ pub fn webdav_add_source(
         .query_row("SELECT id FROM sources WHERE kind = 'webdav' AND base_url = ?1", params![base.as_str()], |r| r.get(0))
         .ok();
     if exists.is_some() {
-        return Err("该地址已添加过".into());
+        return Err(err(codes::SOURCE_DUPLICATE_URL));
     }
     // 密码不入库：config 只写 username，插入后把密码写入系统钥匙串；
     // 钥匙串不可用时回退明文（保证功能可用）

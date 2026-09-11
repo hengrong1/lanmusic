@@ -348,4 +348,56 @@ export default {
     dialog: 'Dialog', modal: 'Modal', tooltip: 'Tooltip', loading: 'Loading', error: 'Error',
     success: 'Success', warning: 'Warning', info: 'Info',
   },
+  // Rust-side error codes → messages (code contract: src-tauri/src/error.rs; decoded by errorText())
+  error: {
+    source: {
+      scanning: 'This source is currently being scanned',
+      scanningBusy: 'This source is being scanned; try removing it again later',
+      notFound: 'Source not found',
+      dirMissing: 'Directory does not exist',
+      duplicate: 'This folder is already in your library',
+      duplicateUrl: 'This address has already been added',
+      kindUnknown: 'Unknown source type: {kind}',
+      urlMissing: 'WebDAV URL is missing',
+    },
+    track: {
+      notFound: 'Track not found',
+      notLocal: 'Only local tracks support this action',
+    },
+    file: {
+      missing: 'File not found',
+    },
+    playlist: {
+      nameEmpty: 'Playlist name cannot be empty',
+    },
+    webdav: {
+      invalidUrl: 'Invalid WebDAV URL: {error}',
+      propfindFailed: 'PROPFIND failed: {error}',
+      propfindStatus: 'PROPFIND returned {status}',
+    },
+    download: {
+      failed: 'Download failed: {error}',
+      status: 'Download returned {status}',
+    },
+    lyrics: {
+      downloadFailed: 'Lyrics download failed: {error}',
+      downloadStatus: 'Lyrics download returned {status}',
+    },
+    keyring: {
+      unavailable: 'System keychain unavailable: {error}',
+      writeFailed: 'Failed to save the credential to the keychain: {error}',
+    },
+    power: {
+      preventSleepFailed: 'Failed to call SetThreadExecutionState',
+    },
+    transcode: {
+      cacheDirMissing: 'Could not locate the cache directory',
+      probeFailed: 'Audio probing failed: {error}',
+      noAudioTrack: 'No audio track in this file',
+      decoderInitFailed: 'Decoder initialization failed: {error}',
+      readFrameFailed: 'Failed to read audio frame: {error}',
+      decodeFailed: 'Decoding failed: {error}',
+      noDecodableAudio: 'No decodable audio data in this file',
+    },
+  },
 }

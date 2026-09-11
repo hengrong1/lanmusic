@@ -21,6 +21,7 @@ import Tooltip from '@/components/Tooltip.vue'
 import CoverImg from '@/components/CoverImg.vue'
 import type { MenuItem } from '@/components/ContextMenu.vue'
 import type { NavRoute } from '@/types'
+import { errorText } from '@/i18n/error'
 
 // 侧栏宽度（模板与 GSAP 动画共用，避免两处数值不一致互相覆盖）
 const W_EXPANDED = 240
@@ -169,7 +170,7 @@ async function confirmEdit() {
       go({ view: 'playlist', playlistId: p.id, playlistName: p.name })
     }
   } catch (err) {
-    toast(String(err), 'error')
+    toast(errorText(err), 'error')
   } finally {
     editing.value = null
   }
@@ -198,7 +199,7 @@ function openPlaylistMenu(e: MouseEvent, p: { id: number; name: string }) {
             await library.deletePlaylist(p.id)
             if (current.value.playlistId === p.id) go({ view: 'tracks' })
           })
-          .catch((err) => toast(String(err), 'error'))
+          .catch((err) => toast(errorText(err), 'error'))
       },
     },
   ]

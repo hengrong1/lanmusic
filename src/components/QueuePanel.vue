@@ -9,6 +9,7 @@ import { useLibraryStore } from '@/stores/library'
 import { useNav } from '@/composables/useNav'
 import { toast } from '@/composables/useToast'
 import { useI18n } from 'vue-i18n'
+import { errorText } from '@/i18n/error'
 
 const { t } = useI18n()
 const player = usePlayerStore()
@@ -64,7 +65,7 @@ async function saveAsPlaylist() {
     await library.addToPlaylist(p.id, player.queue.map((t) => t.id))
     nav.go({ view: 'playlist', playlistId: p.id, playlistName: p.name })
   } catch (e) {
-    toast(String(e), 'error')
+    toast(errorText(e), 'error')
   } finally {
     saving.value = false
   }

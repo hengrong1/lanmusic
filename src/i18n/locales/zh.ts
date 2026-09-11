@@ -342,4 +342,56 @@ export default {
     dialog: '对话框', modal: '模态框', tooltip: '提示', loading: '加载中', error: '错误',
     success: '成功', warning: '警告', info: '信息',
   },
+  // Rust 侧错误码 → 文案（code 契约见 src-tauri/src/error.rs，前端 errorText() 解码 LMERR 信封）
+  error: {
+    source: {
+      scanning: '该来源正在扫描中',
+      scanningBusy: '该来源正在扫描中，请稍后再移除',
+      notFound: '来源不存在',
+      dirMissing: '目录不存在',
+      duplicate: '该文件夹已在音乐库中',
+      duplicateUrl: '该地址已添加过',
+      kindUnknown: '未知来源类型：{kind}',
+      urlMissing: 'WebDAV 地址缺失',
+    },
+    track: {
+      notFound: '曲目不存在',
+      notLocal: '仅本地曲目支持此操作',
+    },
+    file: {
+      missing: '文件不存在',
+    },
+    playlist: {
+      nameEmpty: '歌单名不能为空',
+    },
+    webdav: {
+      invalidUrl: 'WebDAV 地址无效：{error}',
+      propfindFailed: 'PROPFIND 失败：{error}',
+      propfindStatus: 'PROPFIND 返回 {status}',
+    },
+    download: {
+      failed: '下载失败：{error}',
+      status: '下载返回 {status}',
+    },
+    lyrics: {
+      downloadFailed: '下载歌词失败：{error}',
+      downloadStatus: '下载歌词返回 {status}',
+    },
+    keyring: {
+      unavailable: '系统钥匙串不可用：{error}',
+      writeFailed: '凭证写入钥匙串失败：{error}',
+    },
+    power: {
+      preventSleepFailed: 'SetThreadExecutionState 调用失败',
+    },
+    transcode: {
+      cacheDirMissing: '无法定位缓存目录',
+      probeFailed: '音频探测失败：{error}',
+      noAudioTrack: '文件中没有音频轨',
+      decoderInitFailed: '解码器初始化失败：{error}',
+      readFrameFailed: '读取音频帧失败：{error}',
+      decodeFailed: '解码失败：{error}',
+      noDecodableAudio: '文件中没有可解码的音频数据',
+    },
+  },
 }

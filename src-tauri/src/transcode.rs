@@ -64,7 +64,8 @@ fn ensure_wav<R: Runtime>(
     fingerprint: &str,
     source_bytes: &[u8],
 ) -> Result<PathBuf, String> {
-    let dir = cache_dir(app).ok_or("无法定位缓存目录")?;
+    let dir =
+        cache_dir(app).ok_or_else(|| crate::error::err(crate::error::codes::TRANSCODE_CACHE_DIR))?;
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let out = dir.join(format!("{track_id}-{fingerprint}.wav"));
     if out.metadata().map(|m| m.len() > 44).unwrap_or(false) {
@@ -110,18 +111,18 @@ fn decode_to_wav(source_bytes: &[u8], out: &Path) -> Result<(), String> {
     hint.with_extension("ogg");
     let probed = symphonia::default::get_probe()
         .format(&hint, mss, &FormatOptions::default(), &MetadataOptions::default())
-        .map_err(|e| format!("音频探测失败：{e}"))?;
+        .map_err(|e| crate::error::err1(crate::error::codes::TRANSCODE_PROBE_FAILED, "error", e))?;
     let mut format = probed.format;
     let track = format
         .tracks()
         .iter()
         .find(|t| t.codec_params.codec != CODEC_TYPE_NULL)
-        .ok_or("文件中没有音频轨")?
+        .ok_or_else(|| crate::error::err(crate::error::codes::TRANSCODE_NO_AUDIO_TRACK))?
         .clone();
     let track_id = track.id;
     let mut decoder = symphonia::default::get_codecs()
         .make(&track.codec_params, &DecoderOptions::default())
-        .map_err(|e| format!("解码器初始化失败：{e}"))?;
+        .map_err(|e| crate::error::err1(crate::error::codes::TRANSCODE_DECODER_INIT, "error", e))?;
 
     let mut out_file = File::create(out).map_err(|e| e.to_string())?;
     out_file.write_all(&[0u8; 44]).map_err(|e| e.to_string())?;
@@ -133,7 +134,7 @@ fn decode_to_wav(source_bytes: &[u8], out: &Path) -> Result<(), String> {
             Ok(p) => p,
             // 流正常结束
             Err(SymphoniaError::IoError(e)) if e.kind() == std::io::ErrorKind::UnexpectedEof => break,
-            Err(e) => return Err(format!("读取音频帧失败：{e}")),
+            Err(e) => return Err(crate::error::err1(crate::error::codes::TRANSCODE_READ_FRAME, "error", e)),
         };
         if packet.track_id() != track_id {
             continue;
@@ -156,11 +157,12 @@ fn decode_to_wav(source_bytes: &[u8], out: &Path) -> Result<(), String> {
             }
             // 单帧损坏：跳过继续，尽量转出可用音频
             Err(SymphoniaError::DecodeError(_)) => continue,
-            Err(e) => return Err(format!("解码失败：{e}")),
+            Err(e) => return Err(crate::error::err1(crate::error::codes::TRANSCODE_DECODE_FAILED, "error", e)),
         }
     }
 
-    let s = spec.ok_or("文件中没有可解码的音频数据")?;
+    let s = spec
+        .ok_or_else(|| crate::error::err(crate::error::codes::TRANSCODE_NO_DECODABLE))?;
     let channels = s.channels.count() as u16;
     out_file.seek(SeekFrom::Start(0)).map_err(|e| e.to_string())?;
     out_file

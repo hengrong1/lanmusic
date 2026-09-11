@@ -8,6 +8,7 @@ import { confirmDialog } from '@/composables/useConfirm'
 import { toast } from '@/composables/useToast'
 import { BaseInput, BaseTextarea, BaseButton } from '@/components/ui'
 import { useI18n } from 'vue-i18n'
+import { errorText } from '@/i18n/error'
 
 /**
  * 编辑歌单弹层：集中修改名称、简介；只读展示创建时间 / 歌曲数 / 封面；删除歌单。
@@ -85,7 +86,7 @@ async function save() {
     emit('close')
   } catch (e) {
     syncing = false
-    toast(String(e), 'error')
+    toast(errorText(e), 'error')
   } finally {
     saving.value = false
   }
@@ -104,7 +105,7 @@ async function remove() {
     emit('deleted')
     emit('close')
   } catch (e) {
-    toast(String(e), 'error')
+    toast(errorText(e), 'error')
   }
 }
 

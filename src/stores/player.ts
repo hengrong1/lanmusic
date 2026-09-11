@@ -10,6 +10,7 @@ import { toast } from '@/composables/useToast'
 import { t as tr } from '@/i18n/translate'
 import { activeLineIndex, parseLrc, plainLines, type LrcLine } from '@/utils/lrc'
 import { applyPowerGuard } from '@/composables/usePowerGuard'
+import { errorText } from '@/i18n/error'
 
 export type PlayMode = 'order' | 'loop' | 'one' | 'shuffle'
 
@@ -546,7 +547,7 @@ export const usePlayerStore = defineStore('player', () => {
         // 刷新侧边栏「我的喜欢」计数
         void useLibraryStore().loadStats()
       })
-      .catch((e) => toast(String(e), 'error'))
+      .catch((e) => toast(errorText(e), 'error'))
   }
 
   /** 启动时恢复完整播放队列（快照中的歌曲已删除则跳过），并恢复歌词与进度 */
