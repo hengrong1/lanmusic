@@ -698,13 +698,15 @@ pub(crate) fn get_or_create_artist(
     cache: &mut HashMap<String, i64>,
     name: &str,
 ) -> Result<i64, String> {
-    let key = name.to_lowercase();
+    // 规整名入库与匹配：「陈奕迅（Eason Chan）」与「陈奕迅」命中同一位艺人，展示名取规整名
+    let base = canonical_artist(name);
+    let key = base.to_lowercase();
     if let Some(id) = cache.get(&key) {
         return Ok(*id);
     }
-    tx.execute("INSERT OR IGNORE INTO artists (name) VALUES (?1)", [name]).map_err(|e| e.to_string())?;
+    tx.execute("INSERT OR IGNORE INTO artists (name) VALUES (?1)", [&base]).map_err(|e| e.to_string())?;
     let id: i64 = tx
-        .query_row("SELECT id FROM artists WHERE name = ?1 COLLATE NOCASE", [name], |r| r.get(0))
+        .query_row("SELECT id FROM artists WHERE name = ?1 COLLATE NOCASE", [&base], |r| r.get(0))
         .map_err(|e| e.to_string())?;
     cache.insert(key, id);
     Ok(id)
@@ -900,6 +902,42 @@ pub fn parse_separators(s: &str) -> Vec<char> {
     seps
 }
 
+/// 艺人名规整：剥离尾部括号注释（全角（）/半角()），如「陈奕迅（Eason Chan）」→「陈奕迅」。
+/// 规则：取字符串中最后一个开括号，若它不在串首、整串以对应闭括号结尾、且括号内
+/// 含非空白内容，则其之前的内容（去首尾空白）即为规整名；否则保留原名。
+/// 这样「陈奕迅」「陈奕迅（Eason Chan）」会命中同一位艺人，展示名统一为规整名。
+pub fn canonical_artist(name: &str) -> String {
+    let t = name.trim();
+    if t.is_empty() {
+        return name.to_string();
+    }
+    // 最后一个开括号位置（字节偏移）
+    let mut open: Option<(char, usize)> = None;
+    for (pos, c) in t.char_indices() {
+        if c == '（' || c == '(' {
+            open = Some((c, pos));
+        }
+    }
+    if let Some((open_c, pos)) = open {
+        // 开括号必须不在串首（前面还有艺人名），且串以对应闭括号结束
+        let (open_len, close_len, closes): (usize, usize, char) = if open_c == '（' {
+            (3, 3, '）')
+        } else {
+            (1, 1, ')')
+        };
+        if pos > 0 && t.ends_with(closes) {
+            let inner = t[pos + open_len..t.len() - close_len].trim();
+            if !inner.is_empty() {
+                let base = t[..pos].trim();
+                if !base.is_empty() {
+                    return base.to_string();
+                }
+            }
+        }
+    }
+    t.to_string()
+}
+
 /// 把 "A / B"、"A & B"、"A feat. B" 这类多艺人字符串拆成独立艺人名。
 /// 拆不出多个时原样返回（单元素）。
 pub fn split_artists(name: &str, seps: &[char]) -> Vec<String> {
@@ -946,7 +984,7 @@ pub fn split_artists(name: &str, seps: &[char]) -> Vec<String> {
         if p.is_empty() {
             continue;
         }
-        let key = p.to_lowercase();
+        let key = canonical_artist(&p).to_lowercase();
         if parts.iter().any(|x| x.to_lowercase() == key) {
             continue;
         }
@@ -964,7 +1002,36 @@ pub fn split_artists(name: &str, seps: &[char]) -> Vec<String> {
 
 #[cfg(test)]
 mod split_artists_tests {
-    use super::{split_artists, ARTIST_SEPARATORS, parse_separators};
+    use super::{split_artists, canonical_artist, ARTIST_SEPARATORS, parse_separators};
+
+    #[test]
+    fn canonical_strips_trailing_zh_parenthesis() {
+        assert_eq!(canonical_artist("陈奕迅（Eason Chan）"), "陈奕迅");
+        assert_eq!(canonical_artist("陈奕迅（Eason Chan）"), canonical_artist("陈奕迅"));
+    }
+
+    #[test]
+    fn canonical_strips_trailing_en_parenthesis() {
+        assert_eq!(canonical_artist("Tom (2024)"), "Tom");
+        assert_eq!(canonical_artist("Tom(2024)"), "Tom");
+    }
+
+    #[test]
+    fn canonical_keeps_plain_or_other() {
+        assert_eq!(canonical_artist("陈奕迅"), "陈奕迅");
+        assert_eq!(canonical_artist("（未知）"), "（未知）");
+        assert_eq!(canonical_artist("xxx（feat.）yyy"), "xxx（feat.）yyy");
+        // 括号内空白不剥：避免把 "A（ ）" 当成注释
+        assert_eq!(canonical_artist("A（ ）"), "A（ ）");
+    }
+
+    #[test]
+    fn split_dedupes_by_canonical_name() {
+        // split_artists 只做拆分与精确去重；规整（canonical_artist）在 get_or_create_artist 阶段生效
+        assert_eq!(split_artists("A（x） / a", ARTIST_SEPARATORS), vec!["A（x）", "a"]);
+        // 完全相同的名字才会去重
+        assert_eq!(split_artists("A / A", ARTIST_SEPARATORS), vec!["A"]);
+    }
 
     #[test]
     fn keeps_single_artist() {

@@ -288,6 +288,7 @@ pub fn run() {
             commands::set_setting,
             commands::get_artist_separators,
             commands::set_artist_separators,
+            commands::normalize_artist_names,
             commands::set_thumbbar_playing,
             commands::set_thumbbar_album,
             commands::desktop_lyrics_set,

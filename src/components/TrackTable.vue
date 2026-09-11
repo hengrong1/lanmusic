@@ -150,13 +150,13 @@ function playMv(t: Track) {
 
 const selected = ref(-1)
 
-/** 正在播放的行：渐变底色 + 左侧紫条 + 标题紫色 + 跳动音条 */
+/** 正在播放的行：圆角卡片 + 渐变底色 + 左侧紫条 + 标题紫色 + 跳动音条 + 脉冲边框动画 */
 function rowClass(t: Track, index: number) {
   if (props.batchMode && selSet.value.has(t.id)) {
     return 'bg-violet-50 dark:bg-violet-500/10'
   }
   if (player.current?.id === t.id) {
-    return 'bg-gradient-to-r from-violet-100 via-violet-50 to-transparent shadow-[inset_3px_0_0_0_#8b5cf6] dark:from-violet-500/20 dark:via-violet-500/10 dark:to-transparent ring-1 ring-inset ring-violet-200/50 dark:ring-violet-400/20'
+    return 'row-playing from-violet-100 via-violet-50 to-transparent dark:from-violet-500/20 dark:via-violet-500/10 dark:to-transparent ring-1 ring-inset ring-violet-200/50 dark:ring-violet-400/20'
   }
   if (selected.value === index) return 'bg-violet-100/70 dark:bg-violet-500/10'
   return 'hover:bg-violet-50/50 dark:hover:bg-violet-500/10'
@@ -467,6 +467,96 @@ function onDragEnd() {
   }
   to {
     transform: scaleY(1);
+  }
+}
+
+/* 正在播放的行：圆角卡片 + 脉冲边框 + 左侧高亮条 + 渐变动画 */
+.row-playing {
+  position: relative;
+  border-radius: 12px;
+  margin: 0 4px;
+  background-size: 200% 100%;
+  background-image: linear-gradient(
+    to right,
+    rgb(233 213 255 / 0.9) 0%,
+    rgb(243 232 255 / 0.6) 50%,
+    transparent 100%
+  );
+  box-shadow:
+    inset 3px 0 0 0 #8b5cf6,
+    0 0 0 1px rgb(139 92 246 / 0.15),
+    0 2px 8px rgb(139 92 246 / 0.08);
+  animation: row-shimmer 3s ease-in-out infinite, row-pulse 2s ease-in-out infinite;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.dark .row-playing {
+  background-image: linear-gradient(
+    to right,
+    rgb(139 92 246 / 0.25) 0%,
+    rgb(139 92 246 / 0.12) 50%,
+    transparent 100%
+  );
+  box-shadow:
+    inset 3px 0 0 0 #a78bfa,
+    0 0 0 1px rgb(167 139 250 / 0.2),
+    0 2px 12px rgb(139 92 246 / 0.15);
+  animation-name: row-shimmer, row-pulse-dark;
+}
+.dark .row-playing::before {
+  background: linear-gradient(to bottom, #a78bfa, #e879f9);
+}
+
+/* 左侧高亮条：渐变紫→粉 */
+.row-playing::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 3px;
+  border-radius: 0 4px 4px 0;
+  background: linear-gradient(to bottom, #8b5cf6, #d946ef);
+}
+
+/* 渐变背景流动动画 */
+@keyframes row-shimmer {
+  0%, 100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+}
+
+/* 边框光晕脉冲（亮色） */
+@keyframes row-pulse {
+  0%, 100% {
+    box-shadow:
+      inset 3px 0 0 0 #8b5cf6,
+      0 0 0 1px rgb(139 92 246 / 0.15),
+      0 2px 8px rgb(139 92 246 / 0.08);
+  }
+  50% {
+    box-shadow:
+      inset 3px 0 0 0 #8b5cf6,
+      0 0 0 2px rgb(139 92 246 / 0.3),
+      0 4px 16px rgb(139 92 246 / 0.15);
+  }
+}
+
+/* 边框光晕脉冲（暗色） */
+@keyframes row-pulse-dark {
+  0%, 100% {
+    box-shadow:
+      inset 3px 0 0 0 #a78bfa,
+      0 0 0 1px rgb(167 139 250 / 0.2),
+      0 2px 12px rgb(139 92 246 / 0.15);
+  }
+  50% {
+    box-shadow:
+      inset 3px 0 0 0 #a78bfa,
+      0 0 0 2px rgb(167 139 250 / 0.4),
+      0 4px 20px rgb(139 92 246 / 0.25);
   }
 }
 </style>

@@ -1182,6 +1182,96 @@ pub fn set_artist_separators(
     Ok(changes)
 }
 
+/// 艺人名规整变更：一行 = 一个被合并的艺人旧名 → 新名及其影响的曲目数
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ArtistNormalizeChange {
+    pub old_name: String,
+    pub new_name: String,
+    pub track_count: i64,
+}
+
+/// 一次性规整艺人名：剥离艺人名尾部括号注释（如「陈奕迅（Eason Chan）」→「陈奕迅」），
+/// 并把曲目 / 专辑关联合并到规整名对应的同一位艺人。幂等：重复调用不产生新增变更。
+/// 新扫描与分隔符重拆已自带规整，此命令用于清理已入库的历史数据。
+#[tauri::command]
+pub fn normalize_artist_names(state: State<'_, AppState>) -> Result<Vec<ArtistNormalizeChange>, String> {
+    let mut conn = state.db.lock().map_err(|e| e.to_string())?;
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+
+    // 现有艺人：id → 名
+    let mut rows: Vec<(i64, String)> = Vec::new();
+    {
+        let mut stmt = tx
+            .prepare("SELECT id, name FROM artists")
+            .map_err(|e| e.to_string())?;
+        let it = stmt
+            .query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?)))
+            .map_err(|e| e.to_string())?;
+        for row in it {
+            rows.push(row.map_err(|e| e.to_string())?);
+        }
+    }
+    // 规整名（小写）→ 目标艺人 id：先登记原名已是规整名的艺人，后续同规整名命中同一目标
+    let mut by_canon: HashMap<String, i64> = HashMap::new();
+    for (id, name) in &rows {
+        by_canon.insert(scanner::canonical_artist(name).to_lowercase(), *id);
+    }
+
+    // 收集待合并：(旧 id, 目标 id, 旧名, 规整名)；先收集后迁移，避免中间态影响判定
+    let mut pending: Vec<(i64, i64, String, String)> = Vec::new();
+    for (id, name) in &rows {
+        let canon = scanner::canonical_artist(name);
+        if canon == *name {
+            continue;
+        }
+        let key = canon.to_lowercase();
+        let target: i64 = match by_canon.get(&key).copied() {
+            Some(existing) => existing,
+            None => {
+                tx.execute("INSERT OR IGNORE INTO artists (name) VALUES (?1)", [&canon])
+                    .map_err(|e| e.to_string())?;
+                let nid: i64 = tx
+                    .query_row("SELECT id FROM artists WHERE name = ?1 COLLATE NOCASE", [&canon], |r| r.get(0))
+                    .map_err(|e| e.to_string())?;
+                by_canon.insert(key, nid);
+                nid
+            }
+        };
+        pending.push((*id, target, name.clone(), canon));
+    }
+
+    let mut changes: Vec<ArtistNormalizeChange> = Vec::new();
+    for (old, target, old_name, new_name) in pending {
+        // 同一首曲目若已关联目标艺人：先拆除旧关联，避免主键冲突
+        tx.execute(
+            "DELETE FROM track_artists WHERE artist_id = ?1 \
+             AND track_id IN (SELECT track_id FROM track_artists WHERE artist_id = ?2)",
+            params![old, target],
+        )
+        .map_err(|e| e.to_string())?;
+        let count: i64 = tx
+            .query_row("SELECT COUNT(*) FROM track_artists WHERE artist_id = ?1", [old], |r| r.get(0))
+            .map_err(|e| e.to_string())?;
+        tx.execute("UPDATE track_artists SET artist_id = ?1 WHERE artist_id = ?2", params![target, old])
+            .map_err(|e| e.to_string())?;
+        tx.execute("UPDATE albums SET artist_id = ?1 WHERE artist_id = ?2", params![target, old])
+            .map_err(|e| e.to_string())?;
+        // 旧艺人已无任何引用：删除
+        tx.execute(
+            "DELETE FROM artists WHERE id = ?1 \
+             AND NOT EXISTS (SELECT 1 FROM track_artists WHERE artist_id = ?1) \
+             AND NOT EXISTS (SELECT 1 FROM albums WHERE artist_id = ?1)",
+            [old],
+        )
+        .map_err(|e| e.to_string())?;
+        changes.push(ArtistNormalizeChange { old_name, new_name, track_count: count });
+    }
+    tx.commit().map_err(|e| e.to_string())?;
+
+    Ok(changes)
+}
+
 // ================================================================ WebDAV 来源（M3）
 
 /// 添加 WebDAV 来源（NAS），验证连通性后扫描

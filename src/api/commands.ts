@@ -3,6 +3,7 @@ import { getSearchSettings } from '@/composables/useSearchSettings'
 import type {
   AlbumItem,
   ArtistItem,
+  ArtistNormalizeChange,
   ArtistSplitChange,
   LibraryStats,
   Page,
@@ -90,6 +91,8 @@ export const api = {
   // 艺人分隔符（设置后立即按新分隔符重拆曲库，返回受影响曲目的变更列表）
   getArtistSeparators: () => invoke<string>('get_artist_separators'),
   setArtistSeparators: (value: string) => invoke<ArtistSplitChange[]>('set_artist_separators', { value }),
+  // 艺人名规整：剥离尾部括号注释（如「陈奕迅（Eason Chan）」→「陈奕迅」），合并同义艺人并迁移曲目/专辑关联
+  normalizeArtistNames: () => invoke<ArtistNormalizeChange[]>('normalize_artist_names'),
 
   // WebDAV（M3）
   webdavAddSource: (url: string, username: string, password: string, name?: string) =>

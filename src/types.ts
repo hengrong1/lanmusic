@@ -48,6 +48,13 @@ export interface ArtistSplitChange {
   newArtists: string[]
 }
 
+/** 艺人名单规整变更：旧名 → 规整名及其影响的曲目数 */
+export interface ArtistNormalizeChange {
+  oldName: string
+  newName: string
+  trackCount: number
+}
+
 export interface Page<T> {
   total: number
   items: T[]

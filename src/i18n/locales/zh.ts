@@ -166,6 +166,15 @@ export default {
     separatorMore: '其余 {count} 首歌曲的艺人也已同步更新。',
     separatorResplit: '已按新分隔符重新拆分 {count} 首歌曲的艺人',
     separatorUpdated: '分隔符已更新，曲库中没有歌曲的艺人受影响',
+    // 曲库：艺人名规整（合并同义艺人，如「陈奕迅（Eason Chan）」→「陈奕迅」）
+    artistNormalize: '艺人名规整',
+    artistNormalizeDesc:
+      '将尾部带括号注释的艺人名（如「陈奕迅（Eason Chan）」）合并为基础名（「陈奕迅」），曲目与专辑关联一并迁移。幂等：已规整的曲库不会重复变更。',
+    artistNormalizeBtn: '合并同义艺人',
+    artistNormalizeApplying: '正在规整…',
+    artistNormalizeApplied: '本次合并了 {count} 位同义艺人',
+    artistNormalizeNone: '曲库中没有需要合并的同义艺人',
+    artistNormalizeMore: '其余 {count} 位艺人也已合并。',
     // 搜索
     searchScope: '搜索范围',
     searchScopeHint: '勾选后搜索将在对应字段内匹配；至少保留一项。',

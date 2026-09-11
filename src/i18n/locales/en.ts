@@ -174,6 +174,15 @@ export default {
     separatorMore: 'Artists for the remaining {count} tracks were updated as well.',
     separatorResplit: 'Re-split artists for {count} tracks with the new separators',
     separatorUpdated: 'Separators updated — no tracks in the library were affected',
+    // Library: artist name normalization (merge synonymous artists, e.g. "陈奕迅（Eason Chan）" → "陈奕迅")
+    artistNormalize: 'Artist Name Normalization',
+    artistNormalizeDesc:
+      'Merge artists with parenthetical suffixes (e.g. "陈奕迅（Eason Chan）") into their base name ("陈奕迅"), migrating track and album associations. Idempotent: already-normalized libraries produce no further changes.',
+    artistNormalizeBtn: 'Merge Synonymous Artists',
+    artistNormalizeApplying: 'Normalizing…',
+    artistNormalizeApplied: 'Merged {count} synonymous artists',
+    artistNormalizeNone: 'No synonymous artists to merge in the library',
+    artistNormalizeMore: 'An additional {count} artists were merged as well.',
     // Search
     searchScope: 'Search Scope',
     searchScopeHint: 'Checked fields are included when matching; at least one must stay enabled.',

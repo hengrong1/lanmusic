@@ -32,7 +32,7 @@ import { useUpdater } from '@/composables/useUpdater'
 import { usePlayerStore } from '@/stores/player'
 import { api } from '@/api/commands'
 import { getSearchSettings, setSearchSettings, type SearchSettings } from '@/composables/useSearchSettings'
-import type { ArtistSplitChange, Source } from '@/types'
+import type { ArtistNormalizeChange, ArtistSplitChange, Source } from '@/types'
 import { setLocale } from '@/i18n'
 import { useI18n } from 'vue-i18n'
 import {
@@ -229,7 +229,29 @@ async function onSeparatorToggle(sep: string) {
   }
 }
 
-/** 桌面歌词预设色板：播放行（鲜艳主题色）/ 未播放行（对比色），均为 6 位 hex */
+// ---- 曲库：艺人名规整（合并同义艺人，如「陈奕迅（Eason Chan）」→「陈奕迅」）----
+/** 最近一次规整的变更列表（null = 尚未执行过） */
+const normalizeChanges = ref<ArtistNormalizeChange[] | null>(null)
+const normalizeApplying = ref(false)
+
+async function onNormalizeArtists() {
+  normalizeApplying.value = true
+  try {
+    const changes = await api.normalizeArtistNames()
+    normalizeChanges.value = changes
+    if (changes.length > 0) {
+      toast(t('settings.artistNormalizeApplied', { count: changes.length }))
+      // 艺人归属变了，刷新曲库统计与当前列表
+      await Promise.all([library.loadStats(), library.loadTracks()])
+    } else {
+      toast(t('settings.artistNormalizeNone'))
+    }
+  } catch (e) {
+    toast(errorText(e), 'error')
+  } finally {
+    normalizeApplying.value = false
+  }
+}
 const DL_PLAY_PRESETS = ['#a78bfa', '#ffffff', '#22d3ee', '#4ade80', '#f472b6', '#fbbf24']
 const DL_PENDING_PRESETS = ['#22d3ee', '#f472b6', '#38bdf8', '#fbbf24', '#a78bfa', '#71717a', '#a1a1aa']
 
@@ -671,6 +693,50 @@ const scannedSourceIds = computed(() => new Set(Object.keys(library.scanProgress
                     </div>
                   </template>
                 </div>
+              <!-- 艺人名规整：合并同义艺人（如「陈奕迅（Eason Chan）」→「陈奕迅」）-->
+              <section>
+                <h3 class="mb-2.5 text-sm font-semibold text-zinc-800 dark:text-zinc-100">{{ t('settings.artistNormalize') }}</h3>
+                <div class="rounded-xl border border-zinc-200 bg-white p-4 text-sm dark:border-zinc-800 dark:bg-zinc-900">
+                  <div class="flex flex-wrap items-center justify-between gap-3">
+                    <p class="max-w-md text-xs leading-relaxed text-zinc-400">{{ t('settings.artistNormalizeDesc') }}</p>
+                    <BaseButton
+                      size="sm"
+                      variant="secondary"
+                      :loading="normalizeApplying"
+                      :disabled="normalizeApplying"
+                      :icon="normalizeApplying ? undefined : Check"
+                      @click="onNormalizeArtists"
+                    >
+                      {{ normalizeApplying ? t('settings.artistNormalizeApplying') : t('settings.artistNormalizeBtn') }}
+                    </BaseButton>
+                  </div>
+
+                  <!-- 变更报告：执行后展示被合并的艺人变化 -->
+                  <template v-if="normalizeChanges !== null">
+                    <div class="mt-3 border-t border-zinc-100 pt-3 dark:border-zinc-800">
+                      <p class="text-xs font-medium" :class="normalizeChanges.length > 0 ? 'text-violet-500' : 'text-zinc-400'">
+                        {{
+                          normalizeChanges.length > 0
+                            ? t('settings.artistNormalizeApplied', { count: normalizeChanges.length })
+                            : t('settings.artistNormalizeNone')
+                        }}
+                      </p>
+                      <ul v-if="normalizeChanges.length > 0" class="mt-2 max-h-56 space-y-1.5 overflow-y-auto pr-1">
+                        <li v-for="c in normalizeChanges.slice(0, 200)" :key="c.oldName" class="flex min-w-0 flex-wrap items-baseline gap-x-1 text-xs">
+                          <span class="text-zinc-400 line-through">{{ c.oldName }}</span>
+                          <span class="text-violet-500">→</span>
+                          <span class="font-medium text-zinc-700 dark:text-zinc-200">{{ c.newName }}</span>
+                          <span class="text-zinc-400">({{ c.trackCount }})</span>
+                        </li>
+                      </ul>
+                      <p v-if="normalizeChanges.length > 200" class="mt-1 text-xs text-zinc-400">
+                        {{ t('settings.artistNormalizeMore', { count: normalizeChanges.length - 200 }) }}
+                      </p>
+                    </div>
+                  </template>
+                </div>
+              </section>
+
               </section>
             </template>
 
