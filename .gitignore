@@ -22,3 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# 本地 agent 工作记录（记忆笔记、审阅报告），不进版本库
+.workbuddy/
