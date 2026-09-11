@@ -220,8 +220,23 @@ watch(
             </button>
           </div>
         </div>
-        <!-- 底部操作按钮：返回顶部 + 定位正在播放 -->
+        <!-- 底部操作按钮：定位正在播放 + 返回顶部 -->
         <div class="absolute right-4 bottom-4 z-10 flex flex-col items-end gap-2">
+          <Transition
+            enter-active-class="transition duration-200 ease-out"
+            enter-from-class="opacity-0 translate-y-2"
+            leave-active-class="transition duration-150 ease-in"
+            leave-to-class="opacity-0"
+          >
+            <button
+              v-if="!activeVisible && player.index >= 0"
+              class="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full bg-white shadow-lg shadow-zinc-300/50 transition hover:bg-zinc-100 dark:bg-zinc-800 dark:shadow-zinc-900/50 dark:hover:bg-zinc-700"
+              :title="$t('queue.scrollToCurrent')"
+              @click="locateActive"
+            >
+              <LocateFixed class="h-4 w-4 text-zinc-600 dark:text-zinc-300" />
+            </button>
+          </Transition>
           <Transition
             enter-active-class="transition duration-200 ease-out"
             enter-from-class="opacity-0 translate-y-2"
@@ -235,21 +250,6 @@ watch(
               @click="scrollToTop"
             >
               <ArrowUp class="h-4 w-4 text-zinc-600 dark:text-zinc-300" />
-            </button>
-          </Transition>
-          <Transition
-            enter-active-class="transition duration-200 ease-out"
-            enter-from-class="opacity-0 translate-y-2"
-            leave-active-class="transition duration-150 ease-in"
-            leave-to-class="opacity-0"
-          >
-            <button
-              v-if="!activeVisible && player.index >= 0"
-              class="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full bg-violet-500 shadow-lg shadow-violet-500/30 transition hover:bg-violet-400"
-              :title="$t('queue.scrollToCurrent')"
-              @click="locateActive"
-            >
-              <LocateFixed class="h-4 w-4 text-white" />
             </button>
           </Transition>
         </div>
