@@ -165,7 +165,7 @@ onBeforeUnmount(() => {
           placeholder="搜索歌曲、艺人、专辑"
         />
         <button
-          class="flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-full text-zinc-400 transition hover:bg-zinc-100 dark:hover:bg-zinc-800"
+          class="flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-lg text-zinc-400 transition hover:bg-zinc-100 dark:hover:bg-zinc-800"
           title="关闭"
           @click="emit('close')"
         >
@@ -175,16 +175,16 @@ onBeforeUnmount(() => {
 
       <!-- 工具条：全部/已选切换 + 全选 + 清空 -->
       <div class="flex shrink-0 items-center gap-2 border-b border-zinc-200 px-4 py-2 dark:border-zinc-800">
-        <div class="flex rounded-full bg-zinc-100 p-0.5 text-sm dark:bg-zinc-800">
+        <div class="flex rounded-lg bg-zinc-100 p-0.5 text-sm dark:bg-zinc-800">
           <button
-            class="cursor-pointer rounded-full px-3 py-1 transition"
+            class="cursor-pointer rounded-md px-3 py-1 transition"
             :class="filterMode === 'all' ? 'bg-white font-medium text-violet-600 shadow-sm dark:bg-zinc-700 dark:text-violet-300' : 'text-zinc-500 dark:text-zinc-400'"
             @click="filterMode = 'all'"
           >
             全部
           </button>
           <button
-            class="cursor-pointer rounded-full px-3 py-1 transition"
+            class="cursor-pointer rounded-md px-3 py-1 transition"
             :class="filterMode === 'selected' ? 'bg-white font-medium text-violet-600 shadow-sm dark:bg-zinc-700 dark:text-violet-300' : 'text-zinc-500 dark:text-zinc-400'"
             @click="filterMode = 'selected'"
           >
@@ -193,7 +193,7 @@ onBeforeUnmount(() => {
         </div>
         <div class="flex-1" />
         <button
-          class="cursor-pointer rounded-full px-2.5 py-1 text-xs text-zinc-500 transition hover:bg-zinc-100 hover:text-violet-600 disabled:opacity-40 dark:text-zinc-400 dark:hover:bg-zinc-800"
+          class="cursor-pointer rounded-lg px-2.5 py-1 text-xs text-zinc-500 transition hover:bg-zinc-100 hover:text-violet-600 disabled:opacity-40 dark:text-zinc-400 dark:hover:bg-zinc-800"
           :disabled="filterMode !== 'all' || !selectableCount"
           title="勾选当前结果中的全部可选歌曲（Ctrl/Cmd+A）"
           @click="selectAllVisible"
@@ -201,7 +201,7 @@ onBeforeUnmount(() => {
           全选当前
         </button>
         <button
-          class="cursor-pointer rounded-full px-2.5 py-1 text-xs text-zinc-500 transition hover:bg-zinc-100 hover:text-red-500 disabled:opacity-40 dark:text-zinc-400 dark:hover:bg-zinc-800"
+          class="cursor-pointer rounded-lg px-2.5 py-1 text-xs text-zinc-500 transition hover:bg-zinc-100 hover:text-red-500 disabled:opacity-40 dark:text-zinc-400 dark:hover:bg-zinc-800"
           :disabled="!selectedTracks.length"
           @click="clearSelected"
         >
@@ -268,13 +268,13 @@ onBeforeUnmount(() => {
         </span>
         <div class="flex items-center gap-2">
           <button
-            class="cursor-pointer rounded-full px-3 py-1.5 text-sm text-zinc-500 transition hover:bg-zinc-100 dark:hover:bg-zinc-800"
+            class="cursor-pointer rounded-lg px-3 py-1.5 text-sm text-zinc-500 transition hover:bg-zinc-100 dark:hover:bg-zinc-800"
             @click="emit('close')"
           >
             取消
           </button>
           <button
-            class="flex cursor-pointer items-center gap-1.5 rounded-full bg-violet-500 px-4 py-1.5 text-sm font-medium text-white transition hover:bg-violet-400 disabled:cursor-not-allowed disabled:opacity-40"
+            class="flex cursor-pointer items-center gap-1.5 rounded-lg bg-violet-500 px-4 py-1.5 text-sm font-medium text-white transition hover:bg-violet-400 disabled:cursor-not-allowed disabled:opacity-40"
             :disabled="!selectedTracks.length || adding"
             @click="confirm"
           >

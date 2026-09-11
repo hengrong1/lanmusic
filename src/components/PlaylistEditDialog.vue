@@ -113,7 +113,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
       <!-- 标题栏 -->
       <div class="flex shrink-0 items-center justify-between border-b border-zinc-200 px-5 py-4 dark:border-zinc-800">
         <h2 class="text-base font-semibold text-zinc-900 dark:text-zinc-50">编辑歌单</h2>
-        <BaseButton variant="ghost" size="xs" rounded :icon="X" title="关闭" aria-label="关闭" @click="emit('close')" />
+        <BaseButton variant="ghost" size="xs" :icon="X" title="关闭" aria-label="关闭" @click="emit('close')" />
       </div>
 
       <!-- 表单 -->
@@ -149,7 +149,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
         </div>
 
         <div class="border-t border-zinc-100 pt-3 dark:border-zinc-800">
-          <BaseButton variant="ghost" tone="danger" size="xs" rounded :icon="Trash2" @click="remove">
+          <BaseButton variant="ghost" tone="danger" size="xs" :icon="Trash2" @click="remove">
             删除歌单
           </BaseButton>
         </div>

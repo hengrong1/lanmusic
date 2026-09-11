@@ -100,7 +100,7 @@ onBeforeUnmount(() => {
             <span v-if="track.artist" class="ml-2 text-zinc-400">{{ track.artist }}</span>
           </div>
           <button
-            class="shrink-0 cursor-pointer rounded-full p-1.5 text-zinc-400 transition hover:bg-white/10 hover:text-white"
+            class="shrink-0 cursor-pointer rounded-lg p-1.5 text-zinc-400 transition hover:bg-white/10 hover:text-white"
             :title="t('common.close')"
             @click="close"
           >

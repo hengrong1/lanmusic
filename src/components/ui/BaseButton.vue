@@ -19,7 +19,6 @@ const props = withDefaults(
     loading?: boolean
     disabled?: boolean
     block?: boolean
-    rounded?: boolean
   }>(),
   {
     variant: 'primary',
@@ -29,7 +28,6 @@ const props = withDefaults(
     loading: false,
     disabled: false,
     block: false,
-    rounded: false,
   },
 )
 
@@ -84,7 +82,8 @@ const iconSizeClasses: Record<ButtonSize, string> = {
 
 const classes = computed(() => [
   'inline-flex cursor-pointer items-center justify-center font-medium transition-all duration-150 ease-out focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40 disabled:cursor-not-allowed',
-  props.rounded ? 'rounded-full' : 'rounded-lg',
+  // 圆角与按钮组口径一致（8px）。底部播放控制条的按钮是全圆角，由调用处自己写 rounded-full。
+  'rounded-lg',
   props.tone === 'danger' ? dangerVariantClasses[props.variant] : variantClasses[props.variant],
   props.disabled ? disabledClasses[props.variant] : '',
   props.loading ? 'pointer-events-none opacity-80' : '',

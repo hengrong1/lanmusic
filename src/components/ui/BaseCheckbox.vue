@@ -51,7 +51,7 @@ function toggle() {
         fill="none"
       >
         <path
-          d="M3 6l3 4 3-4"
+          d="M3 7l3.5 3.5L11 4"
           stroke="currentColor"
           stroke-width="2"
           stroke-linecap="round"

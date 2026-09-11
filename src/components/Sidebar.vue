@@ -260,7 +260,7 @@ function openPlaylistMenu(e: MouseEvent, p: { id: number; name: string }) {
       <div class="flex items-center justify-between px-2 pb-1">
         <p class="sidebar-fade text-[11px] font-semibold tracking-wider text-zinc-400 uppercase dark:text-zinc-600">歌单</p>
         <button
-          class="sidebar-fade flex h-5 w-5 cursor-pointer items-center justify-center rounded text-zinc-400 hover:bg-zinc-200 hover:text-zinc-600 disabled:cursor-default dark:hover:bg-zinc-700 dark:hover:text-zinc-300"
+          class="sidebar-fade flex h-5 w-5 cursor-pointer items-center justify-center rounded-lg text-zinc-400 hover:bg-zinc-200 hover:text-zinc-600 disabled:cursor-default dark:hover:bg-zinc-700 dark:hover:text-zinc-300"
           title="新建歌单"
           :disabled="collapsed"
           @click="startCreate"

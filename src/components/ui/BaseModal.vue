@@ -71,7 +71,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
               </h2>
               <button
                 v-if="closable"
-                class="cursor-pointer rounded-full p-1 text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-700 dark:hover:text-zinc-200"
+                class="cursor-pointer rounded-lg p-1 text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-700 dark:hover:text-zinc-200"
                 @click="close()"
               >
                 <X class="h-4 w-4" />

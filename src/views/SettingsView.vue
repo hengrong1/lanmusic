@@ -380,7 +380,6 @@ const scannedSourceIds = computed(() => new Set(Object.keys(library.scanProgress
           <h2 class="text-sm font-semibold text-zinc-800 dark:text-zinc-100">音乐来源</h2>
           <BaseButton
             size="sm"
-            rounded
             :icon="adding ? LoaderCircle : FolderOpen"
             :loading="adding"
             :disabled="adding"
@@ -420,7 +419,6 @@ const scannedSourceIds = computed(() => new Set(Object.keys(library.scanProgress
                 <BaseButton
                   variant="ghost"
                   size="xs"
-                  rounded
                   :disabled="scannedSourceIds.has(s.id)"
                   title="全部重新解析标签（含快速导入与解析失败的歌曲）"
                   @click="rescanFull(s)"
@@ -430,7 +428,6 @@ const scannedSourceIds = computed(() => new Set(Object.keys(library.scanProgress
                 <BaseButton
                   variant="ghost"
                   size="xs"
-                  rounded
                   :icon="RefreshCw"
                   :loading="scannedSourceIds.has(s.id)"
                   :disabled="scannedSourceIds.has(s.id)"
@@ -442,7 +439,6 @@ const scannedSourceIds = computed(() => new Set(Object.keys(library.scanProgress
                   variant="ghost"
                   tone="danger"
                   size="xs"
-                  rounded
                   :icon="Trash2"
                   title="移除"
                   aria-label="移除"
@@ -490,7 +486,7 @@ const scannedSourceIds = computed(() => new Set(Object.keys(library.scanProgress
       <section data-stagger>
         <div class="mb-3 flex items-center justify-between">
           <h2 class="text-sm font-semibold text-zinc-800 dark:text-zinc-100">WebDAV 音乐源</h2>
-          <BaseButton size="sm" rounded :icon="Globe" @click="showWebdav = !showWebdav">
+          <BaseButton size="sm" :icon="Globe" @click="showWebdav = !showWebdav">
             {{ showWebdav ? '收起' : '添加 WebDAV' }}
           </BaseButton>
         </div>
@@ -511,7 +507,7 @@ const scannedSourceIds = computed(() => new Set(Object.keys(library.scanProgress
             <div class="w-56">
               <BaseInput v-model="webdav.name" placeholder="备注名（可选）" />
             </div>
-            <BaseButton type="submit" rounded :loading="webdavBusy" :disabled="webdavBusy" :icon="webdavBusy ? undefined : Check">
+            <BaseButton type="submit" :loading="webdavBusy" :disabled="webdavBusy" :icon="webdavBusy ? undefined : Check">
               添加并扫描
             </BaseButton>
           </div>
@@ -575,7 +571,6 @@ const scannedSourceIds = computed(() => new Set(Object.keys(library.scanProgress
                 v-for="sep in SEPARATOR_CANDIDATES"
                 :key="sep"
                 size="sm"
-                rounded
                 :variant="artistSeparators.has(sep) ? 'primary' : 'secondary'"
                 :title="sep === FIXED_SEPARATOR ? '固定分隔符：feat. / ft. / featuring 等合作标注按它拆分' : `启用后按「${sep}」拆分多艺人`"
                 :disabled="sep === FIXED_SEPARATOR || splitApplying"
@@ -833,7 +828,6 @@ const scannedSourceIds = computed(() => new Set(Object.keys(library.scanProgress
               <template v-if="updater.status.value === 'available' || updater.status.value === 'downloading'">
                 <BaseButton
                   size="sm"
-                  rounded
                   :loading="updater.status.value === 'downloading'"
                   :icon="updater.status.value === 'downloading' ? undefined : RefreshCw"
                   @click="updater.downloadAndInstall()"
@@ -844,7 +838,6 @@ const scannedSourceIds = computed(() => new Set(Object.keys(library.scanProgress
               <BaseButton
                 v-else-if="updater.status.value === 'ready'"
                 size="sm"
-                rounded
                 @click="updater.restartToUpdate()"
               >
                 重启完成更新
@@ -852,7 +845,6 @@ const scannedSourceIds = computed(() => new Set(Object.keys(library.scanProgress
               <BaseButton
                 v-else
                 size="sm"
-                rounded
                 variant="outline"
                 :loading="updater.status.value === 'checking'"
                 :disabled="updater.status.value === 'checking'"

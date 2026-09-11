@@ -155,7 +155,6 @@ async function onPickerAdded() {
           data-stagger
           variant="outline"
           size="sm"
-          rounded
           :icon="Pencil"
           title="编辑歌单信息（名称、简介、删除）"
           @click="openEdit"
@@ -167,7 +166,6 @@ async function onPickerAdded() {
           v-if="tracks.length"
           :variant="batchMode ? 'primary' : 'outline'"
           size="sm"
-          rounded
           :icon="ListChecks"
           @click="batchMode ? exitBatch() : enterBatch()"
         >
@@ -177,7 +175,6 @@ async function onPickerAdded() {
           data-stagger
           variant="outline"
           size="sm"
-          rounded
           :icon="Plus"
           @click="pickerOpen = true"
         >
@@ -188,7 +185,6 @@ async function onPickerAdded() {
           data-stagger
           variant="primary"
           size="sm"
-          rounded
           :icon="Play"
           @click="playAll"
         >
@@ -247,10 +243,10 @@ async function onPickerAdded() {
         class="fixed bottom-24 left-1/2 z-30 flex -translate-x-1/2 items-center gap-1 rounded-full border border-zinc-200 bg-white px-3 py-2 shadow-xl dark:border-zinc-700 dark:bg-zinc-800"
       >
         <span class="px-2 text-xs font-medium text-zinc-500 dark:text-zinc-400">已选 {{ selIds.length }} 首</span>
-        <BaseButton variant="ghost" size="sm" rounded :icon="Play" @click="batchPlay">播放</BaseButton>
-        <BaseButton variant="ghost" size="sm" rounded :icon="ListPlus" @click="batchEnqueue">加入队列</BaseButton>
-        <BaseButton variant="ghost" tone="danger" size="sm" rounded :icon="Trash2" @click="batchRemove">移出歌单</BaseButton>
-        <BaseButton variant="ghost" size="sm" rounded class="ml-1" @click="exitBatch">取消</BaseButton>
+        <BaseButton variant="ghost" size="sm" :icon="Play" @click="batchPlay">播放</BaseButton>
+        <BaseButton variant="ghost" size="sm" :icon="ListPlus" @click="batchEnqueue">加入队列</BaseButton>
+        <BaseButton variant="ghost" tone="danger" size="sm" :icon="Trash2" @click="batchRemove">移出歌单</BaseButton>
+        <BaseButton variant="ghost" size="sm" class="ml-1" @click="exitBatch">取消</BaseButton>
       </div>
     </Transition>
   </div>

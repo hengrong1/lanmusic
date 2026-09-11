@@ -45,12 +45,11 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
             </div>
           </div>
           <div class="mt-5 flex justify-end gap-2">
-            <BaseButton variant="ghost" size="sm" rounded @click="answer(false)">
+            <BaseButton variant="ghost" size="sm" @click="answer(false)">
               {{ state.cancelText }}
             </BaseButton>
             <BaseButton
               size="sm"
-              rounded
               variant="primary"
               :tone="state.danger ? 'danger' : 'default'"
               @click="answer(true)"

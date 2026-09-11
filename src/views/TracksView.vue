@@ -126,7 +126,6 @@ async function addFolder() {
           :icon="adding ? LoaderCircle : FolderOpen"
           :loading="adding"
           :disabled="adding"
-          rounded
           @click="addFolder"
         >
           添加音乐文件夹

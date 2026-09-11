@@ -82,7 +82,6 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
               v-if="updater.status.value !== 'downloading'"
               variant="ghost"
               size="sm"
-              rounded
               @click="dismiss"
             >
               稍后
@@ -90,7 +89,6 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
             <BaseButton
               v-if="updater.status.value === 'available'"
               size="sm"
-              rounded
               :icon="ArrowDown"
               @click="updater.downloadAndInstall()"
             >
@@ -99,7 +97,6 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
             <BaseButton
               v-else-if="updater.status.value === 'downloading'"
               size="sm"
-              rounded
               :icon="LoaderCircle"
               loading
             >
@@ -108,7 +105,6 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
             <BaseButton
               v-else-if="updater.status.value === 'ready'"
               size="sm"
-              rounded
               :icon="RotateCcw"
               @click="updater.restartToUpdate()"
             >

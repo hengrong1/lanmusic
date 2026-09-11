@@ -78,7 +78,6 @@ const tabItems: TabItem[] = [
       <div class="mt-4 flex flex-wrap items-center gap-3">
         <BaseButton loading>加载中</BaseButton>
         <BaseButton disabled>禁用</BaseButton>
-        <BaseButton rounded>圆形</BaseButton>
         <BaseButton block>块级按钮</BaseButton>
       </div>
     </BaseCard>

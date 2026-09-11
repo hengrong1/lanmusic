@@ -180,7 +180,7 @@ defineExpose({ focusSearch })
     :class="CUSTOM_WINDOW_CONTROLS ? 'pr-0' : 'pr-4'"
   >
     <button
-      class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full text-zinc-500 transition hover:bg-zinc-200/70 dark:hover:bg-zinc-800 dark:text-zinc-400"
+      class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-zinc-500 transition hover:bg-zinc-200/70 dark:hover:bg-zinc-800 dark:text-zinc-400"
       :title="collapsed ? '展开侧栏' : '收起侧栏'"
       @click="toggleSidebar"
     >
@@ -189,7 +189,7 @@ defineExpose({ focusSearch })
     </button>
 
     <button
-      class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full text-zinc-500 transition hover:bg-zinc-200/70 dark:hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-30 dark:text-zinc-400"
+      class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-zinc-500 transition hover:bg-zinc-200/70 dark:hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-30 dark:text-zinc-400"
       :disabled="!canBack"
       title="返回"
       @click="back()"
@@ -213,7 +213,7 @@ defineExpose({ focusSearch })
       />
       <button
         v-if="input"
-        class="absolute top-1/2 right-2 flex h-5 w-5 cursor-pointer -translate-y-1/2 items-center justify-center rounded-full text-zinc-400 hover:bg-zinc-200 hover:text-zinc-600 dark:hover:bg-zinc-700"
+        class="absolute top-1/2 right-2 flex h-5 w-5 cursor-pointer -translate-y-1/2 items-center justify-center rounded-lg text-zinc-400 hover:bg-zinc-200 hover:text-zinc-600 dark:hover:bg-zinc-700"
         @click="clearSearch"
       >
         <X class="h-3 w-3" />
@@ -236,7 +236,7 @@ defineExpose({ focusSearch })
             </span>
             <button
               v-if="recentSearches.length"
-              class="cursor-pointer rounded px-1.5 py-0.5 text-xs text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-700 dark:hover:text-zinc-200"
+              class="cursor-pointer rounded-lg px-1.5 py-0.5 text-xs text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-700 dark:hover:text-zinc-200"
               @mousedown.prevent="clearRecent"
             >清空</button>
           </div>
@@ -331,7 +331,7 @@ defineExpose({ focusSearch })
     </div>
 
     <button
-      class="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-full text-zinc-500 transition hover:bg-zinc-200/70 dark:text-zinc-400 dark:hover:bg-zinc-800"
+      class="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg text-zinc-500 transition hover:bg-zinc-200/70 dark:text-zinc-400 dark:hover:bg-zinc-800"
       :title="`主题：${mode === 'dark' ? '深色' : mode === 'light' ? '浅色' : '跟随系统'}`"
       @click="cycleTheme"
     >
@@ -342,7 +342,7 @@ defineExpose({ focusSearch })
     </button>
 
     <button
-      class="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-full transition hover:bg-zinc-200/70 dark:hover:bg-zinc-800"
+      class="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg transition hover:bg-zinc-200/70 dark:hover:bg-zinc-800"
       :class="current.view === 'settings' ? 'text-violet-500' : 'text-zinc-500 dark:text-zinc-400'"
       title="设置"
       @click="go({ view: 'settings' })"

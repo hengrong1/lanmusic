@@ -183,7 +183,7 @@ const offsetTip = computed(() => {
     >
       <!-- 左：关闭播放页（其余空白仍为拖拽区） -->
       <button
-        class="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-full text-white/70 transition hover:bg-white/10 hover:text-white"
+        class="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg text-white/70 transition hover:bg-white/10 hover:text-white"
         title="收起播放页 (Esc)"
         @click="emit('close')"
       >
@@ -255,14 +255,14 @@ const offsetTip = computed(() => {
           class="absolute right-0 bottom-2 z-10 flex flex-col items-center gap-1 rounded-2xl bg-black/40 px-1.5 py-2 backdrop-blur-sm"
         >
           <button
-            class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full text-white/60 transition hover:bg-white/10 hover:text-white"
+            class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-white/60 transition hover:bg-white/10 hover:text-white"
             :title="`歌词后退 0.5 秒（延后显示，歌词显示快了用这个，快捷键 ] ）${offsetTip}`"
             @click="player.setLyricOffset(0.5)"
           >
             <RewindBack class="h-5 w-5" />
           </button>
           <button
-            class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full transition"
+            class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg transition"
             :class="player.lyricOffset ? 'text-white/60 hover:bg-white/10 hover:text-white' : 'text-white/25'"
             :title="player.lyricOffset ? `还原为默认时间轴${offsetTip}` : '当前为默认时间轴，无需还原'"
             @click="player.setLyricOffset(-player.lyricOffset)"
@@ -270,7 +270,7 @@ const offsetTip = computed(() => {
             <RotateCcw class="h-4.5 w-4.5" />
           </button>
           <button
-            class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full text-white/60 transition hover:bg-white/10 hover:text-white"
+            class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-white/60 transition hover:bg-white/10 hover:text-white"
             :title="`歌词前进 0.5 秒（提前显示，歌词显示慢了用这个，快捷键 [ ）${offsetTip}`"
             @click="player.setLyricOffset(-0.5)"
           >

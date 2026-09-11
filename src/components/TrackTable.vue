@@ -379,7 +379,7 @@ function onDragEnd() {
               >文件名</span>
               <button
                 v-if="t.hasMv"
-                class="shrink-0 rounded-full p-0.5 text-fuchsia-500 transition hover:bg-fuchsia-50 dark:hover:bg-fuchsia-900/30"
+                class="shrink-0 rounded-lg p-0.5 text-fuchsia-500 transition hover:bg-fuchsia-50 dark:hover:bg-fuchsia-900/30"
                 title="播放 MV"
                 :aria-label="$t('mv.play')"
                 @click.stop="playMv(t)"
@@ -423,7 +423,7 @@ function onDragEnd() {
       >
         <button
           v-if="showLocate"
-          class="absolute right-6 bottom-5 z-10 flex max-w-[260px] cursor-pointer items-center gap-2 rounded-full bg-violet-500 px-4 py-2 text-xs font-medium text-white shadow-lg shadow-violet-500/30 transition hover:bg-violet-400"
+          class="absolute right-6 bottom-5 z-10 flex max-w-[260px] cursor-pointer items-center gap-2 rounded-lg bg-violet-500 px-4 py-2 text-xs font-medium text-white shadow-lg shadow-violet-500/30 transition hover:bg-violet-400"
           title="滚动到正在播放的歌曲"
           @click="locatePlaying"
         >
