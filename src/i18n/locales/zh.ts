@@ -8,7 +8,7 @@ export default {
     noData: '暂无数据', name: '名称', actions: '操作', status: '状态', type: '类型',
     path: '路径', progress: '进度', description: '简介', cover: '封面', date: '日期',
     time: '时间', size: '大小', count: '数量', total: '共', items: '项', page: '页',
-    prev: '上一页', next: '下一页', of: '/',
+    prev: '上一页', next: '下一页', of: '/', backToTop: '返回顶部',
     rename: '重命名', unknown: '未知', minimize: '最小化', maximize: '最大化', restore: '还原',
     songsCount: '{count} 首', albumsCount: '{count} 张', artistsCount: '{count} 位',
     songUnit: '首', selectedWithCount: '已选（{count}）', result: '结果',

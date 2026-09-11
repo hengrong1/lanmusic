@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { MapPointIcon as LocateFixed } from '@solar-icons/vue/linear/map-point'
+import { AltArrowUpIcon as ArrowUp } from '@solar-icons/vue/linear/alt-arrow-up'
 import { PlaylistIcon as ListPlus } from '@solar-icons/vue/linear/playlist'
 import { TrashBin2Icon as Trash2 } from '@solar-icons/vue/linear/trash-bin-2'
 import { CloseIcon as X } from '@solar-icons/vue/linear/close'
@@ -84,17 +85,24 @@ function checkVisible() {
   const el = activeRow()
   if (!el || !listEl.value) {
     activeVisible.value = true
+    showBackToTop.value = listEl.value ? listEl.value.scrollTop > 100 : false
     return
   }
   const top = el.offsetTop
   const c = listEl.value
   activeVisible.value = top >= c.scrollTop - 1 && top + el.offsetHeight <= c.scrollTop + c.clientHeight + 1
+  showBackToTop.value = c.scrollTop > 100
 }
 function locateActive() {
   const el = activeRow()
   if (!el || !listEl.value) return
   listEl.value.scrollTo({ top: el.offsetTop - listEl.value.clientHeight / 2, behavior: 'smooth' })
 }
+function scrollToTop() {
+  if (!listEl.value) return
+  listEl.value.scrollTo({ top: 0, behavior: 'smooth' })
+}
+const showBackToTop = ref(false)
 watch(
   () => player.index,
   () => void nextTick(checkVisible),
@@ -170,11 +178,11 @@ watch(
             v-for="(t, i) in player.queue"
             :key="`${t.id}-${i}`"
             :data-queue-idx="i"
-            class="group flex cursor-default items-center gap-3 px-4 py-2 text-sm"
+            class="group flex cursor-default items-center gap-3 px-4 py-2 text-sm transition-all duration-300"
             :class="
               i === player.index
-                ? 'bg-gradient-to-r from-violet-100 to-transparent shadow-[inset_2px_0_0_0_#8b5cf6] dark:from-violet-500/15 dark:to-transparent'
-                : 'hover:bg-zinc-100 dark:hover:bg-zinc-800/60'
+                ? 'queue-active-row mx-1 rounded-xl bg-gradient-to-r from-violet-100 via-violet-50/50 to-transparent shadow-[inset_0_0_0_1px_rgba(139,92,246,0.15),0_2px_8px_-2px_rgba(139,92,246,0.2)] dark:from-violet-500/20 dark:via-violet-500/10 dark:to-transparent dark:shadow-[inset_0_0_0_1px_rgba(139,92,246,0.25),0_2px_8px_-2px_rgba(139,92,246,0.3)]'
+                : 'mx-1 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-800/60'
             "
             @dblclick="i === player.index ? player.toggle() : player.playAt(i)"
           >
@@ -212,23 +220,39 @@ watch(
             </button>
           </div>
         </div>
-        <!-- 定位正在播放的歌曲 -->
-        <Transition
-          enter-active-class="transition duration-200 ease-out"
-          enter-from-class="opacity-0 translate-y-2"
-          leave-active-class="transition duration-150 ease-in"
-          leave-to-class="opacity-0"
-        >
-          <button
-            v-if="!activeVisible && player.index >= 0"
-            class="absolute right-4 bottom-4 z-10 flex max-w-[240px] cursor-pointer items-center gap-2 rounded-lg bg-violet-500 px-4 py-2 text-xs font-medium text-white shadow-lg shadow-violet-500/30 transition hover:bg-violet-400"
-            :title="$t('queue.scrollToCurrent')"
-            @click="locateActive"
+        <!-- 底部操作按钮：返回顶部 + 定位正在播放 -->
+        <div class="absolute right-4 bottom-4 z-10 flex flex-col items-end gap-2">
+          <Transition
+            enter-active-class="transition duration-200 ease-out"
+            enter-from-class="opacity-0 translate-y-2"
+            leave-active-class="transition duration-150 ease-in"
+            leave-to-class="opacity-0"
           >
-            <LocateFixed class="h-3.5 w-3.5 shrink-0" />
-            <span class="truncate">{{ $t('player.nowPlayingPrefix') }}{{ player.current?.title }}</span>
-          </button>
-        </Transition>
+            <button
+              v-if="showBackToTop"
+              class="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full bg-white shadow-lg shadow-zinc-300/50 transition hover:bg-zinc-100 dark:bg-zinc-800 dark:shadow-zinc-900/50 dark:hover:bg-zinc-700"
+              :title="$t('common.backToTop')"
+              @click="scrollToTop"
+            >
+              <ArrowUp class="h-4 w-4 text-zinc-600 dark:text-zinc-300" />
+            </button>
+          </Transition>
+          <Transition
+            enter-active-class="transition duration-200 ease-out"
+            enter-from-class="opacity-0 translate-y-2"
+            leave-active-class="transition duration-150 ease-in"
+            leave-to-class="opacity-0"
+          >
+            <button
+              v-if="!activeVisible && player.index >= 0"
+              class="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full bg-violet-500 shadow-lg shadow-violet-500/30 transition hover:bg-violet-400"
+              :title="$t('queue.scrollToCurrent')"
+              @click="locateActive"
+            >
+              <LocateFixed class="h-4 w-4 text-white" />
+            </button>
+          </Transition>
+        </div>
       </aside>
     </Transition>
   </Teleport>
@@ -251,6 +275,33 @@ watch(
   }
   to {
     transform: scaleY(1);
+  }
+}
+/* 正在播放行：渐变流动 + 光晕脉冲 */
+.queue-active-row {
+  background-size: 200% 100%;
+  animation: queue-shimmer 3s ease-in-out infinite, queue-pulse 2s ease-in-out infinite;
+}
+@keyframes queue-shimmer {
+  0%,
+  100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+}
+@keyframes queue-pulse {
+  0%,
+  100% {
+    box-shadow:
+      inset 0 0 0 1px rgba(139, 92, 246, 0.15),
+      0 2px 8px -2px rgba(139, 92, 246, 0.2);
+  }
+  50% {
+    box-shadow:
+      inset 0 0 0 1px rgba(139, 92, 246, 0.3),
+      0 4px 16px -2px rgba(139, 92, 246, 0.35);
   }
 }
 </style>

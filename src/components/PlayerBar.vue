@@ -42,9 +42,10 @@ watch(
     if (prev === undefined) return // 初始渲染不做动画
     if (!footerEl.value) return
     gsap.to(footerEl.value, {
-      yPercent: hidden ? 100 : 0,
-      duration: 0.45,
-      ease: 'power3.out',
+      yPercent: hidden ? 200 : 0,
+      marginBottom: hidden ? -92 : 0,
+      duration: 1.2,
+      ease: 'none',
       overwrite: 'auto',
     })
   },
@@ -487,9 +488,9 @@ const theme = computed(() =>
           :title="player.buffering ? $t('player.buffering') : $t('player.playPauseHint')"
           @click="player.toggle()"
         >
-          <!-- 播放中的脉冲光环 -->
+          <!-- 播放中的脉冲光环（专注模式隐藏，避免光环从屏幕底部边缘露出） -->
           <span
-            v-if="player.playing && !player.buffering"
+            v-if="player.playing && !player.buffering && !props.focusHidden"
             class="absolute inset-0 rounded-full bg-violet-400/50 animate-ping [animation-duration:1.8s]"
             :style="pingStyle"
           ></span>

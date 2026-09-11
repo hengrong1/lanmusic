@@ -11,7 +11,7 @@ const props = withDefaults(
   { buffer: 8 },
 )
 
-const emit = defineEmits<{ nearEnd: []; range: [start: number, end: number] }>()
+const emit = defineEmits<{ nearEnd: []; range: [start: number, end: number]; scroll: [e: Event] }>()
 
 const container = ref<HTMLElement | null>(null)
 const scrollTop = ref(0)
@@ -33,11 +33,12 @@ onMounted(() => {
 })
 onBeforeUnmount(() => resizeObserver?.disconnect())
 
-function onScroll() {
+function onScroll(e: Event) {
   if (!container.value) return
   scrollTop.value = container.value.scrollTop
   const el = container.value
   if (el.scrollHeight - el.scrollTop - el.clientHeight < 500) emit('nearEnd')
+  emit('scroll', e)
   emitRange()
 }
 

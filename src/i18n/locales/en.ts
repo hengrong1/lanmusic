@@ -8,7 +8,7 @@ export default {
     noData: 'No data', name: 'Name', actions: 'Actions', status: 'Status', type: 'Type',
     path: 'Path', progress: 'Progress', description: 'Description', cover: 'Cover', date: 'Date',
     time: 'Time', size: 'Size', count: 'Count', total: 'Total', items: 'items', page: 'Page',
-    prev: 'Previous', next: 'Next', of: '/',
+    prev: 'Previous', next: 'Next', of: '/', backToTop: 'Back to Top',
     rename: 'Rename', unknown: 'Unknown', minimize: 'Minimize', maximize: 'Maximize', restore: 'Restore',
     songsCount: '{count} songs', albumsCount: '{count} albums', artistsCount: '{count} artists',
     songUnit: 'tracks', selectedWithCount: 'Selected ({count})', result: 'Results',

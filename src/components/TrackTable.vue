@@ -85,6 +85,10 @@ const range = ref({ start: 0, end: 30 })
 function onRange(s: number, e: number) {
   range.value = { start: s, end: e }
 }
+function onScroll(e: Event) {
+  const target = e.target as HTMLElement
+  showBackToTop.value = target.scrollTop > 100
+}
 const playingIndex = computed(() =>
   player.current ? props.tracks.findIndex((t) => t.id === player.current!.id) : -1,
 )
@@ -96,6 +100,10 @@ const showLocate = computed(
 function locatePlaying() {
   if (playingIndex.value >= 0) vlist.value?.scrollToIndex(playingIndex.value)
 }
+function scrollToTop() {
+  vlist.value?.scrollToTop()
+}
+const showBackToTop = ref(false)
 
 function fmtDuration(s: number | null | undefined) {
   if (s == null || !Number.isFinite(s)) return '--:--'
@@ -325,6 +333,7 @@ function onDragEnd() {
         :item-key="(t: Track) => t.id"
         @near-end="emit('nearEnd')"
         @range="onRange"
+        @scroll="onScroll"
       >
         <template #default="{ item: t, index }">
           <div
@@ -427,23 +436,39 @@ function onDragEnd() {
         </template>
       </VirtualList>
 
-      <!-- 定位正在播放的歌曲 -->
-      <Transition
-        enter-active-class="transition duration-200 ease-out"
-        enter-from-class="opacity-0 translate-y-2"
-        leave-active-class="transition duration-150 ease-in"
-        leave-to-class="opacity-0"
-      >
-        <button
-          v-if="showLocate"
-          class="absolute right-6 bottom-5 z-10 flex max-w-[260px] cursor-pointer items-center gap-2 rounded-lg bg-violet-500 px-4 py-2 text-xs font-medium text-white shadow-lg shadow-violet-500/30 transition hover:bg-violet-400"
-          :title="$t('queue.scrollToCurrent')"
-          @click="locatePlaying"
+      <!-- 底部操作按钮：返回顶部 + 定位正在播放 -->
+      <div class="absolute right-6 bottom-5 z-10 flex flex-col items-end gap-2">
+        <Transition
+          enter-active-class="transition duration-200 ease-out"
+          enter-from-class="opacity-0 translate-y-2"
+          leave-active-class="transition duration-150 ease-in"
+          leave-to-class="opacity-0"
         >
-          <LocateFixed class="h-3.5 w-3.5 shrink-0" />
-          <span class="truncate">{{ $t('player.nowPlayingPrefix') }}{{ player.current?.title }}</span>
-        </button>
-      </Transition>
+          <button
+            v-if="showBackToTop"
+            class="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full bg-white shadow-lg shadow-zinc-300/50 transition hover:bg-zinc-100 dark:bg-zinc-800 dark:shadow-zinc-900/50 dark:hover:bg-zinc-700"
+            :title="$t('common.backToTop')"
+            @click="scrollToTop"
+          >
+            <ArrowUp class="h-4 w-4 text-zinc-600 dark:text-zinc-300" />
+          </button>
+        </Transition>
+        <Transition
+          enter-active-class="transition duration-200 ease-out"
+          enter-from-class="opacity-0 translate-y-2"
+          leave-active-class="transition duration-150 ease-in"
+          leave-to-class="opacity-0"
+        >
+          <button
+            v-if="showLocate"
+            class="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full bg-violet-500 shadow-lg shadow-violet-500/30 transition hover:bg-violet-400"
+            :title="$t('queue.scrollToCurrent')"
+            @click="locatePlaying"
+          >
+            <LocateFixed class="h-4 w-4 text-white" />
+          </button>
+        </Transition>
+      </div>
     </div>
 
     <ContextMenu v-if="menu" :x="menu.x" :y="menu.y" :items="menuItems" @close="menu = null" />
@@ -501,21 +526,6 @@ function onDragEnd() {
     0 0 0 1px rgb(167 139 250 / 0.2),
     0 2px 12px rgb(139 92 246 / 0.15);
   animation-name: row-shimmer, row-pulse-dark;
-}
-.dark .row-playing::before {
-  background: linear-gradient(to bottom, #a78bfa, #e879f9);
-}
-
-/* 左侧高亮条：渐变紫→粉 */
-.row-playing::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 6px;
-  bottom: 6px;
-  width: 3px;
-  border-radius: 0 4px 4px 0;
-  background: linear-gradient(to bottom, #8b5cf6, #d946ef);
 }
 
 /* 渐变背景流动动画 */
