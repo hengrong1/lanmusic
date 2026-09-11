@@ -12,13 +12,15 @@ import { useLibraryStore } from '@/stores/library'
 import { useNav } from '@/composables/useNav'
 import { useStagger } from '@/composables/useStagger'
 import { toast } from '@/composables/useToast'
+import { BaseButton, BaseSelect } from '@/components/ui'
+import type { SelectOption } from '@/components/ui'
 
 const library = useLibraryStore()
 const nav = useNav()
 const root = ref<HTMLElement | null>(null)
 useStagger(root, computed(() => library.trackPage.items.length > 0))
 
-const sortOptions = [
+const sortOptions: SelectOption[] = [
   { value: 'title', label: '按标题' },
   { value: 'album', label: '按专辑' },
   { value: 'artist', label: '按艺人' },
@@ -31,7 +33,6 @@ const header = computed(() => {
   if (r.search) return { title: `搜索：${r.search}`, subtitle: '' }
   if (r.albumId) return { title: r.albumTitle ?? '专辑', subtitle: '专辑' }
   if (r.artistId) return { title: r.artistName ?? '艺人', subtitle: '艺人' }
-  if (r.genre) return { title: r.genre, subtitle: '风格' }
   if (r.favorites) return { title: '我的喜欢', subtitle: '我的音乐' }
   if (r.recent) return { title: '最近播放', subtitle: '我的音乐' }
   return { title: '全部歌曲', subtitle: '我的音乐' }
@@ -50,8 +51,6 @@ function syncQuery() {
     library.setQuery({ view: 'album', refId: r.albumId, search: undefined })
   } else if (r.artistId) {
     library.setQuery({ view: 'artist', refId: r.artistId, search: undefined })
-  } else if (r.genre) {
-    library.setQuery({ view: 'genre', genre: r.genre, search: undefined })
   } else if (r.search) {
     library.setQuery({ view: 'all', search: r.search })
   } else if (r.favorites) {
@@ -71,7 +70,6 @@ watch(
   () => [
     nav.current.value.albumId,
     nav.current.value.artistId,
-    nav.current.value.genre,
     nav.current.value.search,
     nav.current.value.recent,
     nav.current.value.favorites,
@@ -103,18 +101,16 @@ async function addFolder() {
         <h1 data-stagger class="mt-0.5 text-2xl font-bold text-zinc-900 dark:text-zinc-50">{{ header.title }}</h1>
       </div>
       <div class="flex items-center gap-3">
-        <span v-if="library.trackPage.total" data-stagger class="text-sm text-zinc-500">
+        <span v-if="library.trackPage.total" data-stagger class="text-sm text-zinc-500 whitespace-nowrap">
           {{ library.trackPage.total.toLocaleString() }} 首
         </span>
-        <select
+        <BaseSelect
           v-if="!nav.current.value.search && !nav.current.value.recent"
           v-model="sort"
           data-stagger
-          class="h-8 cursor-pointer rounded-lg border border-zinc-200 bg-white px-2 text-sm text-zinc-600 outline-none dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"
-        >
-          <option value="none">入库顺序</option>
-          <option v-for="o in sortOptions" :key="o.value" :value="o.value">{{ o.label }}</option>
-        </select>
+          :options="[{ value: 'none', label: '入库顺序' }, ...sortOptions]"
+          size="sm"
+        />
       </div>
     </div>
 
@@ -125,15 +121,16 @@ async function addFolder() {
         title="音乐库还是空的"
         description="添加本地文件夹、连接局域网设备或 NAS 的 WebDAV 目录，歌曲会自动入库。"
       >
-        <button
-          class="mt-2 flex cursor-pointer items-center gap-2 rounded-full bg-violet-500 px-5 py-2.5 text-sm font-medium text-white shadow transition hover:bg-violet-400 disabled:cursor-not-allowed disabled:opacity-40"
+        <BaseButton
+          class="mt-2"
+          :icon="adding ? LoaderCircle : FolderOpen"
+          :loading="adding"
           :disabled="adding"
+          rounded
           @click="addFolder"
         >
-          <LoaderCircle v-if="adding" class="h-4 w-4 animate-spin" />
-          <FolderOpen v-else class="h-4 w-4" />
           添加音乐文件夹
-        </button>
+        </BaseButton>
       </EmptyState>
     </div>
 

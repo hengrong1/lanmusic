@@ -5,7 +5,7 @@
 > 产品设计文档见 [docs/产品设计文档.md](docs/产品设计文档.md)。
 > 当前进度：**本地播放闭环 / 歌单 / 歌词 / 最近播放 / 托盘 / WebDAV 源已完成**，应用已进入稳定维护阶段。
 >
-> 主要能力：本地与 WebDAV 音乐库、歌词（外挂 .lrc / 内嵌）、歌单、最近播放、风格视图、播放倍速与淡入淡出、专注模式、桌面歌词浮窗、封面缓存、Windows 任务栏缩略图控制、系统托盘、应用内更新（GitHub Releases）。
+> 主要能力：本地与 WebDAV 音乐库、歌词（外挂 .lrc / 内嵌）、歌单、最近播放、播放倍速与淡入淡出、专注模式、桌面歌词浮窗、封面缓存、Windows 任务栏缩略图控制、系统托盘、应用内更新（GitHub Releases）。
 
 ## 界面预览
 
@@ -32,7 +32,7 @@
 - **扫描性能**：独立 SQLite 连接（WAL 读写分离）、多线程并发解析（共享任务队列，不持锁）、封面惰性提取、枚举/解析双阶段进度上报
 - **快速导入**：针对网络目录的开关，仅按文件名/目录结构入库；「完整解析」随时补全标签
 - **`music://` 自定义流协议**：HTTP Range 拖动进度、2MB 分块封顶、本地/WebDAV 统一路由、跨平台适配（macOS `music://` / Windows `http://music.localhost`）
-- **播放**：播放模式（顺序/列表循环/单曲/随机）、队列管理、虚拟滚动列表（10 万级）、专辑/艺人/风格视图、搜索、全局快捷键（空格 / `N` / `P` / `Ctrl+F` / `[` / `]`）
+- **播放**：播放模式（顺序/列表循环/单曲/随机）、队列管理、虚拟滚动列表（10 万级）、专辑/艺人视图、搜索、全局快捷键（空格 / `N` / `P` / `Ctrl+F` / `[` / `]`）
 - **目录监听**：本地来源目录接入 notify 监听，文件变化（新增/修改/删除/重命名）自动触发增量扫描（去抖 3s；WebDAV 源无法监听，需手动重扫）
 
 ### M2 库体验
@@ -52,7 +52,6 @@
 - **播放倍速**：播放条右侧循环切换 0.5x–2x（`0.5/0.75/1/1.25/1.5/2`），倍速跨切歌延续，持久化到 `lm.rate`；非 1x 时按钮高亮
 - **队列另存为歌单**：队列面板「保存」按钮，把当前队列整体保存为新歌单（按保存时间命名）并跳转
 - **音质徽标**：播放页显示格式/采样率/位深/码率，≥88.2kHz 或 ≥24bit 标记金色 Hi-Res
-- **风格视图**：按曲目标签中的 Genre 归类浏览（侧栏「风格」入口，点击进入该风格的歌曲列表）
 - **封面缓存容量控制**：默认上限 500MB，启动与扫描结束后自动清理（先删哨兵文件，再按修改时间从旧到新删封面；可通过 `covers.max_mb` 设置调整，0 = 不限制）
 - **单实例**：重复启动时唤起已运行实例的主窗口（`tauri-plugin-single-instance`）
 - **应用内更新**：启动时静默检查 GitHub Releases 的 `latest.json`，设置 → 关于可手动检查；发现新版本显示版说明与下载进度，下载完成后重启安装；更新包经 Tauri minisign 密钥校验（免费本地签名，非 OS 代码签名）
@@ -152,10 +151,16 @@ src-tauri/                 # Rust 后端
     ├── commands.rs        # IPC 命令层：参数校验 + 数据库薄封装
     ├── db.rs              # SQLite schema + 列迁移 + KV 设置
     ├── scanner.rs         # 增量扫描管线（local/webdav 两来源，后台线程 + 进度事件）
+    ├── watcher.rs         # 本地来源目录监听（notify，去抖后触发增量扫描）
     ├── metadata.rs        # lofty 元数据解析（含远程头部字节解析）
+    ├── search.rs          # 搜索：多字段匹配 + 拼音 + 相关度评分
     ├── scheme.rs          # music:// 音频流协议（Range 代理/转发）、cover:// 封面协议
     ├── covers.rs          # 封面惰性提取与缓存（哨兵文件防重复网络 I/O）
     ├── lyrics.rs          # 歌词获取：外挂 .lrc / 内嵌 / 远程接口
+    ├── transcode.rs       # 非原生格式（APE/WMA 等）转码兜底
+    ├── thumbbar.rs        # Windows 任务栏缩略图按钮与悬停预览
+    ├── fonts.rs           # Windows 系统字体枚举（DirectWrite）
+    ├── keyring.rs         # WebDAV 凭证读写系统钥匙串
     ├── network.rs         # WebDAV 客户端（PROPFIND / 下载）
     └── state.rs           # AppState（DB 连接、扫描去重、共享句柄等）
 ```
@@ -166,7 +171,7 @@ src-tauri/                 # Rust 后端
 ┌─────────────────────────── WebView（Vue 3 + Pinia）───────────────────────────┐
 │   views / components（TrackTable 虚拟滚动 · NowPlayingView · QueuePanel …）    │
 │   stores：player（播放状态机） · library（库数据）                             │
-│        │ invoke（IPC，27 个命令）          ▲ listen（事件推送）                │
+│        │ invoke（IPC，39 个命令）          ▲ listen（事件推送）                │
 └────────┼───────────────────────────────────┼─────────────────────────────────┘
          ▼                                   │
 ┌─────────────────────────── Rust（Tauri 2）────────────────────────────────────┐
@@ -211,7 +216,7 @@ src-tauri/                 # Rust 后端
 | 分组 | 命令 |
 |---|---|
 | 来源管理 | `add_local_source(path)` · `list_sources()` · `remove_source(id)` · `rescan_source(id, mode: auto\|full)` · `set_source_fast_import(id, enabled)` · `webdav_add_source(url, username, password, name?)` |
-| 曲库查询 | `query_tracks({view, refId, genre, search, sort, page, pageSize, fields, pinyin})` · `query_albums(search, page, pageSize)` · `query_artists(search, page, pageSize)` · `query_genres(search, page, pageSize)` · `get_track(id)` · `get_tracks_by_ids(ids)` · `get_stream_url(id)` · `library_stats()` · `reveal_track(id)` |
+| 曲库查询 | `query_tracks({view, refId, search, sort, page, pageSize, fields, pinyin})` · `query_albums(search, page, pageSize)` · `query_artists(search, page, pageSize)` · `get_track(id)` · `get_tracks_by_ids(ids)` · `get_stream_url(id)` · `library_stats()` · `reveal_track(id)` |
 | 歌单 | `playlist_list` · `playlist_create(name)` · `playlist_rename(id, name)` · `playlist_delete(id)` · `playlist_get_items(id)` · `playlist_add_tracks(id, trackIds)` · `playlist_remove_track(id, trackId)` · `playlist_remove_tracks(id, trackIds)` · `playlist_set_description(id, description)` · `playlist_cover(id)` · `playlist_reorder(id, trackIds)` |
 | 播放/歌词/喜欢 | `report_play(id)` · `get_lyrics(id)` · `favorite_toggle(id, fav)` · `set_thumbbar_playing(playing)`（Windows 任务栏缩略图按钮图标同步） · `desktop_lyrics_set(enabled)`（桌面歌词浮窗开关） · `list_system_fonts()`（系统字体列表） · `set_prevent_sleep(prevent)`（播放时阻止系统休眠/锁屏） |
 | 设置 | `get_setting(key)` · `set_setting(key, value)` · `get_artist_separators()` · `set_artist_separators(value)`（保存多艺人分隔符并立即重拆曲库，返回受影响曲目的艺人变更列表） |

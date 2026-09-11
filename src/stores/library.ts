@@ -17,7 +17,7 @@ import { usePlayerStore } from '@/stores/player'
 
 export const useLibraryStore = defineStore('library', () => {
   const sources = ref<Source[]>([])
-  const stats = ref<LibraryStats>({ tracks: 0, albums: 0, artists: 0, genres: 0, favorites: 0 })
+  const stats = ref<LibraryStats>({ tracks: 0, albums: 0, artists: 0, favorites: 0 })
   const scanProgress = ref<Record<number, ScanProgress>>({})
   const playlists = ref<Playlist[]>([])
 
@@ -25,7 +25,6 @@ export const useLibraryStore = defineStore('library', () => {
   const savedSort = localStorage.getItem('lm.sort')
   const query = ref<Required<Pick<TrackQuery, 'view' | 'sort' | 'page' | 'pageSize'>> & {
     refId?: number
-    genre?: string
     search?: string
   }>({ view: 'all', sort: savedSort || 'title', page: 0, pageSize: 200 })
   watch(

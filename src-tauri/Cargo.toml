@@ -63,3 +63,15 @@ objc2-app-kit = { version = "0.3.2", features = ["NSColor", "NSWindow", "objc2-c
 # 注意 symphonia 0.5 尚未发布 Opus 解码器，Opus-in-Ogg 暂不支持（失败时降级原样供流）
 symphonia = { version = "0.5", default-features = false, features = ["ogg", "vorbis"] }
 
+# --- 关闭增量编译 ---
+# 本机 rustc 1.98.0 在持久化增量元数据时偶发「拒绝访问 (os error 5)」，
+# 且该失败只产出 warning 并仍以 0 退出，留下「自称新鲜但缺数据」的缓存，
+# 导致**下一次**构建在 rmeta/encoder.rs 的 encode_metadata 处 ICE
+# （no entry found for key → exit 101）。详见 .workbuddy/memory/MEMORY.md。
+# Cargo 的 incremental 只作用于 workspace 本地 crate（第三方依赖始终不用增量），
+# 因此这里关掉即精准覆盖 lanmusic 本体，增量收益本来就有限，换取构建确定性。
+[profile.dev]
+incremental = false
+
+# 注：[profile.test] / clippy 均派生自 dev，会自动继承上面的设置。
+

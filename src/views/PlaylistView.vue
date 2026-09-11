@@ -6,6 +6,7 @@ import { Playlist2Icon as ListPlus } from '@solar-icons/vue/linear/playlist-2'
 import { RefreshIcon as LoaderCircle } from '@solar-icons/vue/linear/refresh'
 import { PenIcon as Pencil } from '@solar-icons/vue/linear/pen'
 import { PlayIcon as Play } from '@solar-icons/vue/bold/play'
+import { TrashBin2Icon as Trash2 } from '@solar-icons/vue/linear/trash-bin-2'
 import { AddIcon as Plus } from '@solar-icons/vue/linear/add'
 import TrackTable from '@/components/TrackTable.vue'
 import TrackPicker from '@/components/TrackPicker.vue'
@@ -19,6 +20,7 @@ import { useStagger } from '@/composables/useStagger'
 import { toast } from '@/composables/useToast'
 import { api } from '@/api/commands'
 import type { Track } from '@/types'
+import { BaseButton } from '@/components/ui'
 
 const library = useLibraryStore()
 const player = usePlayerStore()
@@ -149,46 +151,49 @@ async function onPickerAdded() {
         </p>
       </div>
       <div class="flex shrink-0 items-center gap-2">
-        <button
+        <BaseButton
           data-stagger
-          class="flex h-9 cursor-pointer items-center gap-1.5 rounded-full border border-zinc-200 px-3.5 text-sm text-zinc-600 transition hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+          variant="outline"
+          size="sm"
+          rounded
+          :icon="Pencil"
           title="编辑歌单信息（名称、简介、删除）"
           @click="openEdit"
         >
-          <Pencil class="h-4 w-4" />
           编辑
-        </button>
-        <button
+        </BaseButton>
+        <BaseButton
           data-stagger
           v-if="tracks.length"
-          class="flex cursor-pointer items-center gap-1.5 rounded-full border px-4 py-2 text-sm transition"
-          :class="
-            batchMode
-              ? 'border-violet-400 bg-violet-50 text-violet-600 dark:bg-violet-500/10 dark:text-violet-300'
-              : 'border-zinc-200 text-zinc-600 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800'
-          "
+          :variant="batchMode ? 'primary' : 'outline'"
+          size="sm"
+          rounded
+          :icon="ListChecks"
           @click="batchMode ? exitBatch() : enterBatch()"
         >
-          <ListChecks class="h-4 w-4" />
           {{ batchMode ? '退出多选' : '多选' }}
-        </button>
-        <button
+        </BaseButton>
+        <BaseButton
           data-stagger
-          class="flex cursor-pointer items-center gap-1.5 rounded-full border border-zinc-200 px-4 py-2 text-sm text-zinc-600 transition hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+          variant="outline"
+          size="sm"
+          rounded
+          :icon="Plus"
           @click="pickerOpen = true"
         >
-          <Plus class="h-4 w-4" />
           添加歌曲
-        </button>
-        <button
+        </BaseButton>
+        <BaseButton
           v-if="tracks.length"
           data-stagger
-          class="flex cursor-pointer items-center gap-2 rounded-full bg-violet-500 px-5 py-2 text-sm font-medium text-white shadow transition hover:bg-violet-400"
+          variant="primary"
+          size="sm"
+          rounded
+          :icon="Play"
           @click="playAll"
         >
-          <Play class="h-4 w-4" />
           播放全部
-        </button>
+        </BaseButton>
       </div>
     </div>
 
@@ -242,33 +247,10 @@ async function onPickerAdded() {
         class="fixed bottom-24 left-1/2 z-30 flex -translate-x-1/2 items-center gap-1 rounded-full border border-zinc-200 bg-white px-3 py-2 shadow-xl dark:border-zinc-700 dark:bg-zinc-800"
       >
         <span class="px-2 text-xs font-medium text-zinc-500 dark:text-zinc-400">已选 {{ selIds.length }} 首</span>
-        <button
-          class="flex cursor-pointer items-center gap-1 rounded-full px-3 py-1.5 text-sm text-zinc-600 transition hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-700"
-          @click="batchPlay"
-        >
-          <Play class="h-3.5 w-3.5" />
-          播放
-        </button>
-        <button
-          class="flex cursor-pointer items-center gap-1 rounded-full px-3 py-1.5 text-sm text-zinc-600 transition hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-700"
-          @click="batchEnqueue"
-        >
-          <ListPlus class="h-3.5 w-3.5" />
-          加入队列
-        </button>
-        <button
-          class="flex cursor-pointer items-center gap-1 rounded-full px-3 py-1.5 text-sm text-red-600 transition hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-500/10"
-          @click="batchRemove"
-        >
-          <Trash2 class="h-3.5 w-3.5" />
-          移出歌单
-        </button>
-        <button
-          class="ml-1 flex cursor-pointer items-center gap-1 rounded-full px-3 py-1.5 text-sm text-zinc-500 transition hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-700"
-          @click="exitBatch"
-        >
-          取消
-        </button>
+        <BaseButton variant="ghost" size="sm" rounded :icon="Play" @click="batchPlay">播放</BaseButton>
+        <BaseButton variant="ghost" size="sm" rounded :icon="ListPlus" @click="batchEnqueue">加入队列</BaseButton>
+        <BaseButton variant="ghost" tone="danger" size="sm" rounded :icon="Trash2" @click="batchRemove">移出歌单</BaseButton>
+        <BaseButton variant="ghost" size="sm" rounded class="ml-1" @click="exitBatch">取消</BaseButton>
       </div>
     </Transition>
   </div>

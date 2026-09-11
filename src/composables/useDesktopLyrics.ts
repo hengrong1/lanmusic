@@ -55,7 +55,11 @@ function loadState(): { enabled: boolean; config: DeskLyricsConfig } {
     const raw = localStorage.getItem(LS_KEY)
     if (raw) {
       const s = JSON.parse(raw) as { enabled?: boolean; config?: Partial<DeskLyricsConfig> }
-      return { enabled: !!s.enabled, config: { ...DEFAULT_CONFIG, ...s.config } }
+      const config = { ...DEFAULT_CONFIG, ...s.config }
+      // 单行不支持「左右分离」：历史存档或手改 localStorage 可能留下非法组合，读取时就收敛，
+      // 避免"只有切换行数时才纠正"导致单行 + split 的错位状态一直存在
+      if (config.lines === 1 && config.align === 'split') config.align = 'center'
+      return { enabled: !!s.enabled, config }
     }
   } catch {
     /* 损坏则用默认值 */

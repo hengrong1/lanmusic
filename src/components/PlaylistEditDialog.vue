@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { RefreshIcon as LoaderCircle } from '@solar-icons/vue/linear/refresh'
 import { TrashBin2Icon as Trash2 } from '@solar-icons/vue/linear/trash-bin-2'
 import { CloseIcon as X } from '@solar-icons/vue/linear/close'
 import CoverImg from '@/components/CoverImg.vue'
 import { useLibraryStore } from '@/stores/library'
 import { confirmDialog } from '@/composables/useConfirm'
 import { toast } from '@/composables/useToast'
+import { BaseInput, BaseTextarea, BaseButton } from '@/components/ui'
 
 /**
  * 编辑歌单弹层：集中修改名称、简介；只读展示创建时间 / 歌曲数 / 封面；删除歌单。
@@ -29,7 +29,7 @@ const createdText = computed(() => {
 const nameDraft = ref('')
 const descDraft = ref('')
 const saving = ref(false)
-const nameInput = ref<HTMLInputElement | null>(null)
+const nameInput = ref<InstanceType<typeof BaseInput> | null>(null)
 
 function resetDrafts() {
   nameDraft.value = meta.value?.name ?? ''
@@ -113,13 +113,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
       <!-- 标题栏 -->
       <div class="flex shrink-0 items-center justify-between border-b border-zinc-200 px-5 py-4 dark:border-zinc-800">
         <h2 class="text-base font-semibold text-zinc-900 dark:text-zinc-50">编辑歌单</h2>
-        <button
-          class="flex h-7 w-7 cursor-pointer items-center justify-center rounded-full text-zinc-400 transition hover:bg-zinc-100 dark:hover:bg-zinc-800"
-          title="关闭"
-          @click="emit('close')"
-        >
-          <X class="h-4 w-4" />
-        </button>
+        <BaseButton variant="ghost" size="xs" rounded :icon="X" title="关闭" aria-label="关闭" @click="emit('close')" />
       </div>
 
       <!-- 表单 -->
@@ -135,54 +129,38 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 
         <div>
           <label class="mb-1 block text-xs font-medium text-zinc-500 dark:text-zinc-400">歌单名称</label>
-          <input
+          <BaseInput
             ref="nameInput"
             v-model="nameDraft"
-            class="h-9 w-full rounded-lg border border-zinc-200 bg-transparent px-3 text-sm text-zinc-800 outline-none focus:border-violet-400 dark:border-zinc-700 dark:text-zinc-100"
             placeholder="歌单名称"
-            maxlength="60"
+            :maxlength="60"
             @keydown.enter="save"
           />
         </div>
 
         <div>
           <label class="mb-1 block text-xs font-medium text-zinc-500 dark:text-zinc-400">简介</label>
-          <textarea
+          <BaseTextarea
             v-model="descDraft"
-            rows="3"
-            class="w-full resize-none rounded-lg border border-zinc-200 bg-transparent px-3 py-2 text-sm text-zinc-800 outline-none focus:border-violet-400 dark:border-zinc-700 dark:text-zinc-100"
+            :rows="3"
             placeholder="写点什么，介绍这个歌单…"
-            maxlength="300"
-          ></textarea>
+            :maxlength="300"
+          />
         </div>
 
         <div class="border-t border-zinc-100 pt-3 dark:border-zinc-800">
-          <button
-            class="flex cursor-pointer items-center gap-1.5 text-xs font-medium text-red-500 transition hover:text-red-600"
-            @click="remove"
-          >
-            <Trash2 class="h-3.5 w-3.5" />
+          <BaseButton variant="ghost" tone="danger" size="xs" rounded :icon="Trash2" @click="remove">
             删除歌单
-          </button>
+          </BaseButton>
         </div>
       </div>
 
       <!-- 底部操作 -->
       <div class="flex shrink-0 items-center justify-end gap-2 border-t border-zinc-200 px-5 py-3 dark:border-zinc-800">
-        <button
-          class="cursor-pointer rounded-full px-3 py-1.5 text-sm text-zinc-500 transition hover:bg-zinc-100 dark:hover:bg-zinc-800"
-          @click="emit('close')"
-        >
-          取消
-        </button>
-        <button
-          class="flex cursor-pointer items-center gap-1.5 rounded-full bg-violet-500 px-4 py-1.5 text-sm font-medium text-white transition hover:bg-violet-400 disabled:cursor-not-allowed disabled:opacity-40"
-          :disabled="saving || !nameDraft.trim()"
-          @click="save"
-        >
-          <LoaderCircle v-if="saving" class="h-4 w-4 animate-spin" />
+        <BaseButton variant="ghost" size="sm" @click="emit('close')">取消</BaseButton>
+        <BaseButton variant="primary" size="sm" :loading="saving" :disabled="!nameDraft.trim()" @click="save">
           保存
-        </button>
+        </BaseButton>
       </div>
     </div>
   </div>

@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted } from 'vue'
 import { AltArrowDownIcon as ArrowDown } from '@solar-icons/vue/linear/alt-arrow-down'
 import { RefreshIcon as LoaderCircle } from '@solar-icons/vue/linear/refresh'
 import { RestartIcon as RotateCcw } from '@solar-icons/vue/linear/restart'
+import { BaseButton } from '@/components/ui'
 import { useUpdater } from '@/composables/useUpdater'
 
 const updater = useUpdater()
@@ -77,37 +78,42 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
           <p v-if="updater.status.value === 'ready'" class="mt-4 text-xs text-zinc-400">更新已下载完成，重启应用后生效。</p>
 
           <div class="mt-5 flex justify-end gap-2">
-            <button
+            <BaseButton
               v-if="updater.status.value !== 'downloading'"
-              class="cursor-pointer rounded-full px-4 py-1.5 text-sm text-zinc-600 transition hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-700"
+              variant="ghost"
+              size="sm"
+              rounded
               @click="dismiss"
             >
               稍后
-            </button>
-            <button
+            </BaseButton>
+            <BaseButton
               v-if="updater.status.value === 'available'"
-              class="flex cursor-pointer items-center gap-1.5 rounded-full bg-violet-500 px-4 py-1.5 text-sm font-medium text-white transition hover:bg-violet-400"
+              size="sm"
+              rounded
+              :icon="ArrowDown"
               @click="updater.downloadAndInstall()"
             >
-              <ArrowDown class="h-3.5 w-3.5" />
               立即更新
-            </button>
-            <button
+            </BaseButton>
+            <BaseButton
               v-else-if="updater.status.value === 'downloading'"
-              class="flex cursor-not-allowed items-center gap-1.5 rounded-full bg-violet-500 px-4 py-1.5 text-sm font-medium text-white opacity-80"
-              disabled
+              size="sm"
+              rounded
+              :icon="LoaderCircle"
+              loading
             >
-              <LoaderCircle class="h-3.5 w-3.5 animate-spin" />
               正在下载…
-            </button>
-            <button
+            </BaseButton>
+            <BaseButton
               v-else-if="updater.status.value === 'ready'"
-              class="flex cursor-pointer items-center gap-1.5 rounded-full bg-violet-500 px-4 py-1.5 text-sm font-medium text-white transition hover:bg-violet-400"
+              size="sm"
+              rounded
+              :icon="RotateCcw"
               @click="updater.restartToUpdate()"
             >
-              <RotateCcw class="h-3.5 w-3.5" />
               重启应用
-            </button>
+            </BaseButton>
           </div>
         </div>
       </div>

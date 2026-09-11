@@ -14,7 +14,6 @@ import { useUpdater } from '@/composables/useUpdater'
 import TracksView from '@/views/TracksView.vue'
 import AlbumsView from '@/views/AlbumsView.vue'
 import ArtistsView from '@/views/ArtistsView.vue'
-import GenresView from '@/views/GenresView.vue'
 import PlaylistView from '@/views/PlaylistView.vue'
 import SettingsView from '@/views/SettingsView.vue'
 import { useLibraryStore } from '@/stores/library'
@@ -141,8 +140,6 @@ const viewComponent = computed(() => {
       return AlbumsView
     case 'artists':
       return ArtistsView
-    case 'genres':
-      return GenresView
     case 'playlist':
       return PlaylistView
     case 'settings':

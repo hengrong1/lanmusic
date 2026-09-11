@@ -268,7 +268,6 @@ pub fn run() {
             commands::get_tracks_by_ids,
             commands::get_stream_url,
             commands::library_stats,
-            commands::query_genres,
             commands::reveal_track,
             commands::playlist_list,
             commands::playlist_create,

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted } from 'vue'
 import { DangerTriangleIcon as TriangleAlert } from '@solar-icons/vue/linear/danger-triangle'
+import { BaseButton } from '@/components/ui'
 import { useConfirmState } from '@/composables/useConfirm'
 
 const { state, answer } = useConfirmState()
@@ -44,19 +45,18 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
             </div>
           </div>
           <div class="mt-5 flex justify-end gap-2">
-            <button
-              class="cursor-pointer rounded-full px-4 py-1.5 text-sm text-zinc-600 transition hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-700"
-              @click="answer(false)"
-            >
+            <BaseButton variant="ghost" size="sm" rounded @click="answer(false)">
               {{ state.cancelText }}
-            </button>
-            <button
-              class="cursor-pointer rounded-full px-4 py-1.5 text-sm font-medium text-white transition hover:brightness-110"
-              :class="state.danger ? 'bg-red-500' : 'bg-violet-500'"
+            </BaseButton>
+            <BaseButton
+              size="sm"
+              rounded
+              variant="primary"
+              :tone="state.danger ? 'danger' : 'default'"
               @click="answer(true)"
             >
               {{ state.confirmText }}
-            </button>
+            </BaseButton>
           </div>
         </div>
       </div>

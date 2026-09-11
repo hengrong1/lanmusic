@@ -24,6 +24,17 @@ import { getSearchSettings, setSearchSettings, type SearchSettings } from '@/com
 import type { ArtistSplitChange, Source } from '@/types'
 import { setLocale } from '@/i18n'
 import { useI18n } from 'vue-i18n'
+import {
+  BaseButton,
+  BaseButtonGroup,
+  BaseCheckbox,
+  BaseColorPicker,
+  BaseInput,
+  BaseSwitch,
+  BaseSelect,
+  BaseSlider,
+} from '@/components/ui'
+import type { ButtonGroupItem, SelectOption } from '@/components/ui'
 
 const library = useLibraryStore()
 const { mode, setTheme } = useTheme()
@@ -35,23 +46,31 @@ const languageOptions = [
   { value: 'zh' as const, label: '简体中文' },
   { value: 'en' as const, label: 'English' },
 ]
-function onLocaleChange(e: Event) {
-  const val = (e.target as HTMLSelectElement).value as 'zh' | 'en'
-  setLocale(val)
+function onLocaleChange(val: string | number) {
+  setLocale(val as 'zh' | 'en')
+}
+
+const themeItems: ButtonGroupItem[] = [
+  { value: 'light', label: '浅色' },
+  { value: 'dark', label: '深色' },
+  { value: 'system', label: '跟随系统' },
+]
+function onThemeChange(val: string) {
+  setTheme(val as ThemeMode)
 }
 
 // ---- 播放设置（淡入淡出 / 阻止系统休眠）----
 const fadeOn = ref(player.isFadeOn())
-function onFadeToggle() {
-  fadeOn.value = !fadeOn.value
-  player.setFadeEnabled(fadeOn.value)
-  toast(fadeOn.value ? '已开启歌曲淡入淡出' : '已关闭歌曲淡入淡出')
+function onFadeToggle(val: boolean) {
+  fadeOn.value = val
+  player.setFadeEnabled(val)
+  toast(val ? '已开启歌曲淡入淡出' : '已关闭歌曲淡入淡出')
 }
 const preventSleepOn = ref(getPreventSleep())
-function onPreventSleepToggle() {
-  preventSleepOn.value = !preventSleepOn.value
-  setPreventSleepSetting(preventSleepOn.value, player.playing)
-  toast(preventSleepOn.value ? '已开启播放时阻止系统休眠' : '已关闭播放时阻止系统休眠')
+function onPreventSleepToggle(val: boolean) {
+  preventSleepOn.value = val
+  setPreventSleepSetting(val, player.playing)
+  toast(val ? '已开启播放时阻止系统休眠' : '已关闭播放时阻止系统休眠')
 }
 
 // ---- 系统托盘设置 ----
@@ -60,11 +79,12 @@ function getCloseAction(): CloseAction {
   const v = localStorage.getItem('lm.closeAction')
   return v === 'quit' ? 'quit' : 'tray'
 }
-function setCloseAction(action: CloseAction) {
-  localStorage.setItem('lm.closeAction', action)
+function setCloseAction(action: string | number) {
+  const v = action as CloseAction
+  localStorage.setItem('lm.closeAction', v)
   // 同步到 SQLite，供 Rust 侧关闭事件使用
-  api.setSetting('lm.closeAction', action).catch(() => {})
-  toast(action === 'tray' ? '关闭窗口时将最小化到托盘' : '关闭窗口时将退出应用')
+  api.setSetting('lm.closeAction', v).catch(() => {})
+  toast(v === 'tray' ? '关闭窗口时将最小化到托盘' : '关闭窗口时将退出应用')
 }
 const closeAction = ref(getCloseAction())
 // 从 SQLite 加载设置（如果存在）
@@ -93,27 +113,34 @@ const searchSortOptions: { value: SearchSettings['sort']; label: string }[] = [
   { value: 'added', label: '时间添加优先' },
   { value: 'plays', label: '播放次数优先' },
 ]
+const searchSortItems: ButtonGroupItem[] = searchSortOptions.map((o) => ({ value: o.value, label: o.label }))
+function onSearchSortChange(val: string) {
+  searchSettings.value = { ...searchSettings.value, sort: val as SearchSettings['sort'] }
+  saveSearchSettings()
+}
 /** 保存到 localStorage（每次变更即时生效，无 toast 打扰） */
 function saveSearchSettings() {
   setSearchSettings(searchSettings.value)
 }
-function toggleSearchField(v: string) {
+/** 勾选/取消某个搜索字段；至少保留一项，其余变更即时保存 */
+function toggleSearchField(v: string, checked: boolean) {
   const fields = searchSettings.value.fields
-  if (fields.includes(v)) {
-    // 至少保留一项
+  if (checked && !fields.includes(v)) {
+    searchSettings.value = { ...searchSettings.value, fields: [...fields, v] }
+  } else if (!checked && fields.includes(v)) {
     if (fields.length === 1) return
     searchSettings.value = { ...searchSettings.value, fields: fields.filter((x) => x !== v) }
   } else {
-    searchSettings.value = { ...searchSettings.value, fields: [...fields, v] }
+    return
   }
   saveSearchSettings()
 }
-function togglePinyin() {
-  searchSettings.value = { ...searchSettings.value, pinyin: !searchSettings.value.pinyin }
+function togglePinyin(val: boolean) {
+  searchSettings.value = { ...searchSettings.value, pinyin: val }
   saveSearchSettings()
 }
-function onDebounceChange(e: Event) {
-  searchSettings.value = { ...searchSettings.value, debounceMs: Number((e.target as HTMLSelectElement).value) }
+function onDebounceChange(val: string | number) {
+  searchSettings.value = { ...searchSettings.value, debounceMs: Number(val) }
   saveSearchSettings()
 }
 
@@ -162,17 +189,25 @@ async function onSeparatorToggle(sep: string) {
   }
 }
 
-/** 桌面歌词设置项可选项 */
-const dlLineOptions = [
-  { value: 1 as const, label: '单行' },
-  { value: 2 as const, label: '双行' },
+/** 桌面歌词：行数 / 对齐（分段控件，值为字符串，写入时转回） */
+const dlLineItems: ButtonGroupItem[] = [
+  { value: '1', label: '单行' },
+  { value: '2', label: '双行' },
 ]
-const dlAlignOptions = [
-  { value: 'left' as const, label: '左对齐' },
-  { value: 'center' as const, label: '居中' },
-  { value: 'right' as const, label: '右对齐' },
-  { value: 'split' as const, label: '左右分离' },
+const dlAlignItems: ButtonGroupItem[] = [
+  { value: 'left', label: '左对齐' },
+  { value: 'center', label: '居中' },
+  { value: 'right', label: '右对齐' },
+  { value: 'split', label: '左右分离' },
 ]
+function onDlLinesChange(val: string) {
+  dlConfig.value.lines = Number(val) === 1 ? 1 : 2
+  if (dlConfig.value.lines === 1 && dlConfig.value.align === 'split') dlConfig.value.align = 'center'
+}
+function onDlAlignChange(val: string) {
+  dlConfig.value.align = val as typeof dlConfig.value.align
+}
+const filteredDlAlignItems = computed(() => dlAlignItems.filter((o) => o.value !== 'split' || dlConfig.value.lines === 2))
 
 // ---- 全局字体（设置 → 外观）----
 const appFont = ref(getAppFont())
@@ -184,10 +219,28 @@ onMounted(() => {
     .then((f) => (systemFonts.value = f))
     .catch(() => (systemFonts.value = []))
 })
-function onFontChange(e: Event) {
-  appFont.value = (e.target as HTMLSelectElement).value
+function onFontChange(val: string | number) {
+  appFont.value = val as string
   setAppFont(appFont.value)
 }
+
+// 组件选项数据
+const closeActionItems: ButtonGroupItem[] = [
+  { value: 'tray', label: '最小化到托盘' },
+  { value: 'quit', label: '退出应用' },
+]
+
+const fontSelectOptions = computed<SelectOption[]>(() => [
+  { value: '', label: '系统默认' },
+  ...systemFonts.value.map((f) => ({ value: `'${f}'`, label: f })),
+])
+
+const debounceSelectOptions: SelectOption[] = [
+  { value: 150, label: '150ms' },
+  { value: 300, label: '300ms' },
+  { value: 500, label: '500ms' },
+  { value: 800, label: '800ms' },
+]
 
 /** 桌面歌词预览：与浮窗完全一致的样式计算 */
 function hexToRgba(hex: string, alpha: number): string {
@@ -290,10 +343,12 @@ function rescanFull(s: Source) {
   library.rescan(s.id, 'full').catch((e) => toast(String(e), 'error'))
 }
 
-async function toggleFastImport(s: Source) {
+async function toggleFastImport(s: Source, val?: boolean) {
+  const next = val ?? !s.fastImport
+  if (next === s.fastImport) return
   try {
-    await library.setFastImport(s.id, !s.fastImport)
-    if (!s.fastImport) {
+    await library.setFastImport(s.id, next)
+    if (next) {
       toast('已开启快速导入：重新扫描后生效，仅按文件名/目录结构入库，不读文件内容')
     } else {
       toast('已关闭快速导入：下次增量扫描会自动补全解析这些歌曲的标签')
@@ -307,12 +362,6 @@ function fmtTime(t: number | null) {
   if (!t) return '从未扫描'
   return new Date(t * 1000).toLocaleString()
 }
-
-const themes: { value: ThemeMode; label: string }[] = [
-  { value: 'dark', label: '深色' },
-  { value: 'light', label: '浅色' },
-  { value: 'system', label: '跟随系统' },
-]
 
 const scannedSourceIds = computed(() => new Set(Object.keys(library.scanProgress).map(Number)))
 </script>
@@ -329,15 +378,16 @@ const scannedSourceIds = computed(() => new Set(Object.keys(library.scanProgress
       <section data-stagger>
         <div class="mb-3 flex items-center justify-between">
           <h2 class="text-sm font-semibold text-zinc-800 dark:text-zinc-100">音乐来源</h2>
-          <button
-            class="flex cursor-pointer items-center gap-1.5 rounded-full bg-violet-500 px-3.5 py-1.5 text-xs font-medium text-white transition hover:bg-violet-400 disabled:cursor-not-allowed disabled:opacity-40"
+          <BaseButton
+            size="sm"
+            rounded
+            :icon="adding ? LoaderCircle : FolderOpen"
+            :loading="adding"
             :disabled="adding"
             @click="addFolder"
           >
-            <LoaderCircle v-if="adding" class="h-3.5 w-3.5 animate-spin" />
-            <FolderOpen v-else class="h-3.5 w-3.5" />
             添加文件夹
-          </button>
+          </BaseButton>
         </div>
 
         <div class="space-y-2">
@@ -355,46 +405,49 @@ const scannedSourceIds = computed(() => new Set(Object.keys(library.scanProgress
                 <p class="truncate text-xs text-zinc-500" :title="s.basePath ?? s.baseUrl ?? ''">{{ s.basePath ?? s.baseUrl }}</p>
               </div>
               <span class="shrink-0 text-xs text-zinc-400">{{ s.trackCount }} 首 · {{ fmtTime(s.lastScanAt) }}</span>
-              <label
-                class="flex shrink-0 cursor-pointer items-center gap-1.5 text-xs text-zinc-500"
+              <div
+                class="flex shrink-0 items-center gap-1.5 text-xs text-zinc-500"
                 title="快速导入：不读取文件内容，按文件名/目录结构入库，适合慢速网络目录（NAS/SMB 挂载）"
               >
                 快速导入
-                <button
-                  class="relative h-5 w-9 cursor-pointer rounded-full transition"
-                  :class="s.fastImport ? 'bg-violet-500' : 'bg-zinc-200 dark:bg-zinc-700'"
-                  @click.prevent="toggleFastImport(s)"
-                >
-                  <span
-                    class="absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all"
-                    :class="s.fastImport ? 'left-[18px]' : 'left-0.5'"
-                  ></span>
-                </button>
-              </label>
+                <BaseSwitch
+                  :model-value="s.fastImport"
+                  size="sm"
+                  @update:model-value="(v) => toggleFastImport(s, v)"
+                />
+              </div>
               <div class="flex shrink-0 items-center gap-1">
-                <button
-                  class="flex h-8 cursor-pointer items-center justify-center rounded-full px-2 text-xs text-zinc-500 hover:bg-zinc-100 hover:text-violet-600 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:bg-zinc-800"
-                  title="全部重新解析标签（含快速导入与解析失败的歌曲）"
+                <BaseButton
+                  variant="ghost"
+                  size="xs"
+                  rounded
                   :disabled="scannedSourceIds.has(s.id)"
+                  title="全部重新解析标签（含快速导入与解析失败的歌曲）"
                   @click="rescanFull(s)"
                 >
                   完整解析
-                </button>
-                <button
-                  class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full text-zinc-500 hover:bg-zinc-100 hover:text-violet-600 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:bg-zinc-800"
-                  title="增量扫描"
+                </BaseButton>
+                <BaseButton
+                  variant="ghost"
+                  size="xs"
+                  rounded
+                  :icon="RefreshCw"
+                  :loading="scannedSourceIds.has(s.id)"
                   :disabled="scannedSourceIds.has(s.id)"
+                  title="增量扫描"
+                  aria-label="增量扫描"
                   @click="rescan(s.id)"
-                >
-                  <RefreshCw class="h-4 w-4" :class="scannedSourceIds.has(s.id) ? 'animate-spin' : ''" />
-                </button>
-                <button
-                  class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full text-zinc-500 hover:bg-zinc-100 hover:text-red-500 dark:hover:bg-zinc-800"
+                />
+                <BaseButton
+                  variant="ghost"
+                  tone="danger"
+                  size="xs"
+                  rounded
+                  :icon="Trash2"
                   title="移除"
+                  aria-label="移除"
                   @click="remove(s)"
-                >
-                  <Trash2 class="h-4 w-4" />
-                </button>
+                />
               </div>
             </div>
             <div v-if="library.scanProgress[s.id]" class="mt-3">
@@ -437,13 +490,9 @@ const scannedSourceIds = computed(() => new Set(Object.keys(library.scanProgress
       <section data-stagger>
         <div class="mb-3 flex items-center justify-between">
           <h2 class="text-sm font-semibold text-zinc-800 dark:text-zinc-100">WebDAV 音乐源</h2>
-          <button
-            class="flex cursor-pointer items-center gap-1.5 rounded-full bg-violet-500 px-3.5 py-1.5 text-xs font-medium text-white transition hover:bg-violet-400"
-            @click="showWebdav = !showWebdav"
-          >
-            <Globe class="h-3.5 w-3.5" />
+          <BaseButton size="sm" rounded :icon="Globe" @click="showWebdav = !showWebdav">
             {{ showWebdav ? '收起' : '添加 WebDAV' }}
-          </button>
+          </BaseButton>
         </div>
         <form
           v-if="showWebdav"
@@ -454,40 +503,17 @@ const scannedSourceIds = computed(() => new Set(Object.keys(library.scanProgress
             <Globe class="h-3.5 w-3.5" /> 支持 https://nas.local:5006 或 http://192.168.1.2:5005
           </p>
           <div class="grid gap-3" style="grid-template-columns: 2fr 1fr 1fr">
-            <input
-              v-model="webdav.url"
-              class="h-9 rounded-lg border border-zinc-200 bg-transparent px-3 text-sm outline-none focus:border-violet-400 dark:border-zinc-700"
-              placeholder="WebDAV 地址"
-              required
-            />
-            <input
-              v-model="webdav.username"
-              class="h-9 rounded-lg border border-zinc-200 bg-transparent px-3 text-sm outline-none focus:border-violet-400 dark:border-zinc-700"
-              placeholder="账号"
-              autocomplete="off"
-            />
-            <input
-              v-model="webdav.password"
-              type="password"
-              class="h-9 rounded-lg border border-zinc-200 bg-transparent px-3 text-sm outline-none focus:border-violet-400 dark:border-zinc-700"
-              placeholder="密码"
-              autocomplete="off"
-            />
+            <BaseInput v-model="webdav.url" placeholder="WebDAV 地址" required />
+            <BaseInput v-model="webdav.username" placeholder="账号" autocomplete="off" />
+            <BaseInput v-model="webdav.password" type="password" placeholder="密码" autocomplete="off" />
           </div>
           <div class="flex items-center gap-3">
-            <input
-              v-model="webdav.name"
-              class="h-9 w-56 rounded-lg border border-zinc-200 bg-transparent px-3 text-sm outline-none focus:border-violet-400 dark:border-zinc-700"
-              placeholder="备注名（可选）"
-            />
-            <button
-              class="flex cursor-pointer items-center gap-2 rounded-full bg-violet-500 px-4 py-1.5 text-sm font-medium text-white hover:bg-violet-400 disabled:cursor-not-allowed disabled:opacity-40"
-              :disabled="webdavBusy"
-            >
-              <LoaderCircle v-if="webdavBusy" class="h-4 w-4 animate-spin" />
-              <Check v-else class="h-4 w-4" />
+            <div class="w-56">
+              <BaseInput v-model="webdav.name" placeholder="备注名（可选）" />
+            </div>
+            <BaseButton type="submit" rounded :loading="webdavBusy" :disabled="webdavBusy" :icon="webdavBusy ? undefined : Check">
               添加并扫描
-            </button>
+            </BaseButton>
           </div>
         </form>
       </section>
@@ -496,32 +522,13 @@ const scannedSourceIds = computed(() => new Set(Object.keys(library.scanProgress
       <section data-stagger>
         <h2 class="mb-3 text-sm font-semibold text-zinc-800 dark:text-zinc-100">外观</h2>
         <div class="space-y-3">
-          <div class="flex gap-2">
-            <button
-              v-for="t in themes"
-              :key="t.value"
-              class="cursor-pointer rounded-full px-4 py-1.5 text-sm transition"
-              :class="
-                mode === t.value
-                  ? 'bg-violet-500 font-medium text-white'
-                  : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700'
-              "
-              @click="setTheme(t.value)"
-            >
-              {{ t.label }}
-            </button>
-          </div>
+          <BaseButtonGroup :model-value="mode" :items="themeItems" size="sm" @update:model-value="onThemeChange" />
           <!-- 全局字体：应用于整个软件（含桌面歌词），从系统读取 -->
           <div class="flex items-center justify-between gap-3">
             <span class="text-sm text-zinc-600 dark:text-zinc-300">字体</span>
-            <select
-              class="h-9 max-w-[280px] flex-1 cursor-pointer rounded-lg border border-zinc-200 bg-transparent px-2 text-sm outline-none focus:border-violet-400 dark:border-zinc-700"
-              :value="appFont"
-              @change="onFontChange"
-            >
-              <option value="">默认字体</option>
-              <option v-for="f in systemFonts" :key="f" :value="`'${f}'`">{{ f }}</option>
-            </select>
+            <div class="max-w-[280px] flex-1">
+              <BaseSelect :model-value="appFont" :options="fontSelectOptions" size="sm" @update:model-value="onFontChange" />
+            </div>
           </div>
         </div>
       </section>
@@ -533,34 +540,24 @@ const scannedSourceIds = computed(() => new Set(Object.keys(library.scanProgress
           <!-- 淡入淡出 -->
           <div class="flex items-center justify-between">
             <span class="text-zinc-600 dark:text-zinc-300">歌曲淡入淡出</span>
-            <button
-              class="relative h-5 w-9 cursor-pointer rounded-full transition"
-              :class="fadeOn ? 'bg-violet-500' : 'bg-zinc-200 dark:bg-zinc-700'"
+            <BaseSwitch
+              :model-value="fadeOn"
+              size="sm"
               title="开启后播放/暂停与切歌时音量平滑过渡（淡入 0.8s，淡出 0.6s）"
-              @click="onFadeToggle"
-            >
-              <span
-                class="absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all"
-                :class="fadeOn ? 'left-[18px]' : 'left-0.5'"
-              ></span>
-            </button>
+              @update:model-value="onFadeToggle"
+            />
           </div>
           <p class="text-xs text-zinc-400">播放 / 暂停与切歌 / 队列末尾时音量平滑过渡，避免突兀截断。</p>
 
           <!-- 阻止系统休眠 -->
           <div class="flex items-center justify-between pt-2">
             <span class="text-zinc-600 dark:text-zinc-300">播放时阻止系统休眠 / 锁屏</span>
-            <button
-              class="relative h-5 w-9 cursor-pointer rounded-full transition"
-              :class="preventSleepOn ? 'bg-violet-500' : 'bg-zinc-200 dark:bg-zinc-700'"
+            <BaseSwitch
+              :model-value="preventSleepOn"
+              size="sm"
               title="播放歌曲期间保持系统与屏幕常亮，防止自动休眠/锁屏"
-              @click="onPreventSleepToggle"
-            >
-              <span
-                class="absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all"
-                :class="preventSleepOn ? 'left-[18px]' : 'left-0.5'"
-              ></span>
-            </button>
+              @update:model-value="onPreventSleepToggle"
+            />
           </div>
           <p class="text-xs text-zinc-400">播放期间保持系统与屏幕常亮；暂停 / 停止后自动恢复（默认开启）。Windows 通过系统电源 API 实现，其他平台尝试 Web Wake Lock。</p>
         </div>
@@ -574,21 +571,18 @@ const scannedSourceIds = computed(() => new Set(Object.keys(library.scanProgress
           <div class="flex flex-wrap items-center justify-between gap-3">
             <span class="text-zinc-600 dark:text-zinc-300">多艺人分隔符</span>
             <div class="flex flex-wrap gap-2">
-              <button
+              <BaseButton
                 v-for="sep in SEPARATOR_CANDIDATES"
                 :key="sep"
-                class="min-w-9 cursor-pointer rounded-full px-3 py-1.5 transition"
-                :class="
-                  artistSeparators.has(sep)
-                    ? 'bg-violet-500 font-medium text-white'
-                    : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700'
-                "
+                size="sm"
+                rounded
+                :variant="artistSeparators.has(sep) ? 'primary' : 'secondary'"
                 :title="sep === FIXED_SEPARATOR ? '固定分隔符：feat. / ft. / featuring 等合作标注按它拆分' : `启用后按「${sep}」拆分多艺人`"
-                :disabled="splitApplying"
+                :disabled="sep === FIXED_SEPARATOR || splitApplying"
                 @click="onSeparatorToggle(sep)"
               >
                 {{ sep }}
-              </button>
+              </BaseButton>
             </div>
           </div>
           <p class="mt-2 text-xs text-zinc-400">
@@ -631,20 +625,15 @@ const scannedSourceIds = computed(() => new Set(Object.keys(library.scanProgress
           <div>
             <p class="mb-2 text-xs font-medium text-zinc-400">搜索范围</p>
             <div class="flex flex-wrap gap-x-5 gap-y-2">
-              <label
+              <BaseCheckbox
                 v-for="opt in searchFieldOptions"
                 :key="opt.value"
-                class="flex cursor-pointer items-center gap-1.5 text-zinc-600 dark:text-zinc-300"
-              >
-                <input
-                  type="checkbox"
-                  class="h-3.5 w-3.5 cursor-pointer accent-violet-500"
-                  :checked="searchSettings.fields.includes(opt.value)"
-                  :disabled="searchSettings.fields.length === 1 && searchSettings.fields.includes(opt.value)"
-                  @change="toggleSearchField(opt.value)"
-                />
-                {{ opt.label }}
-              </label>
+                :model-value="searchSettings.fields.includes(opt.value)"
+                :label="opt.label"
+                size="sm"
+                :disabled="searchSettings.fields.length === 1 && searchSettings.fields.includes(opt.value)"
+                @update:model-value="(v) => toggleSearchField(opt.value, v)"
+              />
             </div>
           </div>
           <p class="-mt-2 text-xs text-zinc-400">勾选后搜索将在对应字段内匹配；至少保留一项。</p>
@@ -652,51 +641,37 @@ const scannedSourceIds = computed(() => new Set(Object.keys(library.scanProgress
           <!-- 拼音搜索 -->
           <div class="flex items-center justify-between">
             <span class="text-zinc-600 dark:text-zinc-300">拼音搜索</span>
-            <button
-              class="relative h-5 w-9 cursor-pointer rounded-full transition"
-              :class="searchSettings.pinyin ? 'bg-violet-500' : 'bg-zinc-200 dark:bg-zinc-700'"
+            <BaseSwitch
+              :model-value="searchSettings.pinyin"
+              size="sm"
               title="开启后可用拼音或首字母搜索中文歌曲"
-              @click="togglePinyin"
-            >
-              <span
-                class="absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all"
-                :class="searchSettings.pinyin ? 'left-[18px]' : 'left-0.5'"
-              ></span>
-            </button>
+              @update:model-value="togglePinyin"
+            />
           </div>
           <p class="-mt-2 text-xs text-zinc-400">开启后可用拼音或首字母搜索中文歌曲（如输入 zhou 匹配 周杰伦）。</p>
 
           <!-- 排序偏好 -->
           <div class="flex items-center justify-between">
             <span class="text-zinc-600 dark:text-zinc-300">排序偏好</span>
-            <div class="flex gap-2">
-              <button
-                v-for="o in searchSortOptions"
-                :key="o.value"
-                class="cursor-pointer rounded-full px-3 py-1.5 text-xs transition"
-                :class="
-                  searchSettings.sort === o.value
-                    ? 'bg-violet-500 font-medium text-white'
-                    : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700'
-                "
-                @click="searchSettings.sort = o.value; saveSearchSettings()"
-              >{{ o.label }}</button>
-            </div>
+            <BaseButtonGroup
+              :model-value="searchSettings.sort"
+              :items="searchSortItems"
+              size="sm"
+              @update:model-value="onSearchSortChange"
+            />
           </div>
 
           <!-- 输入防抖 -->
           <div class="flex items-center justify-between">
             <span class="text-zinc-600 dark:text-zinc-300">输入防抖</span>
-            <select
-              class="h-9 cursor-pointer rounded-lg border border-zinc-200 bg-transparent px-2 text-sm text-zinc-700 outline-none focus:border-violet-400 dark:border-zinc-700 dark:text-zinc-200"
-              :value="searchSettings.debounceMs"
-              @change="onDebounceChange"
-            >
-              <option :value="150">150ms</option>
-              <option :value="300">300ms</option>
-              <option :value="500">500ms</option>
-              <option :value="800">800ms</option>
-            </select>
+            <div class="w-28">
+              <BaseSelect
+                :model-value="searchSettings.debounceMs"
+                :options="debounceSelectOptions"
+                size="sm"
+                @update:model-value="onDebounceChange"
+              />
+            </div>
           </div>
           <p class="-mt-2 text-xs text-zinc-400">打字停顿超过该时长才发起搜索，避免输入过快导致频繁查询卡顿。</p>
         </div>
@@ -724,56 +699,32 @@ const scannedSourceIds = computed(() => new Set(Object.keys(library.scanProgress
             <!-- 开关 -->
             <div class="flex items-center justify-between">
               <span class="text-zinc-600 dark:text-zinc-300">显示桌面歌词浮窗</span>
-              <button
-                class="cursor-pointer rounded-full px-4 py-1.5 transition"
-                :class="
-                  dlEnabled
-                    ? 'bg-violet-500 font-medium text-white'
-                    : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700'
-                "
-                @click="dlToggle()"
-              >
-                {{ dlEnabled ? '已开启' : '已关闭' }}
-              </button>
+              <BaseSwitch
+                :model-value="dlEnabled"
+                size="sm"
+                :label="dlEnabled ? '已开启' : '已关闭'"
+                @update:model-value="() => dlToggle()"
+              />
             </div>
             <!-- 显示行数 -->
             <div class="flex items-center justify-between">
               <span class="text-zinc-600 dark:text-zinc-300">显示行数</span>
-              <div class="flex gap-2">
-                <button
-                  v-for="opt in dlLineOptions"
-                  :key="opt.value"
-                  class="cursor-pointer rounded-full px-4 py-1.5 transition"
-                  :class="
-                    dlConfig.lines === opt.value
-                      ? 'bg-violet-500 font-medium text-white'
-                      : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700'
-                  "
-                  @click="dlConfig.lines = opt.value"
-                >
-                  {{ opt.label }}
-                </button>
-              </div>
+              <BaseButtonGroup
+                :model-value="String(dlConfig.lines)"
+                :items="dlLineItems"
+                size="sm"
+                @update:model-value="onDlLinesChange"
+              />
             </div>
             <!-- 对齐方式（选项较多，独占一行） -->
             <div class="flex items-center justify-between gap-3 sm:col-span-2">
               <span class="shrink-0 text-zinc-600 dark:text-zinc-300">对齐方式</span>
-              <div class="flex gap-2">
-                <button
-                  v-for="opt in dlAlignOptions"
-                  :key="opt.value"
-                  v-show="opt.value !== 'split' || dlConfig.lines === 2"
-                  class="cursor-pointer rounded-full px-4 py-1.5 transition"
-                  :class="
-                    dlConfig.align === opt.value
-                      ? 'bg-violet-500 font-medium text-white'
-                      : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700'
-                  "
-                  @click="dlConfig.align = opt.value"
-                >
-                  {{ opt.label }}
-                </button>
-              </div>
+              <BaseButtonGroup
+                :model-value="dlConfig.align"
+                :items="filteredDlAlignItems"
+                size="sm"
+                @update:model-value="onDlAlignChange"
+              />
             </div>
           </div>
           <!-- 样式 -->
@@ -785,55 +736,36 @@ const scannedSourceIds = computed(() => new Set(Object.keys(library.scanProgress
             <!-- 播放行颜色 -->
             <div class="flex items-center justify-between">
               <span class="text-zinc-600 dark:text-zinc-300">播放行颜色</span>
-              <input
-                type="color"
-                class="h-8 w-14 cursor-pointer rounded-lg border border-zinc-200 bg-transparent p-0.5 dark:border-zinc-700"
-                :value="dlConfig.color"
-                @input="dlConfig.color = ($event.target as HTMLInputElement).value"
-              />
+              <BaseColorPicker v-model="dlConfig.color" title="播放行颜色" />
             </div>
             <!-- 未播放行颜色 -->
             <div class="flex items-center justify-between">
               <span class="text-zinc-600 dark:text-zinc-300">未播放行颜色</span>
-              <input
-                type="color"
-                class="h-8 w-14 cursor-pointer rounded-lg border border-zinc-200 bg-transparent p-0.5 dark:border-zinc-700"
-                :value="dlConfig.pendingColor"
-                @input="dlConfig.pendingColor = ($event.target as HTMLInputElement).value"
-              />
+              <BaseColorPicker v-model="dlConfig.pendingColor" title="未播放行颜色" />
             </div>
             <!-- 描边 -->
             <div class="flex items-center justify-between">
               <span class="text-zinc-600 dark:text-zinc-300">显示文字描边</span>
               <div class="flex items-center gap-2">
-                <input
-                  v-model="dlConfig.outline"
-                  type="color"
-                  class="h-8 w-14 cursor-pointer rounded-lg border border-zinc-200 bg-transparent p-0.5 dark:border-zinc-700"
-                  :class="{ 'pointer-events-none opacity-40': !dlConfig.outline }"
-                  :value="dlConfig.outlineColor"
-                  @input="dlConfig.outlineColor = ($event.target as HTMLInputElement).value"
+                <BaseColorPicker
+                  v-model="dlConfig.outlineColor"
+                  :disabled="!dlConfig.outline"
+                  title="描边颜色"
                 />
-                <input v-model="dlConfig.outline" type="checkbox" class="h-4 w-4 cursor-pointer accent-violet-500" />
+                <BaseCheckbox v-model="dlConfig.outline" size="sm" />
               </div>
             </div>
             <!-- 字体加粗 -->
             <div class="flex items-center justify-between">
               <span class="text-zinc-600 dark:text-zinc-300">字体加粗</span>
-              <input v-model="dlConfig.bold" type="checkbox" class="h-4 w-4 cursor-pointer accent-violet-500" />
+              <BaseCheckbox v-model="dlConfig.bold" size="sm" />
             </div>
             <!-- 字号（独占一行，滑杆拉满宽度） -->
             <div class="flex items-center gap-3 sm:col-span-2">
               <span class="shrink-0 text-zinc-600 dark:text-zinc-300">字号（{{ dlConfig.fontSize }}px）</span>
-              <input
-                v-model.number="dlConfig.fontSize"
-                type="range"
-                class="slider w-full min-w-0 flex-1"
-                min="18"
-                max="56"
-                step="2"
-                :style="{ '--fill': ((dlConfig.fontSize - 18) / 38) * 100 + '%' }"
-              />
+              <div class="w-full min-w-0 flex-1">
+                <BaseSlider v-model="dlConfig.fontSize" :min="18" :max="56" :step="2" />
+              </div>
             </div>
           </div>
 
@@ -846,25 +778,14 @@ const scannedSourceIds = computed(() => new Set(Object.keys(library.scanProgress
             <!-- 背景颜色 -->
             <div class="flex items-center justify-between">
               <span class="text-zinc-600 dark:text-zinc-300">背景颜色</span>
-              <input
-                type="color"
-                class="h-8 w-14 cursor-pointer rounded-lg border border-zinc-200 bg-transparent p-0.5 dark:border-zinc-700"
-                :value="dlConfig.bgColor"
-                @input="dlConfig.bgColor = ($event.target as HTMLInputElement).value"
-              />
+              <BaseColorPicker v-model="dlConfig.bgColor" title="背景颜色" />
             </div>
             <!-- 背景不透明度 -->
             <div class="flex items-center gap-3">
               <span class="shrink-0 text-zinc-600 dark:text-zinc-300">不透明度（{{ Math.round(dlConfig.bgOpacity * 100) }}%）</span>
-              <input
-                v-model.number="dlConfig.bgOpacity"
-                type="range"
-                class="slider w-full min-w-0 flex-1"
-                min="0"
-                max="0.85"
-                step="0.05"
-                :style="{ '--fill': (dlConfig.bgOpacity / 0.85) * 100 + '%' }"
-              />
+              <div class="w-full min-w-0 flex-1">
+                <BaseSlider v-model="dlConfig.bgOpacity" :min="0" :max="0.85" :step="0.05" />
+              </div>
             </div>
           </div>
           <p class="mt-4 text-xs text-zinc-400">
@@ -877,29 +798,14 @@ const scannedSourceIds = computed(() => new Set(Object.keys(library.scanProgress
       <section data-stagger>
         <h2 class="mb-3 text-sm font-semibold text-zinc-800 dark:text-zinc-100">{{ $t('settings.tray') }}</h2>
         <div class="rounded-xl border border-zinc-200 bg-white p-4 text-sm dark:border-zinc-800 dark:bg-zinc-900">
-          <!-- 关闭窗口行为 -->
-          <div class="flex items-center justify-between">
+          <div class="flex flex-wrap items-center justify-between gap-3">
             <span class="text-zinc-600 dark:text-zinc-300">{{ $t('settings.closeAction') }}</span>
-            <div class="flex gap-2">
-              <button
-                class="cursor-pointer rounded-full px-4 py-1.5 text-sm transition"
-                :class="closeAction === 'tray'
-                  ? 'bg-violet-500 font-medium text-white'
-                  : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700'"
-                @click="closeAction = 'tray'; setCloseAction('tray')"
-              >
-                {{ $t('settings.closeActionTray') }}
-              </button>
-              <button
-                class="cursor-pointer rounded-full px-4 py-1.5 text-sm transition"
-                :class="closeAction === 'quit'
-                  ? 'bg-violet-500 font-medium text-white'
-                  : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700'"
-                @click="closeAction = 'quit'; setCloseAction('quit')"
-              >
-                {{ $t('settings.closeActionQuit') }}
-              </button>
-            </div>
+            <BaseButtonGroup
+              v-model="closeAction"
+              :items="closeActionItems"
+              size="sm"
+              @update:model-value="setCloseAction"
+            />
           </div>
           <p class="mt-2 text-xs text-zinc-400">{{ $t('settings.closeActionDesc') }}</p>
         </div>
@@ -911,13 +817,7 @@ const scannedSourceIds = computed(() => new Set(Object.keys(library.scanProgress
         <div class="rounded-xl border border-zinc-200 bg-white p-4 text-sm text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900">
           <div class="flex flex-wrap items-center justify-between gap-3">
             <span>{{ $t('settings.languageSelect') }}</span>
-            <select
-              :value="locale"
-              class="cursor-pointer rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm text-zinc-700 outline-none transition hover:bg-zinc-50 focus:border-violet-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
-              @change="onLocaleChange"
-            >
-              <option v-for="opt in languageOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
-            </select>
+            <BaseSelect :model-value="locale" :options="languageOptions" size="sm" @update:model-value="onLocaleChange" />
           </div>
         </div>
       </section>
@@ -931,31 +831,36 @@ const scannedSourceIds = computed(() => new Set(Object.keys(library.scanProgress
             <!-- 更新操作区：按状态切换 -->
             <div class="flex items-center gap-2">
               <template v-if="updater.status.value === 'available' || updater.status.value === 'downloading'">
-                <button
-                  class="flex cursor-pointer items-center gap-1.5 rounded-full bg-violet-500 px-4 py-1.5 text-xs font-medium text-white shadow transition hover:bg-violet-400 disabled:cursor-not-allowed disabled:opacity-40"
-                  :disabled="updater.status.value === 'downloading'"
+                <BaseButton
+                  size="sm"
+                  rounded
+                  :loading="updater.status.value === 'downloading'"
+                  :icon="updater.status.value === 'downloading' ? undefined : RefreshCw"
                   @click="updater.downloadAndInstall()"
                 >
-                  <RefreshCw v-if="updater.status.value === 'downloading'" class="h-3.5 w-3.5 animate-spin" />
                   {{ updater.status.value === 'downloading' ? '正在下载…' : `更新到 v${updater.newVersion.value}` }}
-                </button>
+                </BaseButton>
               </template>
-              <button
+              <BaseButton
                 v-else-if="updater.status.value === 'ready'"
-                class="flex cursor-pointer items-center gap-1.5 rounded-full bg-violet-500 px-4 py-1.5 text-xs font-medium text-white shadow transition hover:bg-violet-400"
+                size="sm"
+                rounded
                 @click="updater.restartToUpdate()"
               >
                 重启完成更新
-              </button>
-              <button
+              </BaseButton>
+              <BaseButton
                 v-else
-                class="flex cursor-pointer items-center gap-1.5 rounded-full border border-zinc-200 px-4 py-1.5 text-xs text-zinc-600 transition hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                size="sm"
+                rounded
+                variant="outline"
+                :loading="updater.status.value === 'checking'"
                 :disabled="updater.status.value === 'checking'"
+                :icon="updater.status.value === 'checking' ? undefined : RefreshCw"
                 @click="updater.checkForUpdate(false)"
               >
-                <RefreshCw v-if="updater.status.value === 'checking'" class="h-3.5 w-3.5 animate-spin" />
                 检查更新
-              </button>
+              </BaseButton>
               <span v-if="updater.status.value === 'uptodate'" class="text-xs text-zinc-400">已是最新</span>
             </div>
           </div>

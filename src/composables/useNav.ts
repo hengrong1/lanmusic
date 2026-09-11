@@ -12,7 +12,6 @@ export function useNav() {
       a.view === b.view &&
       a.albumId === b.albumId &&
       a.artistId === b.artistId &&
-      a.genre === b.genre &&
       a.playlistId === b.playlistId &&
       a.search === b.search &&
       a.recent === b.recent &&
