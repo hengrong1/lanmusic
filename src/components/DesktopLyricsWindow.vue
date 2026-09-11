@@ -16,6 +16,7 @@ import { EMPTY_LYRIC, type DeskControl, type DeskLyricsConfig } from '@/composab
 // 鼠标悬停时在歌词上方浮现控制条（半透明背景）：
 // 上一首 / 播放暂停 / 下一首 · 歌词校准（后退/还原/前进） · 关闭，
 // 指令通过 lyrics:control 事件发回主窗口由播放器执行。
+
 const lines = ref<string[]>([])
 /** 当前播放行所在位置：0=第一行，1=第二行（双行交替滚动） */
 const active = ref<0 | 1>(0)
@@ -137,32 +138,32 @@ const rows = computed(() => {
   <div class="dl-root" data-tauri-drag-region :style="rootStyle">
     <!-- 控制条：悬停浮现，背景与面板同色系（略微加深） -->
     <div class="dl-controls" :style="controlsStyle">
-      <button class="dl-btn" title="上一首" @click="control('prev')"><SkipBack class="h-4 w-4" /></button>
-      <button class="dl-btn" :title="playing ? '暂停' : '播放'" @click="control('toggle')">
+      <button class="dl-btn" :title="$t('player.prev')" @click="control('prev')"><SkipBack class="h-4 w-4" /></button>
+      <button class="dl-btn" :title="playing ? $t('player.pause') : $t('player.play')" @click="control('toggle')">
         <Pause v-if="playing" class="h-4.5 w-4.5" />
         <Play v-else class="h-4.5 w-4.5" />
       </button>
-      <button class="dl-btn" title="下一首" @click="control('next')"><SkipForward class="h-4 w-4" /></button>
+      <button class="dl-btn" :title="$t('player.next')" @click="control('next')"><SkipForward class="h-4 w-4" /></button>
       <span class="dl-divider"></span>
       <button
         class="dl-btn"
-        title="歌词后退 0.5 秒（延后显示，歌词显示快了用这个）"
+        :title="$t('desktopLyrics.backHint')"
         @click="control('calib-back')"
       >
         <RewindBack class="h-4 w-4" />
       </button>
-      <button class="dl-btn" title="还原为默认时间轴" @click="control('calib-reset')">
+      <button class="dl-btn" :title="$t('player.lyricResetHint')" @click="control('calib-reset')">
         <RotateCcw class="h-3.5 w-3.5" />
       </button>
       <button
         class="dl-btn"
-        title="歌词前进 0.5 秒（提前显示，歌词显示慢了用这个）"
+        :title="$t('desktopLyrics.forwardHint')"
         @click="control('calib-forward')"
       >
         <RewindForward class="h-4 w-4" />
       </button>
       <span class="dl-divider"></span>
-      <button class="dl-btn dl-close" title="关闭桌面歌词" @click="control('close')">
+      <button class="dl-btn dl-close" :title="$t('tray.disableDesktopLyrics')" @click="control('close')">
         <X class="h-4 w-4" />
       </button>
     </div>

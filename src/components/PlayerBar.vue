@@ -28,6 +28,7 @@ import { ensureAnalyser, readSpectrum } from '@/composables/useSpectrum'
 import { activeLineIndex } from '@/utils/lrc'
 import CoverImg from '@/components/CoverImg.vue'
 import MarqueeText from '@/components/MarqueeText.vue'
+import { useI18n } from 'vue-i18n'
 
 const props = defineProps<{ nowPlayingOpen?: boolean; focusHidden?: boolean }>()
 const emit = defineEmits<{ toggleQueue: []; toggleNowPlaying: [] }>()
@@ -48,6 +49,7 @@ watch(
   },
 )
 
+const { t: tr } = useI18n()
 const player = usePlayerStore()
 const nav = useNav()
 const { palette } = useAmbient()
@@ -222,7 +224,7 @@ const currentArtistLinks = computed<{ id: number | null; name: string }[]>(() =>
   if (!t) return []
   if (t.artists?.length) return t.artists.map((a) => ({ id: a.id, name: a.name }))
   if (t.artist) return [{ id: t.artistId, name: t.artist }]
-  return [{ id: null, name: '未知艺人' }]
+  return [{ id: null, name: tr('artist.unknownArtist') }]
 })
 
 /** 播放条内导航：若播放页展开着，导航后收起，让用户看到目标页面 */
@@ -296,7 +298,7 @@ const hoverTime = computed(() =>
 /** 悬停时间对应的歌词文本；无时间轴歌词时退化为专辑名 */
 const hoverLyric = computed(() => {
   const lines = player.lyricsLines
-  if (!lines?.length) return player.current?.album ?? '暂无歌词'
+  if (!lines?.length) return player.current?.album ?? tr('player.noLyrics')
   const i = activeLineIndex(lines, hoverTime.value - player.lyricOffset)
   if (i < 0) return lines[0]?.text || '···'
   return lines[i].text || '···'
@@ -317,12 +319,21 @@ function onProgressMove(e: MouseEvent) {
   bubbleLeftPx.value = Math.min(Math.max(60, local), rect.width - 60)
 }
 
-const modeMeta: Record<PlayMode, { label: string; icon: typeof Repeat }> = {
-  order: { label: '顺序播放', icon: Repeat },
-  loop: { label: '列表循环', icon: Repeat },
-  one: { label: '单曲循环', icon: Repeat1 },
-  shuffle: { label: '随机播放', icon: Shuffle },
-}
+const modeMeta = computed<Record<PlayMode, { label: string; icon: typeof Repeat }>>(() => ({
+  order: { label: tr('player.sequence'), icon: Repeat },
+  loop: { label: tr('player.repeat'), icon: Repeat },
+  one: { label: tr('player.repeatOne'), icon: Repeat1 },
+  shuffle: { label: tr('player.shuffle'), icon: Shuffle },
+}))
+
+/** 带参提示文案（模板 `$t` 无带参重载，统一在 setup 内生成） */
+const artistTip = (name: string) => tr('artist.viewArtist', { name })
+const rateTip = computed(() => tr('player.rateHint', { rate: player.rate }))
+const volTip = computed(() =>
+  player.muted
+    ? tr('player.mutedHint', { vol: volDisplay.value })
+    : tr('player.volumeHint', { vol: volDisplay.value }),
+)
 
 function cycleMode() {
   const order: PlayMode[] = ['order', 'loop', 'one', 'shuffle']
@@ -398,7 +409,7 @@ const theme = computed(() =>
         class="group relative cursor-pointer rounded-lg transition"
         :class="props.nowPlayingOpen ? '' : 'hover:opacity-90'"
         :style="coverRingStyle"
-        :title="props.nowPlayingOpen ? '收起播放页' : '展开播放页'"
+        :title="props.nowPlayingOpen ? $t('player.collapseNowPlaying') : $t('player.expandNowPlaying')"
         @click="$emit('toggleNowPlaying')"
       >
         <CoverImg :album-id="player.current?.albumId ?? null" class="h-12 w-12 shrink-0" rounded="rounded-lg" />
@@ -418,7 +429,7 @@ const theme = computed(() =>
             class="max-w-[58%] shrink-0 truncate font-medium transition-colors duration-500"
             :class="theme.title"
           >{{ player.current.title }}</span>
-          <span v-else class="truncate font-medium" :class="theme.title">未在播放</span>
+          <span v-else class="truncate font-medium" :class="theme.title">{{ $t('player.notPlaying') }}</span>
           <span v-if="player.current" class="shrink-0 opacity-40">–</span>
           <!-- 多艺人：每个名字独立可点击（区分每一个艺人） -->
           <template v-for="(a, i) in currentArtistLinks" :key="a.id ?? `na-${i}`">
@@ -426,7 +437,7 @@ const theme = computed(() =>
               v-if="a.id != null"
               class="min-w-0 cursor-pointer truncate transition hover:text-violet-500 hover:underline"
               :class="theme.artist"
-              :title="`查看艺人：${a.name}`"
+              :title="artistTip(a.name)"
               @click.stop="goArtist(a)"
             >{{ a.name }}</button>
             <span v-else class="min-w-0 truncate" :class="theme.artist">{{ a.name }}</span>
@@ -461,7 +472,7 @@ const theme = computed(() =>
         <button
           class="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full transition-colors duration-500"
           :class="theme.plainBtn"
-          title="上一首 (P)"
+          :title="$t('player.prev') + ' (P)'"
           @click="player.prev()"
         >
           <SkipBack class="h-4.5 w-4.5" />
@@ -470,7 +481,7 @@ const theme = computed(() =>
           class="relative flex h-10 w-10 cursor-pointer items-center justify-center rounded-full shadow-lg shadow-violet-500/30 transition duration-200 hover:scale-110 active:scale-90"
           :class="theme.playBtn"
           :style="playBtnStyle"
-          :title="player.buffering ? '缓冲中…' : '播放/暂停 (空格)'"
+          :title="player.buffering ? $t('player.buffering') : $t('player.playPauseHint')"
           @click="player.toggle()"
         >
           <!-- 播放中的脉冲光环 -->
@@ -506,7 +517,7 @@ const theme = computed(() =>
         <button
           class="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full transition-colors duration-500"
           :class="theme.plainBtn"
-          title="下一首 (N)"
+          :title="$t('player.next') + ' (N)'"
           @click="player.next()"
         >
           <SkipForward class="h-4.5 w-4.5" />
@@ -514,7 +525,7 @@ const theme = computed(() =>
         <button
           class="relative flex h-9 w-9 cursor-pointer items-center justify-center rounded-full transition-colors duration-500 disabled:cursor-not-allowed"
           :class="player.current?.fav ? 'text-red-500 hover:bg-red-500/10' : theme.plainBtn"
-          :title="player.current?.fav ? '取消喜欢' : '喜欢'"
+          :title="player.current?.fav ? $t('library.unlike') : $t('library.like')"
           :disabled="!player.current"
           @click="player.toggleFav()"
         >
@@ -561,7 +572,7 @@ const theme = computed(() =>
       <button
         class="flex h-8 w-9 shrink-0 cursor-pointer items-center justify-center rounded-full text-xs font-semibold tabular-nums transition-colors duration-500"
         :class="player.rate === 1 ? theme.iconBtn : 'text-violet-500 hover:bg-violet-500/10'"
-        :title="`播放倍速 ${player.rate}x（点击切换）`"
+        :title="rateTip"
         @click="cycleRate"
       >
         {{ player.rate }}x
@@ -571,7 +582,7 @@ const theme = computed(() =>
         <button
           class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full transition-colors duration-500"
           :class="theme.iconBtn"
-          title="皮肤"
+          :title="$t('nowPlaying.skin')"
           @click="skinOpen = !skinOpen"
         >
           <Palette class="h-4 w-4" />
@@ -590,7 +601,7 @@ const theme = computed(() =>
               class="flex w-full cursor-pointer items-center justify-between rounded-lg px-2 py-1.5 text-sm text-zinc-700 transition hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-zinc-800"
               @click="toggleSpectrum"
             >
-              <span>频谱</span>
+              <span>{{ $t('nowPlaying.skinSpectrum') }}</span>
               <span
                 class="relative h-4 w-7 shrink-0 rounded-full transition-colors"
                 :class="skin.on ? 'bg-violet-500' : 'bg-zinc-300 dark:bg-zinc-600'"
@@ -601,7 +612,7 @@ const theme = computed(() =>
                 ></span>
               </span>
             </button>
-            <p class="px-2 pt-1 pb-0.5 text-[11px] text-zinc-400">频谱样式</p>
+            <p class="px-2 pt-1 pb-0.5 text-[11px] text-zinc-400">{{ $t('nowPlaying.spectrumStyle') }}</p>
             <div class="grid grid-cols-2 gap-1">
               <button
                 class="cursor-pointer rounded-lg px-2 py-1.5 text-xs transition"
@@ -612,7 +623,7 @@ const theme = computed(() =>
                 "
                 @click="skin.style = 'particles'"
               >
-                圆形粒子
+                {{ $t('nowPlaying.skinParticlesRound') }}
               </button>
               <button
                 class="cursor-pointer rounded-lg px-2 py-1.5 text-xs transition"
@@ -623,7 +634,7 @@ const theme = computed(() =>
                 "
                 @click="skin.style = 'tree'"
               >
-                树状
+                {{ $t('nowPlaying.skinTreeShape') }}
               </button>
             </div>
           </div>
@@ -633,7 +644,7 @@ const theme = computed(() =>
       <button
         class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full transition-colors duration-500"
         :class="theme.iconBtn"
-        :title="player.muted ? `已静音（音量 ${volDisplay}%）` : `音量 ${volDisplay}%，可滚轮调节`"
+        :title="volTip"
         @click="player.toggleMute()"
         @wheel.prevent="onVolumeWheel"
       >
@@ -668,7 +679,7 @@ const theme = computed(() =>
       <button
         class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full transition-colors duration-500"
         :class="dlEnabled ? 'text-violet-500 hover:bg-violet-500/10' : theme.iconBtn"
-        :title="dlEnabled ? '关闭桌面歌词' : '开启桌面歌词'"
+        :title="dlEnabled ? $t('tray.disableDesktopLyrics') : $t('tray.enableDesktopLyrics')"
         @click="dlToggle()"
       >
         <Subtitles class="h-4 w-4" />
@@ -677,7 +688,7 @@ const theme = computed(() =>
         data-queue-toggle
         class="ml-2 flex h-8 w-8 cursor-pointer items-center justify-center rounded-full transition-colors duration-500"
         :class="theme.iconBtn"
-        title="播放队列"
+        :title="$t('queue.title')"
         @click="$emit('toggleQueue')"
       >
         <ListMusic class="h-4 w-4" />

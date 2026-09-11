@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { MapPointIcon as LocateFixed } from '@solar-icons/vue/linear/map-point'
 import { PlaylistIcon as ListPlus } from '@solar-icons/vue/linear/playlist'
 import { TrashBin2Icon as Trash2 } from '@solar-icons/vue/linear/trash-bin-2'
@@ -8,10 +8,15 @@ import { usePlayerStore } from '@/stores/player'
 import { useLibraryStore } from '@/stores/library'
 import { useNav } from '@/composables/useNav'
 import { toast } from '@/composables/useToast'
+import { useI18n } from 'vue-i18n'
 
+const { t } = useI18n()
 const player = usePlayerStore()
 const library = useLibraryStore()
 const nav = useNav()
+
+/** 队列曲目数（带参翻译在 setup 内生成） */
+const queueCountLabel = computed(() => t('common.songsCount', { count: player.queue.length }))
 
 const props = defineProps<{ open?: boolean }>()
 const emit = defineEmits<{ close: [] }>()
@@ -51,7 +56,10 @@ async function saveAsPlaylist() {
   try {
     const pad = (n: number) => String(n).padStart(2, '0')
     const d = new Date()
-    const name = `队列 ${d.getMonth() + 1}/${d.getDate()} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+    const name = t('playlist.saveAsPlaylistDefault', {
+      date: `${d.getMonth() + 1}/${d.getDate()}`,
+      time: `${pad(d.getHours())}:${pad(d.getMinutes())}`,
+    })
     const p = await library.createPlaylist(name)
     await library.addToPlaylist(p.id, player.queue.map((t) => t.id))
     nav.go({ view: 'playlist', playlistId: p.id, playlistName: p.name })
@@ -127,13 +135,13 @@ watch(
       >
         <header class="flex shrink-0 items-center justify-between border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
           <div>
-            <h2 class="text-sm font-semibold text-zinc-800 dark:text-zinc-100">播放队列</h2>
-            <p class="text-xs text-zinc-500">{{ player.queue.length }} 首</p>
+            <h2 class="text-sm font-semibold text-zinc-800 dark:text-zinc-100">{{ $t('queue.title') }}</h2>
+            <p class="text-xs text-zinc-500">{{ queueCountLabel }}</p>
           </div>
           <div class="flex items-center gap-1">
             <button
               class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-zinc-500 hover:bg-zinc-100 hover:text-violet-500 disabled:cursor-default disabled:opacity-40 dark:hover:bg-zinc-800"
-              title="把当前队列保存为歌单"
+              :title="$t('queue.saveAsPlaylistHint')"
               :disabled="saving"
               @click="saveAsPlaylist"
             >
@@ -141,14 +149,14 @@ watch(
             </button>
             <button
               class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-zinc-500 hover:bg-zinc-100 hover:text-red-500 dark:hover:bg-zinc-800"
-              title="清空队列"
+              :title="$t('queue.clearQueue')"
               @click="player.clearQueue()"
             >
               <Trash2 class="h-4 w-4" />
             </button>
             <button
               class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800"
-              title="关闭"
+              :title="$t('common.close')"
               @click="$emit('close')"
             >
               <X class="h-4 w-4" />
@@ -188,7 +196,7 @@ watch(
               >
                 {{ t.title }}
               </p>
-              <p class="truncate text-xs text-zinc-500">{{ t.artist ?? '未知艺人' }}</p>
+              <p class="truncate text-xs text-zinc-500">{{ t.artist ?? $t('artist.unknownArtist') }}</p>
             </div>
             <span
               class="shrink-0 font-mono text-xs tabular-nums"
@@ -196,7 +204,7 @@ watch(
             >{{ fmt(t.duration) }}</span>
             <button
               class="flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-lg text-zinc-400 opacity-0 hover:bg-zinc-200 hover:text-zinc-600 group-hover:opacity-100 dark:hover:bg-zinc-700"
-              title="移出队列"
+              :title="$t('player.removeFromQueue')"
               @click="player.removeFromQueue(i)"
             >
               <X class="h-3.5 w-3.5" />
@@ -213,11 +221,11 @@ watch(
           <button
             v-if="!activeVisible && player.index >= 0"
             class="absolute right-4 bottom-4 z-10 flex max-w-[240px] cursor-pointer items-center gap-2 rounded-lg bg-violet-500 px-4 py-2 text-xs font-medium text-white shadow-lg shadow-violet-500/30 transition hover:bg-violet-400"
-            title="滚动到正在播放的歌曲"
+            :title="$t('queue.scrollToCurrent')"
             @click="locateActive"
           >
             <LocateFixed class="h-3.5 w-3.5 shrink-0" />
-            <span class="truncate">正在播放：{{ player.current?.title }}</span>
+            <span class="truncate">{{ $t('player.nowPlayingPrefix') }}{{ player.current?.title }}</span>
           </button>
         </Transition>
       </aside>

@@ -11,7 +11,9 @@ import { useStagger } from '@/composables/useStagger'
 import { toast } from '@/composables/useToast'
 import { api } from '@/api/commands'
 import type { AlbumItem } from '@/types'
+import { useI18n } from 'vue-i18n'
 
+const { t } = useI18n()
 const library = useLibraryStore()
 const player = usePlayerStore()
 const nav = useNav()
@@ -19,6 +21,9 @@ const nav = useNav()
 const albums = ref<AlbumItem[]>([])
 const total = ref(0)
 const loading = ref(false)
+/** 专辑总数标签（带参翻译在 setup 内生成） */
+const totalLabel = computed(() => t('common.albumsCount', { count: total.value.toLocaleString() }))
+
 const root = ref<HTMLElement | null>(null)
 useStagger(root, computed(() => albums.value.length > 0))
 
@@ -55,10 +60,10 @@ async function playAlbum(album: AlbumItem) {
   <div ref="root" class="h-full overflow-y-auto px-6 pt-5 pb-8">
     <div class="mb-4 flex items-end justify-between">
       <div>
-        <p data-stagger class="text-xs font-semibold tracking-wider text-violet-500 uppercase">我的音乐</p>
-        <h1 data-stagger class="mt-0.5 text-2xl font-bold text-zinc-900 dark:text-zinc-50">专辑</h1>
+        <p data-stagger class="text-xs font-semibold tracking-wider text-violet-500 uppercase">{{ $t('library.myMusic') }}</p>
+        <h1 data-stagger class="mt-0.5 text-2xl font-bold text-zinc-900 dark:text-zinc-50">{{ $t('nav.albums') }}</h1>
       </div>
-      <span v-if="total" data-stagger class="text-sm text-zinc-500">{{ total.toLocaleString() }} 张</span>
+      <span v-if="total" data-stagger class="text-sm text-zinc-500">{{ totalLabel }}</span>
     </div>
 
     <div v-if="loading && !albums.length" class="flex h-64 items-center justify-center">
@@ -68,8 +73,8 @@ async function playAlbum(album: AlbumItem) {
     <EmptyState
       v-else-if="!albums.length"
       :icon="Disc3"
-      title="还没有专辑"
-      description="添加音乐文件夹并完成扫描后会显示在这里。"
+      :title="$t('empty.albumsTitle')"
+      :description="$t('empty.libraryFolderHint')"
     />
 
     <div v-else ref="gridEl">

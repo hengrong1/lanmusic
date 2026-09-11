@@ -10,6 +10,7 @@ import { SettingsIcon as Settings } from '@solar-icons/vue/linear/settings'
 import { SunIcon as Sun } from '@solar-icons/vue/linear/sun'
 import { MonitorIcon as SunMoon } from '@solar-icons/vue/linear/monitor'
 import { CloseIcon as X } from '@solar-icons/vue/linear/close'
+import { useI18n } from 'vue-i18n'
 import { useNav } from '@/composables/useNav'
 import { useSidebar } from '@/composables/useSidebar'
 import { useTheme } from '@/composables/useTheme'
@@ -43,6 +44,9 @@ const searchFocused = ref(false)
 /** 实时搜索结果（最多 20 条预览） */
 const results = ref<Track[]>([])
 const resultTotal = ref(0)
+// 带参翻译在 setup 内计算：模板里的 $t 全局注入没有带参重载
+const { t: translate } = useI18n()
+const viewAllLabel = computed(() => translate('search.viewAll', { count: resultTotal.value }))
 const searching = ref(false)
 let searchSeq = 0
 
@@ -181,7 +185,7 @@ defineExpose({ focusSearch })
   >
     <button
       class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-zinc-500 transition hover:bg-zinc-200/70 dark:hover:bg-zinc-800 dark:text-zinc-400"
-      :title="collapsed ? '展开侧栏' : '收起侧栏'"
+      :title="collapsed ? $t('settings.sidebarExpanded') : $t('settings.sidebarCollapsed')"
       @click="toggleSidebar"
     >
       <PanelLeftOpen v-if="!collapsed" class="h-4 w-4" />
@@ -191,7 +195,7 @@ defineExpose({ focusSearch })
     <button
       class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-zinc-500 transition hover:bg-zinc-200/70 dark:hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-30 dark:text-zinc-400"
       :disabled="!canBack"
-      title="返回"
+      :title="$t('common.back')"
       @click="back()"
     >
       <ArrowLeft class="h-4 w-4" />
@@ -204,7 +208,7 @@ defineExpose({ focusSearch })
         v-model="input"
         autocomplete="off"
         class="h-9 w-full rounded-full border border-transparent bg-white/60 pr-8 pl-9 text-sm text-zinc-800 outline-none transition placeholder:text-zinc-400 focus:border-violet-400 focus:bg-white dark:bg-zinc-800/70 dark:text-zinc-100 dark:focus:bg-zinc-800"
-        placeholder="搜索歌曲、艺人、专辑 (Ctrl+F)"
+        :placeholder="$t('library.searchPlaceholder') + ' (Ctrl+F)'"
         @focus="onFocus"
         @blur="onBlur"
         @input="onInput"
@@ -232,13 +236,13 @@ defineExpose({ focusSearch })
         >
           <div class="flex items-center justify-between px-3 py-2">
             <span class="flex items-center gap-1.5 text-xs font-medium text-zinc-400">
-              <History class="h-3.5 w-3.5" /> 最近搜索
+              <History class="h-3.5 w-3.5" /> {{ $t('search.recent') }}
             </span>
             <button
               v-if="recentSearches.length"
               class="cursor-pointer rounded-lg px-1.5 py-0.5 text-xs text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-700 dark:hover:text-zinc-200"
               @mousedown.prevent="clearRecent"
-            >清空</button>
+            >{{ $t('common.clear') }}</button>
           </div>
 
           <!-- 有记录：横向标签排列 -->
@@ -256,7 +260,7 @@ defineExpose({ focusSearch })
 
           <!-- 无记录：提示文字 -->
           <div v-else class="px-3 pb-4 pt-2 text-center text-xs text-zinc-400 dark:text-zinc-500">
-            暂无搜索记录
+            {{ $t('search.empty') }}
           </div>
         </div>
       </Transition>
@@ -274,7 +278,7 @@ defineExpose({ focusSearch })
         >
           <!-- 搜索中提示 -->
           <div v-if="searching && !results.length" class="flex items-center justify-center px-3 py-6 text-sm text-zinc-400">
-            <span>搜索中...</span>
+            <span>{{ $t('search.searching') }}</span>
           </div>
 
           <!-- 结果列表 -->
@@ -292,7 +296,7 @@ defineExpose({ focusSearch })
                 <div class="min-w-0 flex-1">
                   <div class="flex items-center gap-1.5">
                     <HighlightText
-                      :text="t.title || '未知歌曲'"
+                      :text="t.title || $t('search.unknownTitle')"
                       :keyword="input.trim()"
                       class="truncate text-sm font-medium text-zinc-800 dark:text-zinc-100"
                     />
@@ -300,12 +304,12 @@ defineExpose({ focusSearch })
                     <span
                       v-if="t.matchedFields?.includes('lyrics')"
                       class="shrink-0 rounded-full bg-green-100 px-1.5 py-0.5 text-[10px] font-medium text-green-700 dark:bg-green-900/40 dark:text-green-300"
-                    >歌词</span>
+                    >{{ $t('player.lyrics') }}</span>
                     <span
                       v-else-if="t.matchedFields?.includes('filename')"
                       class="shrink-0 rounded-full bg-purple-100 px-1.5 py-0.5 text-[10px] font-medium text-purple-700 dark:bg-purple-900/40 dark:text-purple-300"
                       :title="t.path"
-                    >文件名</span>
+                    >{{ $t('settings.fieldFilename') }}</span>
                   </div>
                   <div class="mt-0.5 flex items-center gap-1 truncate text-xs text-zinc-500 dark:text-zinc-400">
                     <HighlightText v-if="t.artist" :text="t.artist" :keyword="input.trim()" class="truncate" />
@@ -323,7 +327,7 @@ defineExpose({ focusSearch })
               class="w-full cursor-pointer text-left text-xs text-violet-500 transition hover:text-violet-600 dark:text-violet-400 dark:hover:text-violet-300"
               @mousedown.prevent="viewAll"
             >
-              查看全部 {{ resultTotal }} 条结果
+              {{ viewAllLabel }}
             </button>
           </div>
         </div>
@@ -332,7 +336,7 @@ defineExpose({ focusSearch })
 
     <button
       class="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg text-zinc-500 transition hover:bg-zinc-200/70 dark:text-zinc-400 dark:hover:bg-zinc-800"
-      :title="`主题：${mode === 'dark' ? '深色' : mode === 'light' ? '浅色' : '跟随系统'}`"
+      :title="$t('settings.theme') + ' · ' + (mode === 'dark' ? $t('settings.themeDark') : mode === 'light' ? $t('settings.themeLight') : $t('settings.themeSystem'))"
       @click="cycleTheme"
     >
       <!-- 跟随系统显示日月，固定深色/浅色时分别显示月亮/太阳 -->
@@ -344,7 +348,7 @@ defineExpose({ focusSearch })
     <button
       class="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg transition hover:bg-zinc-200/70 dark:hover:bg-zinc-800"
       :class="current.view === 'settings' ? 'text-violet-500' : 'text-zinc-500 dark:text-zinc-400'"
-      title="设置"
+      :title="$t('nav.settings')"
       @click="go({ view: 'settings' })"
     >
       <Settings class="h-4 w-4" />

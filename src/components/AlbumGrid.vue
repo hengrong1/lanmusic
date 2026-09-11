@@ -21,7 +21,7 @@ defineEmits<{ open: [album: AlbumItem]; play: [album: AlbumItem] }>()
         <button
           class="absolute right-2 bottom-2 flex h-10 w-10 cursor-pointer items-center justify-center rounded-lg bg-violet-500 text-white shadow-lg transition hover:scale-105 hover:bg-violet-400"
           :class="album.trackCount === 0 ? 'hidden' : ''"
-          title="播放专辑"
+          :title="$t('album.playAlbum')"
           @click.stop="$emit('play', album)"
         >
           <Play class="ml-0.5 h-4 w-4" />
@@ -31,7 +31,7 @@ defineEmits<{ open: [album: AlbumItem]; play: [album: AlbumItem] }>()
         {{ album.title }}
       </p>
       <p class="truncate text-xs text-zinc-500 dark:text-zinc-400">
-        {{ album.artist ?? '未知艺人' }}{{ album.year ? ` · ${album.year}` : '' }}
+        {{ album.artist ?? $t('artist.unknownArtist') }}{{ album.year ? ` · ${album.year}` : '' }}
       </p>
     </div>
   </div>

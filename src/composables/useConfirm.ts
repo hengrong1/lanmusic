@@ -1,4 +1,5 @@
 import { ref } from 'vue'
+import { t } from '@/i18n/translate'
 
 export interface ConfirmOptions {
   title: string
@@ -23,8 +24,8 @@ const state = ref<ConfirmState>({
   title: '',
   message: '',
   danger: false,
-  confirmText: '确定',
-  cancelText: '取消',
+  confirmText: t('common.ok'),
+  cancelText: t('common.cancel'),
   resolve: null,
 })
 
@@ -40,8 +41,8 @@ export function confirmDialog(opts: ConfirmOptions): Promise<boolean> {
       title: opts.title,
       message: opts.message,
       danger: opts.danger ?? false,
-      confirmText: opts.confirmText ?? '确定',
-      cancelText: opts.cancelText ?? '取消',
+      confirmText: opts.confirmText ?? t('common.ok'),
+      cancelText: opts.cancelText ?? t('common.cancel'),
       resolve,
     }
   })

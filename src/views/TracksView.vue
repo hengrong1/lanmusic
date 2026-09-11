@@ -14,29 +14,36 @@ import { useStagger } from '@/composables/useStagger'
 import { toast } from '@/composables/useToast'
 import { BaseButton, BaseSelect } from '@/components/ui'
 import type { SelectOption } from '@/components/ui'
+import { useI18n } from 'vue-i18n'
 
+const { t } = useI18n()
 const library = useLibraryStore()
 const nav = useNav()
 const root = ref<HTMLElement | null>(null)
 useStagger(root, computed(() => library.trackPage.items.length > 0))
 
-const sortOptions: SelectOption[] = [
-  { value: 'title', label: '按标题' },
-  { value: 'album', label: '按专辑' },
-  { value: 'artist', label: '按艺人' },
-  { value: 'added', label: '按添加时间' },
-  { value: 'duration', label: '按时长' },
-]
+const sortOptions = computed<SelectOption[]>(() => [
+  { value: 'title', label: t('library.byTitle') },
+  { value: 'album', label: t('library.byAlbum') },
+  { value: 'artist', label: t('library.byArtist') },
+  { value: 'added', label: t('library.byDateAdded') },
+  { value: 'duration', label: t('library.byDuration') },
+])
 
 const header = computed(() => {
   const r = nav.current.value
-  if (r.search) return { title: `搜索：${r.search}`, subtitle: '' }
-  if (r.albumId) return { title: r.albumTitle ?? '专辑', subtitle: '专辑' }
-  if (r.artistId) return { title: r.artistName ?? '艺人', subtitle: '艺人' }
-  if (r.favorites) return { title: '我的喜欢', subtitle: '我的音乐' }
-  if (r.recent) return { title: '最近播放', subtitle: '我的音乐' }
-  return { title: '全部歌曲', subtitle: '我的音乐' }
+  if (r.search) return { title: t('library.searchTitle', { query: r.search }), subtitle: '' }
+  if (r.albumId) return { title: r.albumTitle ?? t('album.title'), subtitle: t('album.title') }
+  if (r.artistId) return { title: r.artistName ?? t('artist.title'), subtitle: t('artist.title') }
+  if (r.favorites) return { title: t('library.myFavorites'), subtitle: t('library.myMusic') }
+  if (r.recent) return { title: t('nav.recent'), subtitle: t('library.myMusic') }
+  return { title: t('library.allTracks'), subtitle: t('library.myMusic') }
 })
+
+/** 曲目总数标签（带参翻译在 setup 内生成） */
+const totalLabel = computed(() =>
+  library.trackPage.total ? t('common.songsCount', { count: library.trackPage.total.toLocaleString() }) : '',
+)
 
 /** 排序下拉直接双向绑定到库查询状态（最近播放页内部使用 'recent'，不影响存档）。
  * 表头点击会产生带 "-" 前缀的降序值，下拉框展示时剥离前缀归到基础选项。 */
@@ -97,18 +104,18 @@ async function addFolder() {
     <!-- 头部 -->
     <div class="flex shrink-0 items-end justify-between px-6 pt-5 pb-4">
       <div>
-        <p data-stagger class="text-xs font-semibold tracking-wider text-violet-500 uppercase">{{ header.subtitle || '结果' }}</p>
+        <p data-stagger class="text-xs font-semibold tracking-wider text-violet-500 uppercase">{{ header.subtitle || $t('common.result') }}</p>
         <h1 data-stagger class="mt-0.5 text-2xl font-bold text-zinc-900 dark:text-zinc-50">{{ header.title }}</h1>
       </div>
       <div class="flex items-center gap-3">
         <span v-if="library.trackPage.total" data-stagger class="text-sm text-zinc-500 whitespace-nowrap">
-          {{ library.trackPage.total.toLocaleString() }} 首
+          {{ totalLabel }}
         </span>
         <BaseSelect
           v-if="!nav.current.value.search && !nav.current.value.recent"
           v-model="sort"
           data-stagger
-          :options="[{ value: 'none', label: '入库顺序' }, ...sortOptions]"
+          :options="[{ value: 'none', label: $t('library.sortLibraryOrder') }, ...sortOptions]"
           size="sm"
         />
       </div>
@@ -118,8 +125,8 @@ async function addFolder() {
     <div v-if="!library.hasSource && !library.trackPage.total" class="min-h-0 flex-1">
       <EmptyState
         :icon="Music"
-        title="音乐库还是空的"
-        description="添加本地文件夹、连接局域网设备或 NAS 的 WebDAV 目录，歌曲会自动入库。"
+        :title="$t('empty.libraryTitle')"
+        :description="$t('empty.libraryHint')"
       >
         <BaseButton
           class="mt-2"
@@ -128,7 +135,7 @@ async function addFolder() {
           :disabled="adding"
           @click="addFolder"
         >
-          添加音乐文件夹
+          {{ $t('empty.addMusicFolder') }}
         </BaseButton>
       </EmptyState>
     </div>
@@ -140,13 +147,13 @@ async function addFolder() {
     <div v-else-if="nav.current.value.favorites && !library.trackPage.total" class="min-h-0 flex-1">
       <EmptyState
         :icon="Heart"
-        title="还没有喜欢的歌曲"
-        description="在歌曲上右键选择「喜欢」，或点击播放条上的爱心。"
+        :title="$t('empty.likedTitle')"
+        :description="$t('empty.likedHint')"
       />
     </div>
 
     <div v-else-if="!library.trackPage.total" class="min-h-0 flex-1">
-      <EmptyState :icon="SearchX" title="没有找到匹配的歌曲" description="换个关键词试试。" />
+      <EmptyState :icon="SearchX" :title="$t('empty.noSongsMatch')" :description="$t('empty.noSongsMatchHint')" />
     </div>
 
     <!-- 曲目表 -->

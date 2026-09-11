@@ -2,7 +2,9 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { PlayIcon as Play } from '@solar-icons/vue/bold/play'
 import { usePlayerStore } from '@/stores/player'
+import { useI18n } from 'vue-i18n'
 
+const { t } = useI18n()
 const player = usePlayerStore()
 const container = ref<HTMLElement | null>(null)
 
@@ -22,6 +24,12 @@ function fmt(s: number) {
   const sec = Math.floor(s % 60)
   return `${m}:${String(sec).padStart(2, '0')}`
 }
+
+/** 跳转提示（带参翻译，模板 \`$t\` 无带参重载） */
+const jumpTip = (time: number, text?: string) =>
+  text
+    ? t('lyrics.jumpTo', { time: fmt(time), text })
+    : t('lyrics.jumpToInterlude', { time: fmt(time) })
 
 /**
  * 歌词字号随与当前行的距离阶梯递减（px）：[当前行, ±1, ±2, ±3, ±4]，更远的行保持末档。
@@ -86,7 +94,7 @@ onMounted(() => void nextTick(scrollToActive))
     @touchmove.passive="onUserScroll"
   >
     <!-- 加载中 -->
-    <p v-if="player.lyricsLoading" class="text-center text-sm text-zinc-500">歌词加载中…</p>
+    <p v-if="player.lyricsLoading" class="text-center text-sm text-zinc-500">{{ $t('lyrics.loading') }}</p>
 
     <!-- 时间轴歌词 -->
     <template v-else-if="player.lyricsLines?.length">
@@ -102,7 +110,7 @@ onMounted(() => void nextTick(scrollToActive))
              绝对定位不占布局空间：歌词行真正居中，与上方歌曲名对齐 -->
         <button
           class="lyric-jump pointer-events-none absolute top-1/2 left-0 z-10 flex h-7 w-16 -translate-y-1/2 translate-x-2 cursor-pointer items-center justify-center gap-1 rounded-lg border px-1 font-mono text-[11px] leading-none text-[var(--np-accent,#fff)] opacity-0 transition-[opacity,transform,background-color,border-color] duration-200 ease-out group-hover:pointer-events-auto group-hover:translate-x-0 group-hover:opacity-100"
-          :title="line.text ? `跳转到 ${fmt(line.time + player.lyricOffset)}：${line.text}` : `跳转到 ${fmt(line.time + player.lyricOffset)}（间奏）`"
+          :title="jumpTip(line.time + player.lyricOffset, line.text)"
           @click="player.seek(line.time + player.lyricOffset)"
         >
           <Play class="h-3 w-3 shrink-0" />
@@ -146,7 +154,7 @@ onMounted(() => void nextTick(scrollToActive))
 
     <!-- 无歌词 -->
     <p v-else class="text-center text-sm text-zinc-500">
-      暂无歌词<br /><span class="text-xs opacity-70">支持 .lrc 同名文件或内嵌歌词</span>
+      {{ $t('lyrics.noLyrics') }}<br /><span class="text-xs opacity-70">{{ $t('lyrics.noLyricsLocal') }}</span>
     </p>
   </div>
 </template>

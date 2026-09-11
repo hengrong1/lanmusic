@@ -4,6 +4,7 @@ import { api } from '@/api/commands'
 import { usePlayerStore } from '@/stores/player'
 import { getAppFont } from '@/composables/useAppFont'
 import { toast } from '@/composables/useToast'
+import { t } from '@/i18n/translate'
 
 /** 桌面歌词配置 */
 export interface DeskLyricsConfig {
@@ -128,9 +129,9 @@ export function useDesktopLyrics() {
       const ok = await api.desktopLyricsSet(next)
       enabled.value = ok === true
       // 仅开启失败才提示（关闭成功时后端返回 false，属正常结果）
-      if (next && !ok) toast('桌面歌词开启失败', 'error')
+      if (next && !ok) toast(t('toast.desktopLyricsOpenFailed'), 'error')
     } catch (e) {
-      toast(`桌面歌词操作失败：${e}`, 'error')
+      toast(t('toast.desktopLyricsFailed', { error: String(e) }), 'error')
       enabled.value = false
     }
     persist()

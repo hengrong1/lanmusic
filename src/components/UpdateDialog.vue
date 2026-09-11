@@ -48,9 +48,9 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
               <ArrowDown class="h-4.5 w-4.5" />
             </div>
             <div class="min-w-0 flex-1">
-              <h2 class="text-base font-semibold text-zinc-900 dark:text-zinc-50">发现新版本</h2>
+              <h2 class="text-base font-semibold text-zinc-900 dark:text-zinc-50">{{ $t('settings.updateDialogTitle') }}</h2>
               <p class="mt-1 text-sm text-zinc-500 dark:text-zinc-300">
-                <template v-if="updater.currentVersion.value">当前版本 v{{ updater.currentVersion.value }} → </template>新版本
+                <template v-if="updater.currentVersion.value">{{ $t('settings.currentVersion') }} v{{ updater.currentVersion.value }} → </template>{{ $t('settings.newVersion') }}
                 <span class="font-medium text-violet-500">v{{ updater.newVersion.value }}</span>
               </p>
             </div>
@@ -75,7 +75,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
               {{ progressPct >= 0 ? `${progressPct}%` : `${updater.downloadedMb.value.toFixed(1)}MB` }}
             </span>
           </div>
-          <p v-if="updater.status.value === 'ready'" class="mt-4 text-xs text-zinc-400">更新已下载完成，重启应用后生效。</p>
+          <p v-if="updater.status.value === 'ready'" class="mt-4 text-xs text-zinc-400">{{ $t('settings.updateDownloadedHint') }}</p>
 
           <div class="mt-5 flex justify-end gap-2">
             <BaseButton
@@ -84,7 +84,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
               size="sm"
               @click="dismiss"
             >
-              稍后
+              {{ $t('settings.later') }}
             </BaseButton>
             <BaseButton
               v-if="updater.status.value === 'available'"
@@ -92,7 +92,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
               :icon="ArrowDown"
               @click="updater.downloadAndInstall()"
             >
-              立即更新
+              {{ $t('settings.updateNow') }}
             </BaseButton>
             <BaseButton
               v-else-if="updater.status.value === 'downloading'"
@@ -100,7 +100,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
               :icon="LoaderCircle"
               loading
             >
-              正在下载…
+              {{ $t('settings.downloadingShort') }}
             </BaseButton>
             <BaseButton
               v-else-if="updater.status.value === 'ready'"
@@ -108,7 +108,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
               :icon="RotateCcw"
               @click="updater.restartToUpdate()"
             >
-              重启应用
+              {{ $t('settings.restartApp') }}
             </BaseButton>
           </div>
         </div>

@@ -7,6 +7,7 @@ import { useLibraryStore } from '@/stores/library'
 import { confirmDialog } from '@/composables/useConfirm'
 import { toast } from '@/composables/useToast'
 import { BaseInput, BaseTextarea, BaseButton } from '@/components/ui'
+import { useI18n } from 'vue-i18n'
 
 /**
  * 编辑歌单弹层：集中修改名称、简介；只读展示创建时间 / 歌曲数 / 封面；删除歌单。
@@ -15,16 +16,25 @@ import { BaseInput, BaseTextarea, BaseButton } from '@/components/ui'
 const props = defineProps<{ playlistId: number }>()
 const emit = defineEmits<{ close: []; saved: [name?: string]; deleted: [] }>()
 
+const { t, locale } = useI18n()
 const library = useLibraryStore()
 
 const meta = computed(() => library.playlists.find((p) => p.id === props.playlistId) ?? null)
 const metaDesc = computed(() => meta.value?.description ?? '')
 const createdText = computed(() => {
-  const t = meta.value?.createdAt
-  return t
-    ? new Date(t * 1000).toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' })
-    : '未知'
+  const ts = meta.value?.createdAt
+  return ts
+    ? new Date(ts * 1000).toLocaleDateString(locale.value === 'zh' ? 'zh-CN' : 'en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+      })
+    : t('common.unknown')
 })
+
+/** 只读信息行（带参翻译在 setup 内生成） */
+const createdLabel = computed(() => t('playlist.createdAtFull', { date: createdText.value }))
+const trackCountLabel = computed(() => t('playlist.trackCountFull', { count: meta.value?.trackCount ?? 0 }))
 
 const nameDraft = ref('')
 const descDraft = ref('')
@@ -55,7 +65,7 @@ async function save() {
   if (saving.value) return
   const name = nameDraft.value.trim()
   if (!name) {
-    toast('歌单名不能为空', 'error')
+    toast(t('toast.playlistNameRequired'), 'error')
     return
   }
   const nameChanged = name !== (meta.value?.name ?? '')
@@ -70,7 +80,7 @@ async function save() {
     if (nameChanged) await library.renamePlaylist(props.playlistId, name)
     if (descChanged) await library.setPlaylistDescription(props.playlistId, descDraft.value.trim())
     syncing = false
-    toast('歌单已保存')
+    toast(t('toast.playlistSaved'))
     emit('saved', nameChanged ? name : undefined)
     emit('close')
   } catch (e) {
@@ -83,10 +93,10 @@ async function save() {
 
 async function remove() {
   const ok = await confirmDialog({
-    title: '删除歌单',
-    message: `确定删除歌单「${meta.value?.name ?? '该歌单'}」吗？歌曲本身不会被删除。`,
+    title: t('playlist.deleteTitle'),
+    message: t('playlist.deleteMessage', { name: meta.value?.name ?? t('playlist.title') }),
     danger: true,
-    confirmText: '删除',
+    confirmText: t('common.delete'),
   })
   if (!ok) return
   try {
@@ -112,8 +122,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
     >
       <!-- 标题栏 -->
       <div class="flex shrink-0 items-center justify-between border-b border-zinc-200 px-5 py-4 dark:border-zinc-800">
-        <h2 class="text-base font-semibold text-zinc-900 dark:text-zinc-50">编辑歌单</h2>
-        <BaseButton variant="ghost" size="xs" :icon="X" title="关闭" aria-label="关闭" @click="emit('close')" />
+        <h2 class="text-base font-semibold text-zinc-900 dark:text-zinc-50">{{ $t('playlist.edit') }}</h2>
+        <BaseButton variant="ghost" size="xs" :icon="X" :title="$t('common.close')" :aria-label="$t('common.close')" @click="emit('close')" />
       </div>
 
       <!-- 表单 -->
@@ -122,44 +132,44 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
         <div class="flex items-center gap-4">
           <CoverImg :album-id="meta?.coverAlbumId ?? null" rounded="h-16 w-16 shrink-0 rounded-lg" />
           <div class="min-w-0 text-xs text-zinc-500 dark:text-zinc-400">
-            <p>创建时间：{{ createdText }}</p>
-            <p class="mt-0.5">歌曲：{{ meta?.trackCount ?? 0 }} 首</p>
+            <p>{{ createdLabel }}</p>
+            <p class="mt-0.5">{{ trackCountLabel }}</p>
           </div>
         </div>
 
         <div>
-          <label class="mb-1 block text-xs font-medium text-zinc-500 dark:text-zinc-400">歌单名称</label>
+          <label class="mb-1 block text-xs font-medium text-zinc-500 dark:text-zinc-400">{{ $t('playlist.namePlaceholder') }}</label>
           <BaseInput
             ref="nameInput"
             v-model="nameDraft"
-            placeholder="歌单名称"
+            :placeholder="$t('playlist.namePlaceholder')"
             :maxlength="60"
             @keydown.enter="save"
           />
         </div>
 
         <div>
-          <label class="mb-1 block text-xs font-medium text-zinc-500 dark:text-zinc-400">简介</label>
+          <label class="mb-1 block text-xs font-medium text-zinc-500 dark:text-zinc-400">{{ $t('common.description') }}</label>
           <BaseTextarea
             v-model="descDraft"
             :rows="3"
-            placeholder="写点什么，介绍这个歌单…"
+            :placeholder="$t('playlist.descPlaceholderLong')"
             :maxlength="300"
           />
         </div>
 
         <div class="border-t border-zinc-100 pt-3 dark:border-zinc-800">
           <BaseButton variant="ghost" tone="danger" size="xs" :icon="Trash2" @click="remove">
-            删除歌单
+            {{ $t('playlist.delete') }}
           </BaseButton>
         </div>
       </div>
 
       <!-- 底部操作 -->
       <div class="flex shrink-0 items-center justify-end gap-2 border-t border-zinc-200 px-5 py-3 dark:border-zinc-800">
-        <BaseButton variant="ghost" size="sm" @click="emit('close')">取消</BaseButton>
+        <BaseButton variant="ghost" size="sm" @click="emit('close')">{{ $t('common.cancel') }}</BaseButton>
         <BaseButton variant="primary" size="sm" :loading="saving" :disabled="!nameDraft.trim()" @click="save">
-          保存
+          {{ $t('common.save') }}
         </BaseButton>
       </div>
     </div>

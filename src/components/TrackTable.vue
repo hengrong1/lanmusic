@@ -23,6 +23,7 @@ import { useNav } from '@/composables/useNav'
 import { useMvPlayer } from '@/composables/useMvPlayer'
 import { api } from '@/api/commands'
 import { toast } from '@/composables/useToast'
+import { useI18n } from 'vue-i18n'
 
 const props = defineProps<{ tracks: Track[]; playlistId?: number; favoritesView?: boolean; sort?: string; reorderable?: boolean; batchMode?: boolean }>()
 const emit = defineEmits<{
@@ -33,22 +34,32 @@ const emit = defineEmits<{
   selection: [ids: number[]]
 }>()
 
+const { t: tr } = useI18n()
 const player = usePlayerStore()
 const library = useLibraryStore()
 const nav = useNav()
 const mv = useMvPlayer()
+
+/** 带参提示文案（模板 \`$t\` 无带参重载，统一在 setup 内生成） */
+const artistTip = (name: string) => tr('artist.viewArtist', { name })
+const albumTip = (name: string | null | undefined) =>
+  tr('album.viewAlbum', { name: name ?? tr('album.unknownAlbum') })
+const filenameTip = (p: string) => tr('library.filenameHit', { path: p })
 
 /** 当前搜索关键词（高亮命中字用） */
 const searchTerm = computed(() => nav.current.value.search ?? '')
 
 // ---- 表头点击排序（传入 sort 属性时启用；歌单视图保持拖拽顺序不启用）----
 const vlist = ref<{ scrollToTop: () => void; scrollToIndex: (i: number) => void } | null>(null)
-const sortCols = [
-  { field: 'title', label: '标题' },
-  { field: 'artist', label: '艺人' },
-  { field: 'album', label: '专辑' },
-  { field: 'duration', label: '时长' },
-] as const
+const sortCols = computed(
+  () =>
+    [
+      { field: 'title', label: tr('library.sortTitle') },
+      { field: 'artist', label: tr('library.sortArtist') },
+      { field: 'album', label: tr('library.sortAlbum') },
+      { field: 'duration', label: tr('library.sortDuration') },
+    ] as const,
+)
 
 const isAsc = (field: string) => props.sort === field
 const isDesc = (field: string) => props.sort === `-${field}`
@@ -157,16 +168,16 @@ const menuItems = computed<MenuItem[]>(() => {
   if (!t) return []
   const items: MenuItem[] = [
     {
-      label: '播放',
+      label: tr('player.play'),
       icon: Play,
       action: () => player.playList(props.tracks, props.tracks.findIndex((x) => x.id === t.id)),
     },
-    { label: '下一首播放', icon: ListEnd, action: () => player.playNextInQueue(t) },
-    { label: '加入队列', icon: ListPlus, action: () => player.enqueue(t) },
+    { label: tr('player.playNext'), icon: ListEnd, action: () => player.playNextInQueue(t) },
+    { label: tr('player.addToQueue'), icon: ListPlus, action: () => player.enqueue(t) },
     // 仅存在同名视频文件（MV）的歌曲才显示
-    ...(t.hasMv ? [{ label: '播放 MV', icon: VideoFramePlay, action: () => playMv(t) }] : []),
+    ...(t.hasMv ? [{ label: tr('mv.play'), icon: VideoFramePlay, action: () => playMv(t) }] : []),
     {
-      label: t.fav ? '取消喜欢' : '喜欢',
+      label: t.fav ? tr('library.unlike') : tr('library.like'),
       icon: Heart,
       action: () =>
         api
@@ -183,7 +194,7 @@ const menuItems = computed<MenuItem[]>(() => {
 
   if (props.playlistId != null) {
     items.push({
-      label: '从歌单移除',
+      label: tr('playlist.removeFromPlaylist'),
       danger: true,
       action: () => {
         library
@@ -194,7 +205,7 @@ const menuItems = computed<MenuItem[]>(() => {
     })
   } else {
     items.push({
-      label: '加入歌单',
+      label: tr('library.addToPlaylist'),
       children: library.playlists.length
         ? library.playlists.map((p) => ({
             label: p.name,
@@ -202,19 +213,19 @@ const menuItems = computed<MenuItem[]>(() => {
               library.addToPlaylist(p.id, [t.id]).catch((e) => toast(String(e), 'error'))
             },
           }))
-        : [{ label: '（先在侧边栏新建歌单）', disabled: true }],
+        : [{ label: tr('playlist.createFirstHint'), disabled: true }],
     })
   }
 
   items.push(
     {
-      label: '查看专辑',
+      label: tr('album.goToAlbum'),
       icon: Disc3,
       disabled: t.albumId == null,
-      action: () => nav.go({ view: 'tracks', albumId: t.albumId!, albumTitle: t.album ?? '未知专辑' }),
+      action: () => nav.go({ view: 'tracks', albumId: t.albumId!, albumTitle: t.album ?? tr('album.unknownAlbum') }),
     },
     {
-      label: '在文件夹中显示',
+      label: tr('common.revealInFolder'),
       icon: FolderOpen,
       action: () => api.revealTrack(t.id).catch((e) => toast(String(e), 'error')),
     },
@@ -229,10 +240,10 @@ function openMenu(e: MouseEvent, t: Track) {
 }
 
 /** 行内展示的艺人列表：优先用后端拆分的多艺人（各自可点击），回退到合并字符串 */
-function artistLinks(t: Track): { id: number | null; name: string }[] {
-  if (t.artists?.length) return t.artists.map((a) => ({ id: a.id, name: a.name }))
-  if (t.artist) return [{ id: t.artistId, name: t.artist }]
-  return [{ id: null, name: '未知艺人' }]
+function artistLinks(track: Track): { id: number | null; name: string }[] {
+  if (track.artists?.length) return track.artists.map((a) => ({ id: a.id, name: a.name }))
+  if (track.artist) return [{ id: track.artistId, name: track.artist }]
+  return [{ id: null, name: tr('artist.unknownArtist') }]
 }
 
 function openArtist(artist: { id: number | null; name: string }) {
@@ -240,9 +251,9 @@ function openArtist(artist: { id: number | null; name: string }) {
   nav.go({ view: 'tracks', artistId: artist.id, artistName: artist.name })
 }
 
-function openAlbum(t: Track) {
-  if (t.albumId == null) return
-  nav.go({ view: 'tracks', albumId: t.albumId, albumTitle: t.album ?? '未知专辑' })
+function openAlbum(track: Track) {
+  if (track.albumId == null) return
+  nav.go({ view: 'tracks', albumId: track.albumId, albumTitle: track.album ?? tr('album.unknownAlbum') })
 }
 
 // ---- 拖拽排序（仅传入 reorderable 时启用）----
@@ -281,7 +292,7 @@ function onDragEnd() {
         <button
           class="flex h-4 w-4 cursor-pointer items-center justify-center rounded border transition"
           :class="allSelected ? 'border-violet-500 bg-violet-500 text-white' : 'border-zinc-300 dark:border-zinc-600'"
-          title="全选"
+          :title="$t('common.selectAll')"
           @click.stop="toggleAll"
         >
           <Check v-if="allSelected" class="h-3 w-3" />
@@ -370,17 +381,17 @@ function onDragEnd() {
               <span
                 v-if="t.matchedFields?.includes('lyrics')"
                 class="shrink-0 rounded-full bg-violet-100 px-1.5 py-px text-[10px] font-medium text-violet-600 dark:bg-violet-500/20 dark:text-violet-300"
-                title="歌词命中"
-              >歌词</span>
+                :title="$t('library.lyricsHit')"
+              >{{ $t('player.lyrics') }}</span>
               <span
                 v-if="t.matchedFields?.includes('filename')"
                 class="shrink-0 rounded-full bg-emerald-100 px-1.5 py-px text-[10px] font-medium text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-300"
-                :title="`文件名命中：${t.path}`"
-              >文件名</span>
+                :title="filenameTip(t.path)"
+              >{{ $t('settings.fieldFilename') }}</span>
               <button
                 v-if="t.hasMv"
                 class="shrink-0 rounded-lg p-0.5 text-fuchsia-500 transition hover:bg-fuchsia-50 dark:hover:bg-fuchsia-900/30"
-                title="播放 MV"
+                :title="$t('mv.play')"
                 :aria-label="$t('mv.play')"
                 @click.stop="playMv(t)"
               >
@@ -393,7 +404,7 @@ function onDragEnd() {
                 <button
                   v-if="a.id != null"
                   class="max-w-full cursor-pointer truncate transition hover:text-violet-600 hover:underline dark:hover:text-violet-400"
-                  :title="`查看艺人：${a.name}`"
+                  :title="artistTip(a.name)"
                   @click.stop="openArtist(a)"
                 ><HighlightText :text="a.name" :keyword="searchTerm" /></button>
                 <span v-else><HighlightText :text="a.name" :keyword="searchTerm" /></span>
@@ -403,9 +414,9 @@ function onDragEnd() {
             <div class="min-w-0 truncate text-zinc-500 dark:text-zinc-400">
               <button
                 class="max-w-full cursor-pointer truncate transition hover:text-violet-600 hover:underline dark:hover:text-violet-400"
-                :title="`查看专辑：${t.album ?? '未知专辑'}`"
+                :title="albumTip(t.album)"
                 @click.stop="openAlbum(t)"
-              ><HighlightText :text="t.album ?? '未知专辑'" :keyword="searchTerm" /></button>
+              ><HighlightText :text="t.album ?? $t('album.unknownAlbum')" :keyword="searchTerm" /></button>
             </div>
             <div class="text-right font-mono text-xs tabular-nums transition-colors" :class="player.current?.id === t.id ? 'text-violet-500' : 'text-zinc-500 dark:text-zinc-400'">
               {{ fmtDuration(t.duration) }}
@@ -424,11 +435,11 @@ function onDragEnd() {
         <button
           v-if="showLocate"
           class="absolute right-6 bottom-5 z-10 flex max-w-[260px] cursor-pointer items-center gap-2 rounded-lg bg-violet-500 px-4 py-2 text-xs font-medium text-white shadow-lg shadow-violet-500/30 transition hover:bg-violet-400"
-          title="滚动到正在播放的歌曲"
+          :title="$t('queue.scrollToCurrent')"
           @click="locatePlaying"
         >
           <LocateFixed class="h-3.5 w-3.5 shrink-0" />
-          <span class="truncate">正在播放：{{ player.current?.title }}</span>
+          <span class="truncate">{{ $t('player.nowPlayingPrefix') }}{{ player.current?.title }}</span>
         </button>
       </Transition>
     </div>

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { nextTick, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { VinylRecordIcon as Disc3 } from '@solar-icons/vue/linear/vinyl-record'
 import { HeartIcon as Heart } from '@solar-icons/vue/linear/heart'
 import { HistoryIcon as History } from '@solar-icons/vue/linear/history'
@@ -7,6 +7,7 @@ import { MicrophoneIcon as Mic } from '@solar-icons/vue/linear/microphone'
 import { MusicNoteIcon as Music } from '@solar-icons/vue/linear/music-note'
 import { AddIcon as Plus } from '@solar-icons/vue/linear/add'
 import { CloseIcon as X } from '@solar-icons/vue/linear/close'
+import { useI18n } from 'vue-i18n'
 import gsap from 'gsap'
 import logo from '@/assets/logo.png'
 import { useLibraryStore } from '@/stores/library'
@@ -28,6 +29,7 @@ const W_COLLAPSED = 60
 // 基础占位固定为 h-4 w-4，视觉缩放由 GSAP transform 控制，与宽度动画统一调度更顺滑
 const ICON_SCALE_COLLAPSED = 20 / 16
 
+const { t } = useI18n()
 const library = useLibraryStore()
 const { current, go } = useNav()
 const { collapsed } = useSidebar()
@@ -110,13 +112,13 @@ interface NavEntry {
   count?: () => number
 }
 
-const entries: NavEntry[] = [
-  { route: { view: 'tracks' }, label: '全部歌曲', icon: Music, count: () => library.stats.tracks },
-  { route: { view: 'tracks', favorites: true }, label: '我的喜欢', icon: Heart, count: () => library.stats.favorites },
-  { route: { view: 'albums' }, label: '专辑', icon: Disc3, count: () => library.stats.albums },
-  { route: { view: 'artists' }, label: '艺人', icon: Mic, count: () => library.stats.artists },
-  { route: { view: 'tracks', recent: true }, label: '最近播放', icon: History },
-]
+const entries = computed<NavEntry[]>(() => [
+  { route: { view: 'tracks' }, label: t('library.allTracks'), icon: Music, count: () => library.stats.tracks },
+  { route: { view: 'tracks', favorites: true }, label: t('library.myFavorites'), icon: Heart, count: () => library.stats.favorites },
+  { route: { view: 'albums' }, label: t('library.albums'), icon: Disc3, count: () => library.stats.albums },
+  { route: { view: 'artists' }, label: t('library.artists'), icon: Mic, count: () => library.stats.artists },
+  { route: { view: 'tracks', recent: true }, label: t('nav.recent'), icon: History },
+])
 
 function isActive(e: NavEntry) {
   const r = current.value
@@ -180,16 +182,16 @@ function openPlaylistMenu(e: MouseEvent, p: { id: number; name: string }) {
   e.stopPropagation()
   playlistMenu.value = { x: e.clientX, y: e.clientY, id: p.id, name: p.name }
   playlistMenuItems.value = [
-    { label: '重命名', action: () => startRename(p.id, p.name) },
+    { label: t('common.rename'), action: () => startRename(p.id, p.name) },
     {
-      label: '删除歌单',
+      label: t('playlist.delete'),
       danger: true,
       action: () => {
         confirmDialog({
-          title: '删除歌单',
-          message: `确定删除歌单「${p.name}」吗？歌曲本身不会被删除。`,
+          title: t('playlist.deleteTitle'),
+          message: t('playlist.deleteMessage', { name: p.name }),
           danger: true,
-          confirmText: '删除',
+          confirmText: t('common.delete'),
         })
           .then(async (ok) => {
             if (!ok) return
@@ -226,7 +228,7 @@ function openPlaylistMenu(e: MouseEvent, p: { id: number; name: string }) {
     <div class="px-3">
       <!-- 分组标题常驻渲染（仅参与淡入淡出）：避免 showText 切换时高度增减推挤下方图标 -->
       <p class="sidebar-fade px-2 pb-1 text-[11px] font-semibold tracking-wider text-zinc-400 uppercase dark:text-zinc-600">
-        我的音乐
+        {{ $t('library.myMusic') }}
       </p>
       <Tooltip
         v-for="e in entries"
@@ -258,10 +260,10 @@ function openPlaylistMenu(e: MouseEvent, p: { id: number; name: string }) {
     <!-- 歌单：收起态仍可点击图标进入歌单（悬停有高亮 + title 提示） -->
     <div class="mt-3 min-h-0 flex-1 overflow-y-auto px-3">
       <div class="flex items-center justify-between px-2 pb-1">
-        <p class="sidebar-fade text-[11px] font-semibold tracking-wider text-zinc-400 uppercase dark:text-zinc-600">歌单</p>
+        <p class="sidebar-fade text-[11px] font-semibold tracking-wider text-zinc-400 uppercase dark:text-zinc-600">{{ $t('playlist.title') }}</p>
         <button
           class="sidebar-fade flex h-5 w-5 cursor-pointer items-center justify-center rounded-lg text-zinc-400 hover:bg-zinc-200 hover:text-zinc-600 disabled:cursor-default dark:hover:bg-zinc-700 dark:hover:text-zinc-300"
-          title="新建歌单"
+          :title="$t('playlist.createNew')"
           :disabled="collapsed"
           @click="startCreate"
         >
@@ -279,7 +281,7 @@ function openPlaylistMenu(e: MouseEvent, p: { id: number; name: string }) {
           ref="inputEl"
           v-model="editing.value"
           class="min-w-0 flex-1 bg-transparent text-sm text-zinc-800 outline-none dark:text-zinc-100"
-          placeholder="歌单名称"
+          :placeholder="$t('playlist.namePlaceholder')"
           @keydown.enter="confirmEdit"
           @keydown.esc="editing = null"
         />
@@ -313,7 +315,7 @@ function openPlaylistMenu(e: MouseEvent, p: { id: number; name: string }) {
         </Tooltip>
       </div>
       <p v-if="showText && !library.playlists.length && !editing" class="sidebar-fade px-2.5 py-2 text-sm text-zinc-400 dark:text-zinc-600">
-        暂无歌单，点 + 新建
+        {{ $t('library.noPlaylistsHint') }}
       </p>
     </div>
 

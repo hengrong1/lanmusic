@@ -8,13 +8,19 @@ import { useNav } from '@/composables/useNav'
 import { useStagger } from '@/composables/useStagger'
 import { api } from '@/api/commands'
 import type { ArtistItem } from '@/types'
+import { useI18n } from 'vue-i18n'
 
+const { t } = useI18n()
 const library = useLibraryStore()
 const nav = useNav()
 
 const artists = ref<ArtistItem[]>([])
 const total = ref(0)
 const loading = ref(false)
+
+/** 带参文案（模板 \`$t\` 无带参重载） */
+const totalLabel = computed(() => t('common.artistsCount', { count: total.value.toLocaleString() }))
+const songCount = (n: number) => t('common.songsCount', { count: n })
 
 const root = ref<HTMLElement | null>(null)
 useStagger(root, computed(() => artists.value.length > 0))
@@ -45,10 +51,10 @@ function initial(name: string) {
   <div ref="root" class="h-full overflow-y-auto px-6 pt-5 pb-8">
     <div class="mb-4 flex items-end justify-between">
       <div>
-        <p data-stagger class="text-xs font-semibold tracking-wider text-violet-500 uppercase">我的音乐</p>
-        <h1 data-stagger class="mt-0.5 text-2xl font-bold text-zinc-900 dark:text-zinc-50">艺人</h1>
+        <p data-stagger class="text-xs font-semibold tracking-wider text-violet-500 uppercase">{{ $t('library.myMusic') }}</p>
+        <h1 data-stagger class="mt-0.5 text-2xl font-bold text-zinc-900 dark:text-zinc-50">{{ $t('nav.artists') }}</h1>
       </div>
-      <span v-if="total" data-stagger class="text-sm text-zinc-500">{{ total.toLocaleString() }} 位</span>
+      <span v-if="total" data-stagger class="text-sm text-zinc-500">{{ totalLabel }}</span>
     </div>
 
     <div v-if="loading && !artists.length" class="flex h-64 items-center justify-center">
@@ -58,8 +64,8 @@ function initial(name: string) {
     <EmptyState
       v-else-if="!artists.length"
       :icon="Mic"
-      title="还没有艺人"
-      description="添加音乐文件夹并完成扫描后会显示在这里。"
+      :title="$t('empty.artistsTitle')"
+      :description="$t('empty.libraryFolderHint')"
     />
 
     <div v-else class="grid gap-4" style="grid-template-columns: repeat(auto-fill, minmax(130px, 1fr))">
@@ -75,7 +81,7 @@ function initial(name: string) {
         <p class="max-w-full truncate text-sm font-medium text-zinc-800 dark:text-zinc-100" :title="a.name">
           {{ a.name }}
         </p>
-        <p class="text-xs text-zinc-500">{{ a.trackCount }} 首</p>
+        <p class="text-xs text-zinc-500">{{ songCount(a.trackCount) }}</p>
       </div>
     </div>
   </div>

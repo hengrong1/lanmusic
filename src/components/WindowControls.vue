@@ -27,7 +27,7 @@ onUnmounted(() => unlisten?.())
   <div class="flex h-full items-stretch">
     <button
       class="group flex w-11 cursor-pointer items-center justify-center transition"
-      title="最小化"
+      :title="$t('common.minimize')"
       @click="appWindow.minimize()"
     >
       <span
@@ -43,7 +43,7 @@ onUnmounted(() => unlisten?.())
     </button>
     <button
       class="group flex w-11 cursor-pointer items-center justify-center transition"
-      :title="maximized ? '还原' : '最大化'"
+      :title="maximized ? $t('common.restore') : $t('common.maximize')"
       @click="appWindow.toggleMaximize()"
     >
       <span
@@ -60,7 +60,7 @@ onUnmounted(() => unlisten?.())
     </button>
     <button
       class="group flex w-11 cursor-pointer items-center justify-center transition"
-      title="关闭"
+      :title="$t('common.close')"
       @click="appWindow.close()"
     >
       <span

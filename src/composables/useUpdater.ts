@@ -3,6 +3,7 @@ import { check, type Update } from '@tauri-apps/plugin-updater'
 import { relaunch } from '@tauri-apps/plugin-process'
 import { getVersion } from '@tauri-apps/api/app'
 import { toast } from '@/composables/useToast'
+import { t } from '@/i18n/translate'
 
 /**
  * 应用内更新（tauri-plugin-updater + GitHub Releases）。
@@ -68,11 +69,11 @@ async function checkForUpdate(silent = false): Promise<boolean> {
       return true
     }
     status.value = 'uptodate'
-    if (!silent) toast('当前已是最新版本')
+    if (!silent) toast(t('settings.upToDate'))
     return false
   } catch (e) {
     status.value = 'idle'
-    if (!silent) toast(`检查更新失败：${e}`, 'error')
+    if (!silent) toast(t('toast.checkUpdateFailed', { error: String(e) }), 'error')
     return false
   }
 }
@@ -107,10 +108,10 @@ async function downloadAndInstall(): Promise<void> {
       }
     })
     status.value = 'ready'
-    toast('更新已下载完成，重启应用后生效')
+    toast(t('settings.updateDownloadedHint'))
   } catch (e) {
     status.value = 'available'
-    toast(`更新下载失败：${e}`, 'error')
+    toast(t('toast.updateDownloadFailed', { error: String(e) }), 'error')
   }
 }
 

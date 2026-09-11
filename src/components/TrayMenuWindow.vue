@@ -21,6 +21,7 @@ import { MusicNoteIcon as Music } from '@solar-icons/vue/linear/music-note'
 import { coverUrl } from '@/api/scheme'
 import type { TraySyncPayload } from '@/composables/useTrayMenu'
 
+
 const state = ref<TraySyncPayload>({
   title: '',
   artist: '',
@@ -103,7 +104,7 @@ function action(a: 'show' | 'lyrics' | 'settings' | 'quit') {
   <div class="tray-root">
     <div ref="content" class="tray-content">
       <!-- 顶部信息展示区：封面 + 歌名/歌手 -->
-      <button class="info" title="打开主窗口" @click="action('show')">
+      <button class="info" :title="$t('tray.openMainWindow')" @click="action('show')">
         <div class="cover">
           <img
             v-if="!showFallback"
@@ -118,7 +119,7 @@ function action(a: 'show' | 'lyrics' | 'settings' | 'quit') {
         </div>
         <div class="meta">
           <p class="song" :class="{ empty: !state.title }">
-            {{ state.title || '未在播放' }}
+            {{ state.title || $t('player.notPlaying') }}
           </p>
           <p class="artist" :class="{ empty: !state.artist }">
             {{ state.artist || 'LanMusic' }}
@@ -128,20 +129,20 @@ function action(a: 'show' | 'lyrics' | 'settings' | 'quit') {
 
       <!-- 核心媒体控制栏：上一首 / 播放暂停 / 下一首 / 喜欢 -->
       <div class="controls">
-        <button class="ctrl" title="上一首" @click="playback('prev')">
+        <button class="ctrl" :title="$t('player.prev')" @click="playback('prev')">
           <SkipBack class="h-[18px] w-[18px]" />
         </button>
-        <button class="ctrl play" :title="state.playing ? '暂停' : '播放'" @click="playback('toggle')">
+        <button class="ctrl play" :title="state.playing ? $t('player.pause') : $t('player.play')" @click="playback('toggle')">
           <Pause v-if="state.playing" class="h-[20px] w-[20px]" />
           <Play v-else class="h-[20px] w-[20px] translate-x-[1px]" />
         </button>
-        <button class="ctrl" title="下一首" @click="playback('next')">
+        <button class="ctrl" :title="$t('player.next')" @click="playback('next')">
           <SkipForward class="h-[18px] w-[18px]" />
         </button>
         <button
           class="ctrl heart"
           :class="{ active: state.fav }"
-          :title="state.fav ? '取消喜欢' : '喜欢'"
+          :title="state.fav ? $t('tray.unlike') : $t('tray.like')"
           @click="playback('fav')"
         >
           <HeartFilled v-if="state.fav" class="h-[18px] w-[18px]" />
@@ -156,15 +157,15 @@ function action(a: 'show' | 'lyrics' | 'settings' | 'quit') {
       <div class="bottom">
         <button class="act" :class="{ active: state.deskLyrics }" @click="action('lyrics')">
           <Subtitles :class="state.deskLyrics ? 'is-active' : ''" class="h-[15px] w-[15px]" />
-          桌面歌词
+          {{ $t('tray.desktopLyrics') }}
         </button>
         <button class="act" @click="action('settings')">
           <Settings class="h-[15px] w-[15px]" />
-          设置
+          {{ $t('tray.settings') }}
         </button>
         <button class="act quit" @click="action('quit')">
           <Power class="h-[15px] w-[15px]" />
-          退出
+          {{ $t('tray.quit') }}
         </button>
       </div>
     </div>

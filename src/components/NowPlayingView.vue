@@ -13,10 +13,12 @@ import { ensureAnalyser, readSpectrum } from '@/composables/useSpectrum'
 import { CUSTOM_WINDOW_CONTROLS, IS_MAC } from '@/utils/platform'
 import CoverImg from '@/components/CoverImg.vue'
 import LyricsPanel from '@/components/LyricsPanel.vue'
+import { useI18n } from 'vue-i18n'
 import WindowControls from '@/components/WindowControls.vue'
 
 const emit = defineEmits<{ close: [] }>()
 const props = defineProps<{ focusHidden?: boolean }>()
+const { t: tr } = useI18n()
 const player = usePlayerStore()
 const nav = useNav()
 
@@ -141,19 +143,19 @@ watch(
 onBeforeUnmount(() => cancelAnimationFrame(particleRaf))
 
 function openAlbum() {
-  const t = player.current
-  if (t?.albumId == null) return
-  nav.go({ view: 'tracks', albumId: t.albumId, albumTitle: t.album ?? '未知专辑' })
+  const cur = player.current
+  if (cur?.albumId == null) return
+  nav.go({ view: 'tracks', albumId: cur.albumId, albumTitle: cur.album ?? tr('album.unknownAlbum') })
   emit('close')
 }
 
 /** 当前曲目的艺人列表：优先用后端拆分的多艺人，回退到合并字符串 */
 const currentArtistLinks = computed<{ id: number | null; name: string }[]>(() => {
-  const t = player.current
-  if (!t) return []
-  if (t.artists?.length) return t.artists.map((a) => ({ id: a.id, name: a.name }))
-  if (t.artist) return [{ id: t.artistId, name: t.artist }]
-  return [{ id: null, name: '未知艺人' }]
+  const cur = player.current
+  if (!cur) return []
+  if (cur.artists?.length) return cur.artists.map((a) => ({ id: a.id, name: a.name }))
+  if (cur.artist) return [{ id: cur.artistId, name: cur.artist }]
+  return [{ id: null, name: tr('artist.unknownArtist') }]
 })
 
 function openArtist(artist: { id: number | null; name: string }) {
@@ -163,11 +165,19 @@ function openArtist(artist: { id: number | null; name: string }) {
 }
 
 /** 已累计偏移的悬停提示后缀：如「，已累计提前 1.0s」；无偏移时为空串 */
+/** 带参提示（模板 \`$t\` 无带参重载，统一在 setup 内生成） */
+const artistTip = (name: string) => tr('artist.viewArtist', { name })
 const offsetTip = computed(() => {
   const v = player.lyricOffset
   if (!v) return ''
-  return `，已累计${v > 0 ? '延后' : '提前'} ${Math.abs(v).toFixed(1)}s`
+  return tr(v > 0 ? 'player.lyricOffsetLate' : 'player.lyricOffsetEarly', { value: Math.abs(v).toFixed(1) })
 })
+const collapseTip = computed(() => `${tr('player.collapseNowPlaying')} (Esc)`)
+const lyricBackTip = computed(() => tr('player.lyricBackHint') + offsetTip.value)
+const lyricForwardTip = computed(() => tr('player.lyricForwardHint') + offsetTip.value)
+const lyricResetTip = computed(() =>
+  player.lyricOffset ? tr('player.lyricResetHint') + offsetTip.value : tr('player.lyricCurrentHint'),
+)
 </script>
 
 <template>
@@ -184,7 +194,7 @@ const offsetTip = computed(() => {
       <!-- 左：关闭播放页（其余空白仍为拖拽区） -->
       <button
         class="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg text-white/70 transition hover:bg-white/10 hover:text-white"
-        title="收起播放页 (Esc)"
+        :title="collapseTip"
         @click="emit('close')"
       >
         <ChevronDown class="h-5 w-5" />
@@ -216,14 +226,14 @@ const offsetTip = computed(() => {
         <div
           class="flex shrink-0 flex-col items-center pb-4 pt-6 text-center"
         >
-          <h1 class="max-w-full truncate text-2xl font-bold text-white">{{ player.current?.title ?? '未在播放' }}</h1>
+          <h1 class="max-w-full truncate text-2xl font-bold text-white">{{ player.current?.title ?? $t('player.notPlaying') }}</h1>
           <p class="mt-1 max-w-full truncate text-sm text-white/60">
             <!-- 多艺人：每个名字独立可点击（区分每一个艺人） -->
             <template v-for="(a, i) in currentArtistLinks" :key="a.id ?? `na-${i}`">
               <button
                 v-if="a.id != null"
                 class="cursor-pointer transition hover:text-white hover:underline"
-                :title="`查看艺人：${a.name}`"
+                :title="artistTip(a.name)"
                 @click="openArtist(a)"
               >{{ a.name }}</button>
               <span v-else>{{ a.name }}</span>
@@ -233,7 +243,7 @@ const offsetTip = computed(() => {
           <button
             v-if="player.current?.albumId != null"
             class="mt-0.5 max-w-full cursor-pointer truncate text-xs text-white/40 transition hover:text-white/80"
-            title="查看专辑"
+            :title="$t('album.goToAlbum')"
             @click="openAlbum"
           >
             {{ player.current?.album }}
@@ -244,7 +254,7 @@ const offsetTip = computed(() => {
             <span
               v-if="quality.hires"
               class="rounded border border-amber-300/50 bg-amber-300/10 px-1.5 py-px font-bold text-amber-200"
-              title="高解析度音频（≥88.2kHz 或 ≥24bit）"
+              :title="$t('player.hiResHint')"
             >Hi-Res</span>
           </p>
         </div>
@@ -256,7 +266,7 @@ const offsetTip = computed(() => {
         >
           <button
             class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-white/60 transition hover:bg-white/10 hover:text-white"
-            :title="`歌词后退 0.5 秒（延后显示，歌词显示快了用这个，快捷键 ] ）${offsetTip}`"
+            :title="lyricBackTip"
             @click="player.setLyricOffset(0.5)"
           >
             <RewindBack class="h-5 w-5" />
@@ -264,14 +274,14 @@ const offsetTip = computed(() => {
           <button
             class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg transition"
             :class="player.lyricOffset ? 'text-white/60 hover:bg-white/10 hover:text-white' : 'text-white/25'"
-            :title="player.lyricOffset ? `还原为默认时间轴${offsetTip}` : '当前为默认时间轴，无需还原'"
+            :title="lyricResetTip"
             @click="player.setLyricOffset(-player.lyricOffset)"
           >
             <RotateCcw class="h-4.5 w-4.5" />
           </button>
           <button
             class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-white/60 transition hover:bg-white/10 hover:text-white"
-            :title="`歌词前进 0.5 秒（提前显示，歌词显示慢了用这个，快捷键 [ ）${offsetTip}`"
+            :title="lyricForwardTip"
             @click="player.setLyricOffset(-0.5)"
           >
             <RewindForward class="h-5 w-5" />

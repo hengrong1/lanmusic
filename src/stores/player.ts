@@ -7,6 +7,7 @@ import { trackStreamUrl } from '@/api/scheme'
 import { api } from '@/api/commands'
 import { useLibraryStore } from '@/stores/library'
 import { toast } from '@/composables/useToast'
+import { t as tr } from '@/i18n/translate'
 import { activeLineIndex, parseLrc, plainLines, type LrcLine } from '@/utils/lrc'
 import { applyPowerGuard } from '@/composables/usePowerGuard'
 
@@ -131,7 +132,15 @@ export const usePlayerStore = defineStore('player', () => {
       /* ignore */
     }
     // 固定 key：连续校准时提示原地更新，不叠加多个提示框
-    toast(v === 0 ? '歌词时间轴已还原' : `歌词已${v > 0 ? '延后' : '提前'} ${Math.abs(v).toFixed(1)}s`, 'info', 'lyric-offset')
+    toast(
+      v === 0
+        ? tr('toast.lyricOffsetReset')
+        : tr(v > 0 ? 'toast.lyricOffsetDelay' : 'toast.lyricOffsetAdvance', {
+            value: Math.abs(v).toFixed(1),
+          }),
+      'info',
+      'lyric-offset',
+    )
   }
 
   const current = computed<Track | null>(() => queue.value[index.value] ?? null)
@@ -259,7 +268,7 @@ export const usePlayerStore = defineStore('player', () => {
   audio.addEventListener('error', () => {
     if (!current.value) return
     resetPlaybackState()
-    toast(`播放失败：${current.value.title}`, 'error')
+    toast(tr('toast.playFailed', { title: current.value.title }), 'error')
     // 连续失败保护：整轮队列都失败则停止，避免死循环
     errorStreak++
     if (errorStreak < queue.value.length) {
@@ -442,7 +451,7 @@ export const usePlayerStore = defineStore('player', () => {
     }
     queue.value.splice(index.value + 1, 0, t)
     snapshotQueue()
-    toast(`将在「${current.value?.title ?? ''}」后播放`)
+    toast(tr('toast.playNextAfter', { title: current.value?.title ?? '' }))
   }
 
   function enqueue(t: Track) {
@@ -452,7 +461,7 @@ export const usePlayerStore = defineStore('player', () => {
     }
     queue.value.push(t)
     snapshotQueue()
-    toast('已加入队列')
+    toast(tr('toast.addedToQueue'))
   }
 
   function removeFromQueue(i: number) {
@@ -520,7 +529,7 @@ export const usePlayerStore = defineStore('player', () => {
   // 窗口标题跟随当前歌曲：任务栏悬停预览 / Alt+Tab 顶部显示歌名（类似 QQ 音乐）
   const appWindow = getCurrentWindow()
   watch(current, (t) => {
-    const title = t ? `${t.title} - ${t.artist ?? '未知艺人'}` : 'LanMusic'
+    const title = t ? `${t.title} - ${t.artist ?? tr('artist.unknownArtist')}` : 'LanMusic'
     void appWindow.setTitle(title).catch(() => {})
     // 任务栏悬停预览整块显示当前歌曲的专辑封面（无曲目/无专辑时传 null 关闭封面预览）
     api.setThumbbarAlbum(t?.albumId ?? null).catch(() => {})

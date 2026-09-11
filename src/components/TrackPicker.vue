@@ -9,6 +9,7 @@ import type { Track } from '@/types'
 import { api } from '@/api/commands'
 import { useLibraryStore } from '@/stores/library'
 import { toast } from '@/composables/useToast'
+import { useI18n } from 'vue-i18n'
 
 /**
  * 歌单选歌弹层：搜索曲库 + 多选添加。
@@ -19,6 +20,7 @@ import { toast } from '@/composables/useToast'
 const props = defineProps<{ playlistId: number; existingIds: number[] }>()
 const emit = defineEmits<{ close: []; added: [count: number] }>()
 
+const { t } = useI18n()
 const library = useLibraryStore()
 
 const PAGE_SIZE = 50
@@ -32,6 +34,8 @@ const filterMode = ref<'all' | 'selected'>('all')
 const scroller = ref<HTMLElement | null>(null)
 const inputEl = ref<HTMLInputElement | null>(null)
 
+/** 带参文案（模板 \`$t\` 无带参重载） */
+const selectedTabLabel = computed(() => t('common.selectedWithCount', { count: selectedTracks.value.length }))
 const existing = computed(() => new Set(props.existingIds))
 const selectedIds = computed(() => new Set(selectedTracks.value.map((t) => t.id)))
 
@@ -162,11 +166,11 @@ onBeforeUnmount(() => {
           ref="inputEl"
           v-model="keyword"
           class="h-8 min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-zinc-400"
-          placeholder="搜索歌曲、艺人、专辑"
+          :placeholder="$t('library.searchPlaceholder')"
         />
         <button
           class="flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-lg text-zinc-400 transition hover:bg-zinc-100 dark:hover:bg-zinc-800"
-          title="关闭"
+          :title="$t('common.close')"
           @click="emit('close')"
         >
           <X class="h-4 w-4" />
@@ -181,31 +185,31 @@ onBeforeUnmount(() => {
             :class="filterMode === 'all' ? 'bg-white font-medium text-violet-600 shadow-sm dark:bg-zinc-700 dark:text-violet-300' : 'text-zinc-500 dark:text-zinc-400'"
             @click="filterMode = 'all'"
           >
-            全部
+            {{ $t('common.all') }}
           </button>
           <button
             class="cursor-pointer rounded-md px-3 py-1 transition"
             :class="filterMode === 'selected' ? 'bg-white font-medium text-violet-600 shadow-sm dark:bg-zinc-700 dark:text-violet-300' : 'text-zinc-500 dark:text-zinc-400'"
             @click="filterMode = 'selected'"
           >
-            已选（{{ selectedTracks.length }}）
+            {{ selectedTabLabel }}
           </button>
         </div>
         <div class="flex-1" />
         <button
           class="cursor-pointer rounded-lg px-2.5 py-1 text-xs text-zinc-500 transition hover:bg-zinc-100 hover:text-violet-600 disabled:opacity-40 dark:text-zinc-400 dark:hover:bg-zinc-800"
           :disabled="filterMode !== 'all' || !selectableCount"
-          title="勾选当前结果中的全部可选歌曲（Ctrl/Cmd+A）"
+          :title="$t('playlist.selectAllCurrentHint')"
           @click="selectAllVisible"
         >
-          全选当前
+          {{ $t('playlist.selectAllCurrent') }}
         </button>
         <button
           class="cursor-pointer rounded-lg px-2.5 py-1 text-xs text-zinc-500 transition hover:bg-zinc-100 hover:text-red-500 disabled:opacity-40 dark:text-zinc-400 dark:hover:bg-zinc-800"
           :disabled="!selectedTracks.length"
           @click="clearSelected"
         >
-          清空已选
+          {{ $t('playlist.clearSelected') }}
         </button>
       </div>
 
@@ -228,23 +232,23 @@ onBeforeUnmount(() => {
             <Check v-if="isSelected(t)" class="h-3 w-3" />
           </span>
           <span class="min-w-0 flex-1 truncate text-zinc-800 dark:text-zinc-100">{{ t.title }}</span>
-          <span class="w-24 shrink-0 truncate text-xs text-zinc-500 dark:text-zinc-400">{{ t.artist ?? '未知艺人' }}</span>
-          <span v-if="existing.has(t.id)" class="w-20 shrink-0 text-right text-xs text-zinc-400">已在歌单</span>
+          <span class="w-24 shrink-0 truncate text-xs text-zinc-500 dark:text-zinc-400">{{ t.artist ?? $t('artist.unknownArtist') }}</span>
+          <span v-if="existing.has(t.id)" class="w-20 shrink-0 text-right text-xs text-zinc-400">{{ $t('playlist.alreadyInPlaylist') }}</span>
           <span
             v-else-if="isSelected(t)"
             class="flex w-20 shrink-0 items-center justify-end gap-1 text-right text-xs font-medium text-violet-500"
           >
-            <Check class="h-3 w-3" /> 已选
+            <Check class="h-3 w-3" /> {{ $t('common.selected') }}
           </span>
           <span v-else class="w-20 shrink-0 text-right text-xs text-zinc-300 dark:text-zinc-600">
-            {{ filterMode === 'all' ? '点击选择' : '' }}
+            {{ filterMode === 'all' ? $t('playlist.clickToSelect') : '' }}
           </span>
         </button>
 
         <!-- 已选视图空态 -->
         <div v-if="filterMode === 'selected' && !selectedTracks.length" class="flex flex-col items-center gap-2 py-12 text-zinc-400">
           <Check class="h-8 w-8" :stroke-width="1.5" />
-          <p class="text-sm">还没有选中任何歌曲</p>
+          <p class="text-sm">{{ $t('playlist.noSelection') }}</p>
         </div>
         <!-- 全部视图 loading / 空态 -->
         <template v-else-if="filterMode === 'all'">
@@ -253,7 +257,7 @@ onBeforeUnmount(() => {
           </div>
           <div v-else-if="!items.length" class="flex flex-col items-center gap-2 py-12 text-zinc-400">
             <Music class="h-8 w-8" :stroke-width="1.5" />
-            <p class="text-sm">没有找到匹配的歌曲</p>
+            <p class="text-sm">{{ $t('empty.noSongsMatch') }}</p>
           </div>
         </template>
       </div>
@@ -262,16 +266,16 @@ onBeforeUnmount(() => {
       <div class="flex shrink-0 items-center justify-between border-t border-zinc-200 px-4 py-3 dark:border-zinc-800">
         <span class="text-xs text-zinc-500">
           <template v-if="selectedTracks.length">
-            已选 <b class="text-violet-500">{{ selectedTracks.length }}</b> 首
+            {{ $t('common.selected') }} <b class="text-violet-500">{{ selectedTracks.length }}</b> {{ $t('common.songUnit') }}
           </template>
-          <template v-else>请选择要添加的歌曲</template>
+          <template v-else>{{ $t('playlist.selectTracksHint') }}</template>
         </span>
         <div class="flex items-center gap-2">
           <button
             class="cursor-pointer rounded-lg px-3 py-1.5 text-sm text-zinc-500 transition hover:bg-zinc-100 dark:hover:bg-zinc-800"
             @click="emit('close')"
           >
-            取消
+            {{ $t('common.cancel') }}
           </button>
           <button
             class="flex cursor-pointer items-center gap-1.5 rounded-lg bg-violet-500 px-4 py-1.5 text-sm font-medium text-white transition hover:bg-violet-400 disabled:cursor-not-allowed disabled:opacity-40"
@@ -279,7 +283,7 @@ onBeforeUnmount(() => {
             @click="confirm"
           >
             <LoaderCircle v-if="adding" class="h-4 w-4 animate-spin" />
-            添加到歌单
+            {{ $t('playlist.addToPlaylist') }}
           </button>
         </div>
       </div>

@@ -21,7 +21,9 @@ import { toast } from '@/composables/useToast'
 import { api } from '@/api/commands'
 import type { Track } from '@/types'
 import { BaseButton } from '@/components/ui'
+import { useI18n } from 'vue-i18n'
 
+const { t, locale } = useI18n()
 const library = useLibraryStore()
 const player = usePlayerStore()
 const nav = useNav()
@@ -37,15 +39,31 @@ const root = ref<HTMLElement | null>(null)
 useStagger(root, computed(() => tracks.value.length > 0))
 
 const playlistId = computed(() => nav.current.value.playlistId ?? null)
-const playlistName = computed(() => nav.current.value.playlistName ?? '歌单')
+const playlistName = computed(() => nav.current.value.playlistName ?? t('playlist.title'))
 const playlistMeta = computed(() => library.playlists.find((p) => p.id === playlistId.value) ?? null)
 const metaDesc = computed(() => playlistMeta.value?.description ?? null)
 const metaCreated = computed(() => playlistMeta.value?.createdAt ?? null)
+/** 创建时间按当前语言格式化 */
 const createdText = computed(() =>
   metaCreated.value
-    ? new Date(metaCreated.value * 1000).toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' })
+    ? new Date(metaCreated.value * 1000).toLocaleDateString(locale.value === 'zh' ? 'zh-CN' : 'en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+      })
     : null,
 )
+
+/** 头部信息行：曲目数 · 创建时间 · 排序说明（带参翻译在 setup 内生成） */
+const metaLine = computed(() => {
+  const parts = [t('common.songsCount', { count: tracks.value.length })]
+  if (createdText.value) parts.push(createdText.value)
+  parts.push(t('playlist.sortByAdded'))
+  return parts.join(' · ')
+})
+
+/** 批量操作条：已选数量文案 */
+const selLabel = computed(() => t('playlist.selectedCount', { count: selIds.value.length }))
 
 // ---- 集中编辑弹层 ---- */
 function openEdit() {
@@ -88,7 +106,7 @@ function batchPlay() {
 function batchEnqueue() {
   if (selTracks.value.length) {
     selTracks.value.forEach((t) => player.enqueue(t))
-    toast(`已加入队列（${selTracks.value.length} 首）`)
+    toast(t('toast.addedToQueueCount', { count: selTracks.value.length }))
     exitBatch()
   }
 }
@@ -97,7 +115,7 @@ async function batchRemove() {
   if (!selIds.value.length || id == null) return
   try {
     await library.removeTracksFromPlaylist(id, selIds.value)
-    toast(`已移除 ${selIds.value.length} 首`)
+    toast(t('toast.removedCount', { count: selIds.value.length }))
     exitBatch()
     await load()
   } catch (e) {
@@ -138,12 +156,12 @@ async function onPickerAdded() {
     <div class="flex shrink-0 items-center gap-5 px-6 pt-5 pb-4">
       <CoverImg :album-id="coverAlbumId" rounded="h-20 w-20 shrink-0 rounded-xl shadow-md" />
       <div class="min-w-0 flex-1">
-        <p data-stagger class="text-xs font-semibold tracking-wider text-violet-500 uppercase">歌单</p>
+        <p data-stagger class="text-xs font-semibold tracking-wider text-violet-500 uppercase">{{ $t('playlist.title') }}</p>
         <h1 data-stagger class="mt-0.5 truncate text-2xl font-bold text-zinc-900 dark:text-zinc-50">
           {{ playlistName }}
         </h1>
         <p data-stagger class="mt-1 text-xs text-zinc-400">
-          {{ tracks.length }} 首{{ createdText ? ` · ${createdText}` : '' }} · 按加入时间倒序
+          {{ metaLine }}
         </p>
         <!-- 简介（只读展示，编辑统一在弹层） -->
         <p v-if="metaDesc" data-stagger class="mt-1.5 max-w-md truncate text-xs text-zinc-500 dark:text-zinc-400">
@@ -156,10 +174,10 @@ async function onPickerAdded() {
           variant="outline"
           size="sm"
           :icon="Pencil"
-          title="编辑歌单信息（名称、简介、删除）"
+          :title="$t('playlist.editInfoHint')"
           @click="openEdit"
         >
-          编辑
+          {{ $t('common.edit') }}
         </BaseButton>
         <BaseButton
           data-stagger
@@ -169,7 +187,7 @@ async function onPickerAdded() {
           :icon="ListChecks"
           @click="batchMode ? exitBatch() : enterBatch()"
         >
-          {{ batchMode ? '退出多选' : '多选' }}
+          {{ batchMode ? $t('playlist.exitBatch') : $t('playlist.batchMode') }}
         </BaseButton>
         <BaseButton
           data-stagger
@@ -178,7 +196,7 @@ async function onPickerAdded() {
           :icon="Plus"
           @click="pickerOpen = true"
         >
-          添加歌曲
+          {{ $t('playlist.addTracks') }}
         </BaseButton>
         <BaseButton
           v-if="tracks.length"
@@ -188,7 +206,7 @@ async function onPickerAdded() {
           :icon="Play"
           @click="playAll"
         >
-          播放全部
+          {{ $t('playlist.playAll') }}
         </BaseButton>
       </div>
     </div>
@@ -200,8 +218,8 @@ async function onPickerAdded() {
     <div v-else-if="!tracks.length" class="min-h-0 flex-1">
       <EmptyState
         :icon="ListMusic"
-        title="歌单还是空的"
-        description="点击右上角「添加歌曲」选择歌曲加入，或在任意歌曲上右键 →「加入歌单」。"
+        :title="$t('empty.playlistTitle')"
+        :description="$t('empty.playlistHint')"
       />
     </div>
 
@@ -242,11 +260,11 @@ async function onPickerAdded() {
         v-if="batchMode && selIds.length"
         class="fixed bottom-24 left-1/2 z-30 flex -translate-x-1/2 items-center gap-1 rounded-full border border-zinc-200 bg-white px-3 py-2 shadow-xl dark:border-zinc-700 dark:bg-zinc-800"
       >
-        <span class="px-2 text-xs font-medium text-zinc-500 dark:text-zinc-400">已选 {{ selIds.length }} 首</span>
-        <BaseButton variant="ghost" size="sm" :icon="Play" @click="batchPlay">播放</BaseButton>
-        <BaseButton variant="ghost" size="sm" :icon="ListPlus" @click="batchEnqueue">加入队列</BaseButton>
-        <BaseButton variant="ghost" tone="danger" size="sm" :icon="Trash2" @click="batchRemove">移出歌单</BaseButton>
-        <BaseButton variant="ghost" size="sm" class="ml-1" @click="exitBatch">取消</BaseButton>
+        <span class="px-2 text-xs font-medium text-zinc-500 dark:text-zinc-400">{{ selLabel }}</span>
+        <BaseButton variant="ghost" size="sm" :icon="Play" @click="batchPlay">{{ $t('player.play') }}</BaseButton>
+        <BaseButton variant="ghost" size="sm" :icon="ListPlus" @click="batchEnqueue">{{ $t('player.addToQueue') }}</BaseButton>
+        <BaseButton variant="ghost" tone="danger" size="sm" :icon="Trash2" @click="batchRemove">{{ $t('playlist.removeFromPlaylist') }}</BaseButton>
+        <BaseButton variant="ghost" size="sm" class="ml-1" @click="exitBatch">{{ $t('common.cancel') }}</BaseButton>
       </div>
     </Transition>
   </div>

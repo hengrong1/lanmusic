@@ -13,6 +13,7 @@ import type {
 } from '@/types'
 import { api } from '@/api/commands'
 import { toast } from '@/composables/useToast'
+import { t as tr } from '@/i18n/translate'
 import { usePlayerStore } from '@/stores/player'
 
 export const useLibraryStore = defineStore('library', () => {
@@ -143,7 +144,7 @@ export const useLibraryStore = defineStore('library', () => {
   async function addToPlaylist(playlistId: number, trackIds: number[]) {
     const added = await api.playlistAddTracks(playlistId, trackIds)
     await loadPlaylists()
-    toast(added > 0 ? `已加入歌单（${added} 首）` : '所选歌曲已在歌单中')
+    toast(added > 0 ? tr('toast.addedToPlaylistCount', { count: added }) : tr('toast.allAlreadyInPlaylist'))
     return added
   }
   async function removeFromPlaylist(playlistId: number, trackId: number) {
@@ -170,15 +171,23 @@ export const useLibraryStore = defineStore('library', () => {
       scanProgress.value = rest
       await Promise.all([loadSources(), loadStats()])
       if (!query.value.search) void loadTracks()
-      const parts = [`新增 ${e.payload.added}`, `更新 ${e.payload.updated}`]
-      if (e.payload.removed) parts.push(`移除 ${e.payload.removed}`)
-      toast(`扫描完成（${(e.payload.ms / 1000).toFixed(1)}s）：${parts.join('，')}`)
+      const parts = [
+        tr('toast.scanAdded', { count: e.payload.added }),
+        tr('toast.scanUpdated', { count: e.payload.updated }),
+      ]
+      if (e.payload.removed) parts.push(tr('toast.scanRemoved', { count: e.payload.removed }))
+      toast(
+        tr('toast.scanDone', {
+          time: (e.payload.ms / 1000).toFixed(1),
+          detail: parts.join(tr('common.listSep')),
+        }),
+      )
     })
 
     await listen<{ sourceId: number; message: string }>('scan:error', (e) => {
       const { [e.payload.sourceId]: _removed, ...rest } = scanProgress.value
       scanProgress.value = rest
-      toast(`扫描失败：${e.payload.message}`, 'error')
+      toast(tr('toast.scanFailedDetail', { message: e.payload.message }), 'error')
     })
 
     await Promise.all([loadSources(), loadStats(), loadTracks(), loadPlaylists()])
