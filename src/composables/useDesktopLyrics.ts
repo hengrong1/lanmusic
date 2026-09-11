@@ -42,8 +42,8 @@ const LS_KEY = 'lm.deskLyrics'
 const DEFAULT_CONFIG: DeskLyricsConfig = {
   lines: 2,
   align: 'center',
-  color: '#ffffff',
-  pendingColor: '#a1a1aa',
+  color: '#a78bfa',
+  pendingColor: '#22d3ee',
   fontSize: 34,
   bgColor: '#000000',
   bgOpacity: 0.35,

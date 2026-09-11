@@ -633,7 +633,7 @@ export const usePlayerStore = defineStore('player', () => {
     setVolume,
     toggleMute,
     setFadeEnabled,
-    isFadeOn: () => localStorage.getItem('lm.fade') === '1',
+    isFadeOn: () => localStorage.getItem('lm.fade') !== '0',
     playNextInQueue,
     enqueue,
     removeFromQueue,

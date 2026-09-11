@@ -1,6 +1,8 @@
 export interface AmbientPalette {
   /** 强调色：活动歌词行、按钮 hover 等 */
   accent: string
+  /** 第二强调色：双线交叉频谱的另一条线（色相偏移） */
+  accent2: string
   /** 强调色的半透明版：脉冲光环等 */
   accentSoft: string
   /** 页面顶部辉光色（深） */
@@ -98,6 +100,7 @@ export async function extractAmbient(url: string): Promise<AmbientPalette | null
     const l = Math.min(0.72, Math.max(0.55, best.l))
     return {
       accent: `hsl(${h} ${Math.round(s * 100)}% ${Math.round(l * 100)}%)`,
+      accent2: `hsl(${(h + 36) % 360} ${Math.round(s * 100)}% ${Math.round(l * 100)}%)`,
       accentSoft: `hsl(${h} ${Math.round(s * 100)}% ${Math.round(l * 100)}% / 0.45)`,
       glow: `hsl(${h} ${Math.round(Math.min(70, s * 100))}% 16%)`,
       deep: `hsl(${h} ${Math.round(Math.min(55, s * 80))}% 7%)`,

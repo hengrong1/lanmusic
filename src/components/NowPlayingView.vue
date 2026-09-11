@@ -93,6 +93,7 @@ function drawParticles() {
 
   const ok = readSpectrum(particleFreq)
   const color = palette.value?.accent ?? '#a78bfa'
+  const color2 = palette.value?.accent2 ?? '#e879f9'
   // 封面为容器内居中的正方形（粒子模式下 max 300px），粒子沿其外圈分布
   const coverR = Math.min(box.clientWidth, box.clientHeight, coverCircular.value ? 300 : 340) / 2
   // 粒子最大扩散半径适配画布可用空间，保证不出界被裁切
@@ -103,12 +104,11 @@ function drawParticles() {
   const t = performance.now() / 1000
   const n = particleFreq.length
   const half = n / 2
+
+  // 第一层：正向旋转的粒子环
   for (let i = 0; i < n; i++) {
-    // 镜像对称取样：频段沿圆环左右对称展开，两处接缝（顶部与底部）两侧为相邻频段，
-    // 幅度连续、头尾自然闭合；若直接按 0..n 顺排，首尾会从低频跳到高频形成断口
     const amp = ok ? particleFreq[i <= half ? i : n - i] / 255 : 0
     if (amp < 0.05) continue
-    // 从顶部起笔、缓慢旋转，幅度越大离封面越远、粒子越大越亮
     const angle = (i / n) * Math.PI * 2 - Math.PI / 2 + t * 0.12
     const r = coverR + 14 + amp * spread
     g.globalAlpha = 0.18 + amp * 0.82
@@ -117,6 +117,37 @@ function drawParticles() {
     g.arc(cx + Math.cos(angle) * r, cy + Math.sin(angle) * r, 1 + amp * 2.6, 0, Math.PI * 2)
     g.fill()
   }
+
+  // 第二层：反向旋转的粒子环（双线交叉效果）
+  for (let i = 0; i < n; i++) {
+    const amp = ok ? particleFreq[i <= half ? i : n - i] / 255 : 0
+    if (amp < 0.05) continue
+    // 反向旋转 + 相位偏移，形成交叉
+    const angle = (i / n) * Math.PI * 2 - Math.PI / 2 - t * 0.12 + Math.PI / n
+    const r = coverR + 14 + amp * spread
+    g.globalAlpha = 0.12 + amp * 0.6
+    g.fillStyle = color2
+    g.beginPath()
+    g.arc(cx + Math.cos(angle) * r, cy + Math.sin(angle) * r, 0.8 + amp * 2, 0, Math.PI * 2)
+    g.fill()
+  }
+
+  // 连接线：在交叉点处绘制连接线
+  g.strokeStyle = color
+  g.lineWidth = 0.5
+  for (let i = 0; i < n; i += 8) {
+    const amp = ok ? particleFreq[i <= half ? i : n - i] / 255 : 0
+    if (amp < 0.1) continue
+    const angle1 = (i / n) * Math.PI * 2 - Math.PI / 2 + t * 0.12
+    const angle2 = (i / n) * Math.PI * 2 - Math.PI / 2 - t * 0.12 + Math.PI / n
+    const r = coverR + 14 + amp * spread
+    g.globalAlpha = 0.08 + amp * 0.3
+    g.beginPath()
+    g.moveTo(cx + Math.cos(angle1) * r, cy + Math.sin(angle1) * r)
+    g.lineTo(cx + Math.cos(angle2) * r, cy + Math.sin(angle2) * r)
+    g.stroke()
+  }
+
   g.globalAlpha = 1
 }
 

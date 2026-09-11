@@ -1055,8 +1055,8 @@ const scannedSourceIds = computed(() => new Set(Object.keys(library.scanProgress
                       >
                         {{ t('settings.restartToUpdate') }}
                       </BaseButton>
+                      <span v-if="updater.status.value === 'uptodate'" class="text-xs text-zinc-400">{{ t('settings.upToDateShort') }}</span>
                       <BaseButton
-                        v-else
                         size="sm"
                         variant="outline"
                         :loading="updater.status.value === 'checking'"
@@ -1066,7 +1066,6 @@ const scannedSourceIds = computed(() => new Set(Object.keys(library.scanProgress
                       >
                         {{ t('settings.checkForUpdates') }}
                       </BaseButton>
-                      <span v-if="updater.status.value === 'uptodate'" class="text-xs text-zinc-400">{{ t('settings.upToDateShort') }}</span>
                     </div>
                   </div>
                   <!-- 更新版说明 + 下载进度 -->
