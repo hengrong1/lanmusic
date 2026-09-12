@@ -35,6 +35,7 @@ export default {
     lyricBackHint: 'Lyrics back 0.5s (shortcut ])',
     lyricForwardHint: 'Lyrics forward 0.5s (shortcut [)',
     lyricResetHint: 'Reset to default timeline', lyricCurrentHint: 'Already on the default timeline',
+    locateMissing: 'The current list does not contain the playing track',
     lyricOffsetLate: ', {value}s later in total', lyricOffsetEarly: ', {value}s earlier in total',
   },
   queue: {

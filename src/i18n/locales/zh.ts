@@ -35,6 +35,7 @@ export default {
     lyricBackHint: '歌词后退 0.5 秒（快捷键 ]）',
     lyricForwardHint: '歌词前进 0.5 秒（快捷键 [）',
     lyricResetHint: '还原为默认时间轴', lyricCurrentHint: '当前为默认时间轴，无需还原',
+    locateMissing: '当前列表没有正在播放的歌曲',
     lyricOffsetLate: '，已累计延后 {value}s', lyricOffsetEarly: '，已累计提前 {value}s',
   },
   queue: {

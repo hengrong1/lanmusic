@@ -89,6 +89,26 @@ export const useLibraryStore = defineStore('library', () => {
     await loadTracks(true)
   }
 
+  /**
+   * 「定位正在播放」：依次翻页直到找到指定曲目（排序/过滤后可能只加载了第一页）。
+   * 返回其在已加载列表中的索引；翻完所有页仍没有则返回 -1（该曲目不在当前视图的数据集里）。
+   * 结束时保持 store 状态自洽（page = 最后加载的页，items = 已加载的全部页），
+   * 与 loadMore 的约定一致；后续 loadMore 会继续追加下一页。
+   */
+  async function indexOfTrack(id: number): Promise<number> {
+    // 回到第一页重查，保证从头部顺序翻页（排序后 page 可能停在别处）
+    query.value = { ...query.value, page: 0 }
+    await loadTracks()
+    let idx = trackPage.value.items.findIndex((t) => t.id === id)
+    let guard = 0
+    while (idx < 0 && trackPage.value.items.length < trackPage.value.total && guard++ < 200) {
+      query.value.page++
+      await loadTracks(true)
+      idx = trackPage.value.items.findIndex((t) => t.id === id)
+    }
+    return idx
+  }
+
   async function addFolder(path: string) {
     await api.addLocalSource(path)
     await Promise.all([loadSources(), loadStats()])
@@ -208,6 +228,7 @@ export const useLibraryStore = defineStore('library', () => {
     loadTracks,
     setQuery,
     loadMore,
+    indexOfTrack,
     addFolder,
     addWebDav,
     removeSource,

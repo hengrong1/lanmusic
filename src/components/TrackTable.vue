@@ -83,12 +83,28 @@ watch(
 // ---- 定位正在播放：常驻按钮，点击滚动过去并居中 ----
 // 不用「可视窗口」判断显隐：排序/刷新会让行序大变，正在播放的行经常恰好落进可视范围，
 // 图标随之消失，用户会当成坏了（尤其刚排完序想跳回去的时候）。
+// 另外列表是分页加载的（每页 200）：排序后正在播放的歌可能排在未加载的页里，
+// 所以点击时若当前列表没有，就让 store 继续翻页直到找到。
 const playingIndex = computed(() =>
   player.current ? props.tracks.findIndex((t) => t.id === player.current!.id) : -1,
 )
-const showLocate = computed(() => playingIndex.value >= 0)
-function locatePlaying() {
-  if (playingIndex.value >= 0) vlist.value?.scrollToIndex(playingIndex.value)
+const showLocate = computed(() => !!player.current)
+const locating = ref(false)
+async function locatePlaying() {
+  if (!player.current || locating.value) return
+  locating.value = true
+  try {
+    let idx = playingIndex.value
+    // 不在已加载的列表里（排序后可能被翻到后面的页）：翻页加载直到找到
+    if (idx < 0) idx = await library.indexOfTrack(player.current.id)
+    if (idx >= 0) {
+      vlist.value?.scrollToIndex(idx)
+    } else {
+      toast(tr('player.locateMissing'))
+    }
+  } finally {
+    locating.value = false
+  }
 }
 function scrollToTop() {
   vlist.value?.scrollToTop()
@@ -99,6 +115,24 @@ function onScroll(e: Event) {
   showBackToTop.value = target.scrollTop > 100
 }
 const showBackToTop = ref(false)
+
+// TODO(debug): 定位按钮排查用（配合界面上的调试标记），确认后删除
+watch(
+  [playingIndex, showLocate, () => props.tracks.length, () => player.current?.id, () => props.sort],
+  ([pi, sl, n, cid, s]) => {
+    // eslint-disable-next-line no-console
+    console.log('[locate]', {
+      playingIndex: pi,
+      showLocate: sl,
+      trackCount: n,
+      currentId: cid,
+      currentIdType: typeof cid,
+      inList: props.tracks.some((x: Track) => String(x.id) === String(cid)),
+      sort: s,
+    })
+  },
+  { immediate: true },
+)
 
 function fmtDuration(s: number | null | undefined) {
   if (s == null || !Number.isFinite(s)) return '--:--'
@@ -462,6 +496,16 @@ function onDragEnd() {
             <ArrowUp class="h-4 w-4 text-zinc-600 dark:text-zinc-300" />
           </button>
         </Transition>
+      </div>
+
+      <!-- TODO(debug): 定位按钮排查用，确认后删除 -->
+      <div
+        class="pointer-events-none absolute bottom-[7.5rem] right-6 z-20 rounded bg-black/70 px-1.5 py-0.5 text-left font-mono text-[10px] leading-4 text-lime-300"
+      >
+        [调试] idx={{ playingIndex }} cur={{ player.current?.id ?? '-' }} n={{ tracks.length }}/{{
+          library.trackPage.total
+        }}
+        inList={{ tracks.some((x) => x.id === player.current?.id) }} sort={{ sort ?? '-' }}
       </div>
     </div>
 
