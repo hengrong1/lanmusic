@@ -24,12 +24,16 @@ const parts = computed(() => {
 </script>
 
 <template>
-  <template v-for="(p, i) in parts" :key="i">
-    <mark
-      v-if="p.hit"
-      class="rounded-sm bg-violet-500/20 px-0.5 text-violet-700 dark:bg-violet-400/25 dark:text-violet-300"
-      >{{ p.text }}</mark
-    >
-    <template v-else>{{ p.text }}</template>
-  </template>
+  <!-- 单根 span：外部传入的 class（truncate / 字号颜色等）才能通过 attrs 继承生效。
+       片段根节点（文本 + mark 混排）会丢 fallthrough 并触发 Vue 警告 -->
+  <span>
+    <template v-for="(p, i) in parts" :key="i">
+      <mark
+        v-if="p.hit"
+        class="rounded-sm bg-violet-500/20 px-0.5 text-violet-700 dark:bg-violet-400/25 dark:text-violet-300"
+        >{{ p.text }}</mark
+      >
+      <template v-else>{{ p.text }}</template>
+    </template>
+  </span>
 </template>

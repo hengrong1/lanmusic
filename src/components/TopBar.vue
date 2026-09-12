@@ -300,7 +300,7 @@ defineExpose({ focusSearch })
                     <HighlightText
                       :text="t.title || $t('search.unknownTitle')"
                       :keyword="input.trim()"
-                      class="truncate text-sm font-medium text-zinc-800 dark:text-zinc-100"
+                      class="min-w-0 truncate text-sm font-medium text-zinc-800 dark:text-zinc-100"
                     />
                     <!-- 匹配字段徽标 -->
                     <span
@@ -314,9 +314,9 @@ defineExpose({ focusSearch })
                     >{{ $t('settings.fieldFilename') }}</span>
                   </div>
                   <div class="mt-0.5 flex items-center gap-1 truncate text-xs text-zinc-500 dark:text-zinc-400">
-                    <HighlightText v-if="t.artist" :text="t.artist" :keyword="input.trim()" class="truncate" />
+                    <HighlightText v-if="t.artist" :text="t.artist" :keyword="input.trim()" class="min-w-0 truncate" />
                     <span v-if="t.artist && t.album" class="shrink-0">·</span>
-                    <HighlightText v-if="t.album" :text="t.album" :keyword="input.trim()" class="truncate" />
+                    <HighlightText v-if="t.album" :text="t.album" :keyword="input.trim()" class="min-w-0 truncate" />
                   </div>
                 </div>
               </button>
