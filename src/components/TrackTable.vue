@@ -80,28 +80,23 @@ watch(
   },
 )
 
-// ---- 定位正在播放：不可见时浮出按钮，点击滚动过去 ----
-const range = ref({ start: 0, end: 30 })
-function onRange(s: number, e: number) {
-  range.value = { start: s, end: e }
-}
-function onScroll(e: Event) {
-  const target = e.target as HTMLElement
-  showBackToTop.value = target.scrollTop > 100
-}
+// ---- 定位正在播放：常驻按钮，点击滚动过去并居中 ----
+// 不用「可视窗口」判断显隐：排序/刷新会让行序大变，正在播放的行经常恰好落进可视范围，
+// 图标随之消失，用户会当成坏了（尤其刚排完序想跳回去的时候）。
 const playingIndex = computed(() =>
   player.current ? props.tracks.findIndex((t) => t.id === player.current!.id) : -1,
 )
-const showLocate = computed(
-  () =>
-    playingIndex.value >= 0 &&
-    (playingIndex.value < range.value.start || playingIndex.value >= range.value.end),
-)
+const showLocate = computed(() => playingIndex.value >= 0)
 function locatePlaying() {
   if (playingIndex.value >= 0) vlist.value?.scrollToIndex(playingIndex.value)
 }
 function scrollToTop() {
   vlist.value?.scrollToTop()
+}
+// 返回顶部按钮：滚过一屏后再浮出
+function onScroll(e: Event) {
+  const target = e.target as HTMLElement
+  showBackToTop.value = target.scrollTop > 100
 }
 const showBackToTop = ref(false)
 
@@ -332,7 +327,6 @@ function onDragEnd() {
         :item-height="44"
         :item-key="(t: Track) => t.id"
         @near-end="emit('nearEnd')"
-        @range="onRange"
         @scroll="onScroll"
       >
         <template #default="{ item: t, index }">
