@@ -1,26 +1,20 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import gsap from 'gsap'
 import { AltArrowDownIcon as ChevronDown } from '@solar-icons/vue/linear/alt-arrow-down'
-import { Rewind5SecondsBackIcon as RewindBack } from '@solar-icons/vue/linear/rewind-5-seconds-back'
-import { Rewind5SecondsForwardIcon as RewindForward } from '@solar-icons/vue/linear/rewind-5-seconds-forward'
-import { RestartIcon as RotateCcw } from '@solar-icons/vue/linear/restart'
 import { usePlayerStore } from '@/stores/player'
-import { useNav } from '@/composables/useNav'
 import { useAmbient } from '@/composables/useAmbient'
-import { useSkin } from '@/composables/useSkin'
-import { ensureAnalyser, readSpectrum } from '@/composables/useSpectrum'
+import { useNowPlayingStyle } from '@/composables/useNowPlayingStyle'
 import { CUSTOM_WINDOW_CONTROLS, IS_MAC } from '@/utils/platform'
-import CoverImg from '@/components/CoverImg.vue'
-import LyricsPanel from '@/components/LyricsPanel.vue'
 import { useI18n } from 'vue-i18n'
 import WindowControls from '@/components/WindowControls.vue'
+import NpSideLayout from '@/components/NpSideLayout.vue'
+import NpStackedLayout from '@/components/NpStackedLayout.vue'
 
 const emit = defineEmits<{ close: [] }>()
 const props = defineProps<{ focusHidden?: boolean }>()
 const { t: tr } = useI18n()
 const player = usePlayerStore()
-const nav = useNav()
 
 const headerEl = ref<HTMLElement | null>(null)
 /** 专注模式：顶部控制栏上滑隐藏 / 鼠标移动时滑回 */
@@ -38,183 +32,20 @@ watch(
   },
 )
 
-// ---- 环境色：跟随专辑封面主色（提取结果全局共享，播放条也使用；页面背景由 App 渲染）----
-const { palette, setAlbum } = useAmbient()
+// ---- 环境色：跟随专辑封面主色（提取结果全局共享，播放条/封面组件读取；页面背景由 App 渲染）----
+const { setAlbum } = useAmbient()
 watch(() => player.current?.albumId, (id) => void setAlbum(id), { immediate: true })
 
-const coverStyle = computed(() =>
-  palette.value ? { boxShadow: `0 25px 80px -20px ${palette.value.glow}` } : undefined,
-)
-
-// ---- 音质信息：格式 / 采样率 / 位深；≥88.2kHz 或 ≥24bit 标记 Hi-Res ----
-const quality = computed(() => {
-  const t = player.current
-  if (!t) return null
-  const parts = [
-    t.format?.toUpperCase(),
-    t.sampleRate ? `${(t.sampleRate / 1000).toFixed(1).replace(/\.0$/, '')}kHz` : '',
-    t.bitDepth ? `${t.bitDepth}bit` : '',
-  ].filter(Boolean)
-  if (!parts.length) return null
-  return { text: parts.join(' · '), hires: (t.sampleRate ?? 0) >= 88200 || (t.bitDepth ?? 0) >= 24 }
-})
-
-// ---- 皮肤：圆形粒子样式下封面改为圆形，并在其周围绘制频谱粒子 ----
-const skin = useSkin()
-/** 圆形粒子皮肤激活时封面显示为圆形，并适当缩小给粒子环留出空间 */
-const coverCircular = computed(() => skin.value.style === 'particles')
-const coverClass = computed(() =>
-  coverCircular.value ? 'rounded-full max-w-[300px]' : 'rounded-2xl max-w-[340px]',
-)
-
-// 圆形粒子频谱：粒子沿圆形封面外圈分布，幅度驱动半径与亮度
-const coverBox = ref<HTMLElement | null>(null)
-const particleCanvas = ref<HTMLCanvasElement | null>(null)
-const particleFreq = new Uint8Array(256)
-let particleRaf = 0
-
-function drawParticles() {
-  const c = particleCanvas.value
-  const box = coverBox.value
-  if (!c || !box) return
-  const g = c.getContext('2d')
-  if (!g) return
-  const dpr = window.devicePixelRatio || 1
-  const w = c.clientWidth
-  const h = c.clientHeight
-  if (!w || !h) return
-  if (c.width !== Math.round(w * dpr) || c.height !== Math.round(h * dpr)) {
-    c.width = Math.round(w * dpr)
-    c.height = Math.round(h * dpr)
-  }
-  g.setTransform(dpr, 0, 0, dpr, 0, 0)
-  g.clearRect(0, 0, w, h)
-
-  const ok = readSpectrum(particleFreq)
-  const color = palette.value?.accent ?? '#a78bfa'
-  const color2 = palette.value?.accent2 ?? '#e879f9'
-  // 封面为容器内居中的正方形（粒子模式下 max 300px），粒子沿其外圈分布
-  const coverR = Math.min(box.clientWidth, box.clientHeight, coverCircular.value ? 300 : 340) / 2
-  // 粒子最大扩散半径适配画布可用空间，保证不出界被裁切
-  const maxR = Math.min(w, h) / 2 - 4
-  const spread = Math.max(12, maxR - coverR - 14)
-  const cx = w / 2
-  const cy = h / 2
-  const t = performance.now() / 1000
-  const n = particleFreq.length
-  const half = n / 2
-
-  // 第一层：正向旋转的粒子环
-  for (let i = 0; i < n; i++) {
-    const amp = ok ? particleFreq[i <= half ? i : n - i] / 255 : 0
-    if (amp < 0.05) continue
-    const angle = (i / n) * Math.PI * 2 - Math.PI / 2 + t * 0.12
-    const r = coverR + 14 + amp * spread
-    g.globalAlpha = 0.18 + amp * 0.82
-    g.fillStyle = color
-    g.beginPath()
-    g.arc(cx + Math.cos(angle) * r, cy + Math.sin(angle) * r, 1 + amp * 2.6, 0, Math.PI * 2)
-    g.fill()
-  }
-
-  // 第二层：反向旋转的粒子环（双线交叉效果）
-  for (let i = 0; i < n; i++) {
-    const amp = ok ? particleFreq[i <= half ? i : n - i] / 255 : 0
-    if (amp < 0.05) continue
-    // 反向旋转 + 相位偏移，形成交叉
-    const angle = (i / n) * Math.PI * 2 - Math.PI / 2 - t * 0.12 + Math.PI / n
-    const r = coverR + 14 + amp * spread
-    g.globalAlpha = 0.12 + amp * 0.6
-    g.fillStyle = color2
-    g.beginPath()
-    g.arc(cx + Math.cos(angle) * r, cy + Math.sin(angle) * r, 0.8 + amp * 2, 0, Math.PI * 2)
-    g.fill()
-  }
-
-  // 连接线：在交叉点处绘制连接线
-  g.strokeStyle = color
-  g.lineWidth = 0.5
-  for (let i = 0; i < n; i += 8) {
-    const amp = ok ? particleFreq[i <= half ? i : n - i] / 255 : 0
-    if (amp < 0.1) continue
-    const angle1 = (i / n) * Math.PI * 2 - Math.PI / 2 + t * 0.12
-    const angle2 = (i / n) * Math.PI * 2 - Math.PI / 2 - t * 0.12 + Math.PI / n
-    const r = coverR + 14 + amp * spread
-    g.globalAlpha = 0.08 + amp * 0.3
-    g.beginPath()
-    g.moveTo(cx + Math.cos(angle1) * r, cy + Math.sin(angle1) * r)
-    g.lineTo(cx + Math.cos(angle2) * r, cy + Math.sin(angle2) * r)
-    g.stroke()
-  }
-
-  g.globalAlpha = 1
-}
-
-function loopParticles() {
-  try {
-    drawParticles()
-  } catch {
-    /* 单帧绘制失败不中断循环 */
-  }
-  particleRaf = requestAnimationFrame(loopParticles)
-}
-
-watch(
-  [() => skin.value.on, () => skin.value.style, particleCanvas],
-  ([on, style, el]) => {
-    cancelAnimationFrame(particleRaf)
-    if (on && style === 'particles' && el) {
-      ensureAnalyser()
-      particleRaf = requestAnimationFrame(loopParticles)
-    }
-  },
-  { immediate: true },
-)
-onBeforeUnmount(() => cancelAnimationFrame(particleRaf))
-
-function openAlbum() {
-  const cur = player.current
-  if (cur?.albumId == null) return
-  nav.go({ view: 'tracks', albumId: cur.albumId, albumTitle: cur.album ?? tr('album.unknownAlbum') })
-  emit('close')
-}
-
-/** 当前曲目的艺人列表：优先用后端拆分的多艺人，回退到合并字符串 */
-const currentArtistLinks = computed<{ id: number | null; name: string }[]>(() => {
-  const cur = player.current
-  if (!cur) return []
-  if (cur.artists?.length) return cur.artists.map((a) => ({ id: a.id, name: a.name }))
-  if (cur.artist) return [{ id: cur.artistId, name: cur.artist }]
-  return [{ id: null, name: tr('artist.unknownArtist') }]
-})
-
-function openArtist(artist: { id: number | null; name: string }) {
-  if (artist.id == null) return
-  nav.go({ view: 'tracks', artistId: artist.id, artistName: artist.name })
-  emit('close')
-}
-
-/** 已累计偏移的悬停提示后缀：如「，已累计提前 1.0s」；无偏移时为空串 */
-/** 带参提示（模板 \`$t\` 无带参重载，统一在 setup 内生成） */
-const artistTip = (name: string) => tr('artist.viewArtist', { name })
-const offsetTip = computed(() => {
-  const v = player.lyricOffset
-  if (!v) return ''
-  return tr(v > 0 ? 'player.lyricOffsetLate' : 'player.lyricOffsetEarly', { value: Math.abs(v).toFixed(1) })
-})
 const collapseTip = computed(() => `${tr('player.collapseNowPlaying')} (Esc)`)
-const lyricBackTip = computed(() => tr('player.lyricBackHint') + offsetTip.value)
-const lyricForwardTip = computed(() => tr('player.lyricForwardHint') + offsetTip.value)
-const lyricResetTip = computed(() =>
-  player.lyricOffset ? tr('player.lyricResetHint') + offsetTip.value : tr('player.lyricCurrentHint'),
-)
+
+// ---- 布局切换：装扮面板选中的预设映射到 stage 组件 ----
+const npStyle = useNowPlayingStyle()
+const stage = computed(() => (npStyle.value === 'stacked' ? NpStackedLayout : NpSideLayout))
 </script>
 
 <template>
   <!-- 控制按钮在常驻播放条上；顶栏为自定义标题栏（拖拽 + 窗口控制按钮），页面背景（环境渐变）由 App 渲染，这里保持透明 -->
   <div class="pointer-events-auto flex h-full w-full flex-col">
-    <!-- 顶栏：自定义标题栏，空白处可拖拽移动窗口（播放页遮住了 TopBar 的拖拽区，这里补上）；
-         Windows/Linux 右侧自绘窗口控制按钮，macOS 用原生红绿灯（左侧留出约 76px 偏移） -->
     <header
       ref="headerEl"
       data-tauri-drag-region
@@ -232,97 +63,7 @@ const lyricResetTip = computed(() =>
       <WindowControls v-if="CUSTOM_WINDOW_CONTROLS" ambient />
     </header>
 
-    <div class="flex min-h-0 flex-1 gap-12 px-10 pb-8">
-      <!-- 左：封面（约 40% 宽，垂直居中），辉光随主色；圆形粒子皮肤下封面为圆形 -->
-      <div ref="coverBox" class="np-cover relative flex h-full min-w-0 flex-1 basis-2/5 items-center justify-center">
-        <!-- 圆形粒子频谱：画布向四周扩出 32px，粒子围绕圆形封面外圈绘制不被裁切
-             （canvas 是替换元素，必须显式给定宽高，否则 -inset-8 不会拉伸，会退化为 300x150 内在尺寸） -->
-        <canvas
-          v-if="skin.on && skin.style === 'particles'"
-          ref="particleCanvas"
-          class="pointer-events-none absolute -top-8 -left-8 h-[calc(100%+4rem)] w-[calc(100%+4rem)]"
-        ></canvas>
-        <CoverImg
-          :album-id="player.current?.albumId ?? null"
-          class="aspect-square max-h-full w-full"
-          :class="coverClass"
-          :rounded="coverClass"
-          :style="coverStyle"
-        />
-      </div>
-
-      <!-- 右：曲目信息 + 歌词（约 60% 宽）；relative 供歌词校准控件固定右上角 -->
-      <div class="np-fade relative flex h-full min-w-0 flex-1 basis-3/5 flex-col">
-        <div
-          class="flex shrink-0 flex-col items-center pb-4 pt-6 text-center"
-        >
-          <h1 class="max-w-full truncate text-2xl font-bold text-white">{{ player.current?.title ?? $t('player.notPlaying') }}</h1>
-          <p class="mt-1 max-w-full truncate text-sm text-white/60">
-            <!-- 多艺人：每个名字独立可点击（区分每一个艺人） -->
-            <template v-for="(a, i) in currentArtistLinks" :key="a.id ?? `na-${i}`">
-              <button
-                v-if="a.id != null"
-                class="cursor-pointer transition hover:text-white hover:underline"
-                v-tooltip="artistTip(a.name)"
-                @click="openArtist(a)"
-              >{{ a.name }}</button>
-              <span v-else>{{ a.name }}</span>
-              <span v-if="i < currentArtistLinks.length - 1" class="opacity-40"> / </span>
-            </template>
-          </p>
-          <button
-            v-if="player.current?.albumId != null"
-            class="mt-0.5 max-w-full cursor-pointer truncate text-xs text-white/40 transition hover:text-white/80"
-            v-tooltip="$t('album.goToAlbum')"
-            @click="openAlbum"
-          >
-            {{ player.current?.album }}
-          </button>
-          <!-- 音质徽标：格式/采样率/位深，Hi-Res（高解析度）金色标识 -->
-          <p v-if="quality" class="mt-2 flex items-center justify-center gap-1.5 text-[11px] text-white/40">
-            <span class="font-mono">{{ quality.text }}</span>
-            <span
-              v-if="quality.hires"
-              class="rounded border border-amber-300/50 bg-amber-300/10 px-1.5 py-px font-bold text-amber-200"
-              v-tooltip="$t('player.hiResHint')"
-            >Hi-Res</span>
-          </p>
-        </div>
-        <!-- 歌词校准：固定在右列右下角（绝对定位不占布局），三个按钮竖排：快退(延后)/还原/快进(提前)，
-             同一首歌内点击累计（按曲目记忆持久化）；已累计量在按钮悬停提示中显示 -->
-        <div
-          v-if="player.lyricsLines?.length"
-          class="absolute right-0 bottom-2 z-10 flex flex-col items-center gap-1 rounded-2xl bg-black/40 px-1.5 py-2 backdrop-blur-sm"
-        >
-          <button
-            class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-white/60 transition hover:bg-white/10 hover:text-white"
-            v-tooltip="lyricBackTip"
-            @click="player.setLyricOffset(0.5)"
-          >
-            <RewindBack class="h-5 w-5" />
-          </button>
-          <button
-            class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg transition"
-            :class="player.lyricOffset ? 'text-white/60 hover:bg-white/10 hover:text-white' : 'text-white/25'"
-            v-tooltip="lyricResetTip"
-            @click="player.setLyricOffset(-player.lyricOffset)"
-          >
-            <RotateCcw class="h-4.5 w-4.5" />
-          </button>
-          <button
-            class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-white/60 transition hover:bg-white/10 hover:text-white"
-            v-tooltip="lyricForwardTip"
-            @click="player.setLyricOffset(-0.5)"
-          >
-            <RewindForward class="h-5 w-5" />
-          </button>
-        </div>
-        <div class="min-h-0 flex-1">
-          <LyricsPanel />
-        </div>
-      </div>
-    </div>
+    <!-- 中部舞台：布局由装扮面板的预设决定（即时切换）；布局内点击艺人/专辑跳转后关闭播放页 -->
+    <component :is="stage" :key="npStyle" @navigate="emit('close')" />
   </div>
 </template>
-
-

@@ -58,7 +58,8 @@
 - **阻止系统休眠**：播放歌曲期间保持系统与屏幕常亮（默认开启），暂停/停止后自动恢复；Windows 走 `SetThreadExecutionState`，其他平台尝试 Web Wake Lock
 - **系统托盘**：点击托盘图标弹出悬浮菜单（圆角玻璃卡片）——顶部显示当前歌曲封面+歌名/歌手，控制栏提供上一首/播放暂停/下一首/喜欢，底部为桌面歌词开关/设置/退出；失焦自动收起
 - **侧栏**：可收起/展开（GSAP 宽度动画 + 文字淡入淡出 + 图标尺寸过渡），歌单显示封面缩略图
-- **专注模式**：播放页播放中，鼠标 5 秒无操作自动隐藏顶栏与播放条（移动鼠标即恢复）；皮肤设置弹层展开、暂停时不会触发隐藏
+- **专注模式**：播放页播放中，鼠标 5 秒无操作自动隐藏顶栏与播放条（移动鼠标即恢复）；装扮面板 / 播放队列展开、暂停时不触发
+- **播放页布局**：装扮面板二选一，持久化到 `lm.npStyle`——经典（左方形封面 + 右居中歌词）/ 上下（封面居上 + 歌词居下，窄窗口自动更从容）；圆形粒子频谱激活时封面转圆；封面恒为正方形（边长 = min(容器宽, 容器高, 上限)，实测自适应）
 - **界面布局**：内容区卡片化（白色圆角浮于灰底，与侧栏/顶栏/播放条分区）；播放条随播放页上下文自适应配色
 
 ### M3 局域网
@@ -139,7 +140,7 @@ src/                       # Vue 3 前端
 ├── stores/
 │   ├── player.ts          # 播放状态机：队列/模式/歌词/恢复/错误重试
 │   └── library.ts         # 库数据：来源/扫描进度/歌单/分页查询
-├── components/            # PlayerBar / TrackTable(虚拟滚动) / TrackPicker(选歌面板) / PlaylistEditDialog / QueuePanel / NowPlayingView ...
+├── components/            # PlayerBar / TrackTable(虚拟滚动) / TrackPicker(选歌面板) / PlaylistEditDialog / QueuePanel / NowPlayingView(容器+Np*布局拆件) ...
 ├── views/                 # Tracks / Albums / Artists / Playlist / Settings
 ├── composables/           # useNav / useTheme / useSkin / useSpectrum / useAmbient / useToast ...
 ├── directives/            # tooltip 指令（全项目唯一的气泡提示实现，见下表）
@@ -277,6 +278,7 @@ SQLite（WAL 模式，外键开启），建表与列迁移见 `src-tauri/src/db.
 | `lm.deskLyrics` | 桌面歌词 `{enabled, config: {lines, align(left\|center\|right\|split), color, pendingColor, fontSize, bgColor, bgOpacity, outline, outlineColor, bold}}` |
 | `lm.fade` | 歌曲淡入淡出开关（`'1'` = 开启，默认关闭） |
 | `lm.preventSleep` | 播放时阻止系统休眠/锁屏（`'0'` = 关闭，默认开启） |
+| `lm.npStyle` | 播放页布局预设 `side\|stacked`（装扮面板可选） |
 
 ## 安全设计
 

@@ -8,6 +8,9 @@ const { t } = useI18n()
 const player = usePlayerStore()
 const container = ref<HTMLElement | null>(null)
 
+/** 歌词行对齐：center = 居中（经典/上下），left = 靠左（黑胶） */
+withDefaults(defineProps<{ align?: 'center' | 'left' }>(), { align: 'center' })
+
 /** 用户手动滚动后暂停自动跟随 8s（翻看歌词不被拽回）；切歌/歌词重载时立即恢复跟随 */
 const FOLLOW_RESUME_MS = 8000
 let lastManualScroll = 0
@@ -109,7 +112,12 @@ onMounted(() => void nextTick(scrollToActive))
              按钮形状底色/描边用歌词强调色半透明，hover 加深，见 .lyric-jump 样式。
              绝对定位不占布局空间：歌词行真正居中，与上方歌曲名对齐 -->
         <button
-          class="lyric-jump pointer-events-none absolute top-1/2 left-0 z-10 flex h-7 w-16 -translate-y-1/2 translate-x-2 cursor-pointer items-center justify-center gap-1 rounded-lg border px-1 font-mono text-[11px] leading-none text-[var(--np-accent,#fff)] opacity-0 transition-[opacity,transform,background-color,border-color] duration-200 ease-out group-hover:pointer-events-auto group-hover:translate-x-0 group-hover:opacity-100"
+          class="lyric-jump pointer-events-none absolute top-1/2 z-10 flex h-7 w-16 -translate-y-1/2 cursor-pointer items-center justify-center gap-1 rounded-lg border px-1 font-mono text-[11px] leading-none text-[var(--np-accent,#fff)] opacity-0 transition-[opacity,transform,background-color,border-color] duration-200 ease-out group-hover:pointer-events-auto group-hover:opacity-100"
+          :class="
+            align === 'left'
+              ? 'right-0 -translate-x-2 group-hover:translate-x-0'
+              : 'left-0 translate-x-2 group-hover:translate-x-0'
+          "
           v-tooltip="jumpTip(line.time + player.lyricOffset, line.text)"
           @click="player.seek(line.time + player.lyricOffset)"
         >
@@ -117,8 +125,9 @@ onMounted(() => void nextTick(scrollToActive))
           {{ fmt(line.time) }}
         </button>
         <p
-          class="min-w-0 w-full text-center transition-[color,font-size,transform,text-shadow] duration-300 ease-out"
+          class="min-w-0 w-full transition-[color,font-size,transform,text-shadow] duration-300 ease-out"
           :class="[
+            align === 'left' ? 'text-left' : 'text-center',
             line.text ? 'text-base' : 'text-xs leading-none',
             i === player.activeLyricIndex
               ? 'scale-[1.07] font-semibold'
@@ -146,7 +155,8 @@ onMounted(() => void nextTick(scrollToActive))
       <p
         v-for="(line, i) in player.lyricsPlain"
         :key="i"
-        class="py-1.5 text-center text-sm leading-relaxed text-zinc-500 dark:text-zinc-400"
+        class="py-1.5 text-sm leading-relaxed text-zinc-500 dark:text-zinc-400"
+        :class="align === 'left' ? 'text-left' : 'text-center'"
       >
         {{ line }}
       </p>

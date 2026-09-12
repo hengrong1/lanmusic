@@ -1,0 +1,144 @@
+<script setup lang="ts">
+import { computed } from 'vue'
+import { Rewind5SecondsBackIcon as RewindBack } from '@solar-icons/vue/linear/rewind-5-seconds-back'
+import { Rewind5SecondsForwardIcon as RewindForward } from '@solar-icons/vue/linear/rewind-5-seconds-forward'
+import { RestartIcon as RotateCcw } from '@solar-icons/vue/linear/restart'
+import { usePlayerStore } from '@/stores/player'
+import { useNav } from '@/composables/useNav'
+import { useI18n } from 'vue-i18n'
+import LyricsPanel from '@/components/LyricsPanel.vue'
+
+withDefaults(defineProps<{ align?: 'center' | 'left' }>(), { align: 'center' })
+const emit = defineEmits<{ navigate: [] }>()
+
+const player = usePlayerStore()
+const nav = useNav()
+const { t: tr } = useI18n()
+
+// ---- 音质信息：格式 / 采样率 / 位深；≥88.2kHz 或 ≥24bit 标记 Hi-Res ----
+const quality = computed(() => {
+  const t = player.current
+  if (!t) return null
+  const parts = [
+    t.format?.toUpperCase(),
+    t.sampleRate ? `${(t.sampleRate / 1000).toFixed(1).replace(/\.0$/, '')}kHz` : '',
+    t.bitDepth ? `${t.bitDepth}bit` : '',
+  ].filter(Boolean)
+  if (!parts.length) return null
+  return { text: parts.join(' · '), hires: (t.sampleRate ?? 0) >= 88200 || (t.bitDepth ?? 0) >= 24 }
+})
+
+function openAlbum() {
+  const cur = player.current
+  if (cur?.albumId == null) return
+  nav.go({ view: 'tracks', albumId: cur.albumId, albumTitle: cur.album ?? tr('album.unknownAlbum') })
+  emit('navigate')
+}
+
+/** 当前曲目的艺人列表：优先用后端拆分的多艺人，回退到合并字符串 */
+const currentArtistLinks = computed<{ id: number | null; name: string }[]>(() => {
+  const cur = player.current
+  if (!cur) return []
+  if (cur.artists?.length) return cur.artists.map((a) => ({ id: a.id, name: a.name }))
+  if (cur.artist) return [{ id: cur.artistId, name: cur.artist }]
+  return [{ id: null, name: tr('artist.unknownArtist') }]
+})
+
+function openArtist(artist: { id: number | null; name: string }) {
+  if (artist.id == null) return
+  nav.go({ view: 'tracks', artistId: artist.id, artistName: artist.name })
+  emit('navigate')
+}
+
+/** 带参提示（模板 `$t` 无带参重载，统一在 setup 内生成） */
+const artistTip = (name: string) => tr('artist.viewArtist', { name })
+/** 已累计偏移的悬停提示后缀：如「，已累计提前 1.0s」；无偏移时为空串 */
+const offsetTip = computed(() => {
+  const v = player.lyricOffset
+  if (!v) return ''
+  return tr(v > 0 ? 'player.lyricOffsetLate' : 'player.lyricOffsetEarly', { value: Math.abs(v).toFixed(1) })
+})
+const lyricBackTip = computed(() => tr('player.lyricBackHint') + offsetTip.value)
+const lyricForwardTip = computed(() => tr('player.lyricForwardHint') + offsetTip.value)
+const lyricResetTip = computed(() =>
+  player.lyricOffset ? tr('player.lyricResetHint') + offsetTip.value : tr('player.lyricCurrentHint'),
+)
+</script>
+
+<template>
+  <div class="np-fade relative flex min-w-0 flex-1 flex-col">
+    <!-- 曲目信息：align 控制居中（经典/上下）或靠左（黑胶） -->
+    <div
+      class="flex shrink-0 flex-col pb-4 pt-6"
+      :class="align === 'left' ? 'items-start text-left' : 'items-center text-center'"
+    >
+      <h1 class="max-w-full truncate text-2xl font-bold text-white">{{ player.current?.title ?? $t('player.notPlaying') }}</h1>
+      <p class="mt-1 max-w-full truncate text-sm text-white/60">
+        <!-- 多艺人：每个名字独立可点击（区分每一个艺人） -->
+        <template v-for="(a, i) in currentArtistLinks" :key="a.id ?? `na-${i}`">
+          <button
+            v-if="a.id != null"
+            class="cursor-pointer transition hover:text-white hover:underline"
+            v-tooltip="artistTip(a.name)"
+            @click="openArtist(a)"
+          >{{ a.name }}</button>
+          <span v-else>{{ a.name }}</span>
+          <span v-if="i < currentArtistLinks.length - 1" class="opacity-40"> / </span>
+        </template>
+      </p>
+      <button
+        v-if="player.current?.albumId != null"
+        class="mt-0.5 max-w-full cursor-pointer truncate text-xs text-white/40 transition hover:text-white/80"
+        v-tooltip="$t('album.goToAlbum')"
+        @click="openAlbum"
+      >
+        {{ player.current?.album }}
+      </button>
+      <!-- 音质徽标：格式/采样率/位深，Hi-Res（高解析度）金色标识 -->
+      <p
+        v-if="quality"
+        class="mt-2 flex items-center gap-1.5 text-[11px] text-white/40"
+        :class="align === 'left' ? 'justify-start' : 'justify-center'"
+      >
+        <span class="font-mono">{{ quality.text }}</span>
+        <span
+          v-if="quality.hires"
+          class="rounded border border-amber-300/50 bg-amber-300/10 px-1.5 py-px font-bold text-amber-200"
+          v-tooltip="$t('player.hiResHint')"
+        >Hi-Res</span>
+      </p>
+    </div>
+    <!-- 歌词校准：固定在右下角（绝对定位不占布局），三个按钮竖排：快退(延后)/还原/快进(提前)，
+         同一首歌内点击累计（按曲目记忆持久化）；已累计量在按钮悬停提示中显示 -->
+    <div
+      v-if="player.lyricsLines?.length"
+      class="absolute right-0 bottom-2 z-10 flex flex-col items-center gap-1 rounded-2xl bg-black/40 px-1.5 py-2 backdrop-blur-sm"
+    >
+      <button
+        class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-white/60 transition hover:bg-white/10 hover:text-white"
+        v-tooltip="lyricBackTip"
+        @click="player.setLyricOffset(0.5)"
+      >
+        <RewindBack class="h-5 w-5" />
+      </button>
+      <button
+        class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg transition"
+        :class="player.lyricOffset ? 'text-white/60 hover:bg-white/10 hover:text-white' : 'text-white/25'"
+        v-tooltip="lyricResetTip"
+        @click="player.setLyricOffset(-player.lyricOffset)"
+      >
+        <RotateCcw class="h-4.5 w-4.5" />
+      </button>
+      <button
+        class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-white/60 transition hover:bg-white/10 hover:text-white"
+        v-tooltip="lyricForwardTip"
+        @click="player.setLyricOffset(-0.5)"
+      >
+        <RewindForward class="h-5 w-5" />
+      </button>
+    </div>
+    <div class="min-h-0 flex-1">
+      <LyricsPanel :align="align" />
+    </div>
+  </div>
+</template>
