@@ -335,8 +335,8 @@ function onDragEnd() {
       </template>
     </div>
 
-    <!-- pb-3：列表区缩进卡片下缘，行/悬停高亮不再贴住圆角裁切线（滚动中与滚到底都保持留白） -->
-    <div class="relative min-h-0 flex-1 pb-3">
+    <!-- 上下留白（pt-2/pb-3）：行/悬停/正在播放的圆角卡片与光晕不再贴住列表上下边缘被裁切 -->
+    <div class="relative min-h-0 flex-1 pt-2 pb-3">
       <VirtualList
         ref="vlist"
         :items="props.tracks"
