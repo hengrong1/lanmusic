@@ -335,13 +335,15 @@ function onDragEnd() {
       </template>
     </div>
 
-    <!-- 上下留白（pt-2/pb-3）：行/悬停/正在播放的圆角卡片与光晕不再贴住列表上下边缘被裁切 -->
-    <div class="relative min-h-0 flex-1 pt-2 pb-3">
+    <!-- 底部光晕呼吸空间由 VirtualList 的 pad-bottom 提供（在滚动容器内部，虚拟滚动数学已含偏移） -->
+    <div class="relative min-h-0 flex-1">
       <VirtualList
         ref="vlist"
         :items="props.tracks"
         :item-height="44"
         :item-key="(t: Track) => t.id"
+        :pad-top="8"
+        :pad-bottom="14"
         @near-end="emit('nearEnd')"
         @scroll="onScroll"
       >

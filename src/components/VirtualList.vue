@@ -7,8 +7,11 @@ const props = withDefaults(
     itemHeight: number
     buffer?: number
     itemKey?: (item: T, index: number) => string | number
+    /** 滚动容器内部顶部/底部留白（px）：给首尾行的圆角卡片光晕留呼吸空间，虚拟滚动数学已含偏移 */
+    padTop?: number
+    padBottom?: number
   }>(),
-  { buffer: 8 },
+  { buffer: 8, padTop: 0, padBottom: 0 },
 )
 
 const emit = defineEmits<{ nearEnd: []; range: [start: number, end: number]; scroll: [e: Event] }>()
@@ -44,8 +47,8 @@ function onScroll(e: Event) {
 
 /** 上报当前无缓冲的可视行范围（供"定位当前播放"判断可见性） */
 function emitRange() {
-  const start = Math.floor(scrollTop.value / props.itemHeight)
-  const end = Math.ceil((scrollTop.value + viewportHeight.value) / props.itemHeight)
+  const start = Math.floor((scrollTop.value - props.padTop) / props.itemHeight)
+  const end = Math.ceil((scrollTop.value - props.padTop + viewportHeight.value) / props.itemHeight)
   emit('range', start, end)
 }
 
@@ -58,11 +61,11 @@ function nextTickFrame() {
 }
 
 const totalHeight = computed(() => props.items.length * props.itemHeight)
-const start = computed(() => Math.max(0, Math.floor(scrollTop.value / props.itemHeight) - props.buffer))
+const start = computed(() => Math.max(0, Math.floor((scrollTop.value - props.padTop) / props.itemHeight) - props.buffer))
 const end = computed(() =>
   Math.min(
     props.items.length,
-    Math.ceil((scrollTop.value + viewportHeight.value) / props.itemHeight) + props.buffer,
+    Math.ceil((scrollTop.value - props.padTop + viewportHeight.value) / props.itemHeight) + props.buffer,
   ),
 )
 const visible = computed(() =>
@@ -80,7 +83,7 @@ function scrollToTop() {
 /** 平滑滚动到指定行（默认垂直居中） */
 function scrollToIndex(index: number, align: 'top' | 'center' = 'center') {
   if (!container.value) return
-  const target = index * props.itemHeight
+  const target = props.padTop + index * props.itemHeight
   const top =
     align === 'center'
       ? target - container.value.clientHeight / 2 + props.itemHeight / 2
@@ -91,9 +94,14 @@ defineExpose({ scrollToTop, scrollToIndex })
 </script>
 
 <template>
-  <div ref="container" class="h-full overflow-y-auto" @scroll.passive="onScroll">
-    <div :style="{ height: totalHeight + 'px', position: 'relative' }">
-      <div :style="{ position: 'absolute', top: start * itemHeight + 'px', left: 0, right: 0 }">
+  <div
+    ref="container"
+    class="h-full overflow-y-auto"
+    :style="{ paddingTop: padTop + 'px', paddingBottom: padBottom + 'px' }"
+    @scroll.passive="onScroll"
+  >
+    <div :style="{ height: totalHeight + padTop + padBottom + 'px', position: 'relative' }">
+      <div :style="{ position: 'absolute', top: start * itemHeight + padTop + 'px', left: 0, right: 0 }">
         <div v-for="entry in visible" :key="keyOf(entry.item, entry.index)" :style="{ height: itemHeight + 'px' }">
           <slot :item="entry.item" :index="entry.index" />
         </div>
