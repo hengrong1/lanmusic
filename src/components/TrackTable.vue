@@ -116,24 +116,6 @@ function onScroll(e: Event) {
 }
 const showBackToTop = ref(false)
 
-// TODO(debug): 定位按钮排查用（配合界面上的调试标记），确认后删除
-watch(
-  [playingIndex, showLocate, () => props.tracks.length, () => player.current?.id, () => props.sort],
-  ([pi, sl, n, cid, s]) => {
-    // eslint-disable-next-line no-console
-    console.log('[locate]', {
-      playingIndex: pi,
-      showLocate: sl,
-      trackCount: n,
-      currentId: cid,
-      currentIdType: typeof cid,
-      inList: props.tracks.some((x: Track) => String(x.id) === String(cid)),
-      sort: s,
-    })
-  },
-  { immediate: true },
-)
-
 function fmtDuration(s: number | null | undefined) {
   if (s == null || !Number.isFinite(s)) return '--:--'
   const m = Math.floor(s / 60)
@@ -496,16 +478,6 @@ function onDragEnd() {
             <ArrowUp class="h-4 w-4 text-zinc-600 dark:text-zinc-300" />
           </button>
         </Transition>
-      </div>
-
-      <!-- TODO(debug): 定位按钮排查用，确认后删除 -->
-      <div
-        class="pointer-events-none absolute bottom-[7.5rem] right-6 z-20 rounded bg-black/70 px-1.5 py-0.5 text-left font-mono text-[10px] leading-4 text-lime-300"
-      >
-        [调试] idx={{ playingIndex }} cur={{ player.current?.id ?? '-' }} n={{ tracks.length }}/{{
-          library.trackPage.total
-        }}
-        inList={{ tracks.some((x) => x.id === player.current?.id) }} sort={{ sort ?? '-' }}
       </div>
     </div>
 
