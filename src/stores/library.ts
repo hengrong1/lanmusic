@@ -54,6 +54,9 @@ export const useLibraryStore = defineStore('library', () => {
   let trackReq = 0
   async function loadTracks(append = false) {
     const my = ++trackReq
+    // 非追加（整表刷新）一律回到第一页：扫描/改来源后会直接调用本方法，
+    // 而页码可能还停在上次 loadMore 翻到的页，只加载那一页会让列表缺一大截
+    if (!append) query.value.page = 0
     // append 翻页把页号带进请求：期间若 setQuery 重置了 page，旧页回包不再拼接到新查询下
     const reqPage = query.value.page
     loading.value = true
