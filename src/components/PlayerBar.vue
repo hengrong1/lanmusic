@@ -94,6 +94,23 @@ const previewLyrics = computed(() => {
 /** 预览小屏的环境光晕：跟随当前专辑环境色 */
 const previewGlow = computed(() => palette.value?.accent ?? '#8b5cf6')
 
+// ---- 装扮面板跟随播放页主题：背景用环境渐变，强调色取专辑主色（无封面回退默认紫） ----
+// 面板只在播放页打开时出现，始终浮于环境背景之上，因此固定用深色玻璃 + 动态强调色
+const skinPanelBg = computed(() => {
+  const p = palette.value
+  return p
+    ? `linear-gradient(to bottom, ${p.glow} 0%, ${p.deep} 55%, #09090b 100%)`
+    : 'linear-gradient(to bottom, #2e1065 0%, #09090b 55%, #09090b 100%)'
+})
+const skinAccent = computed(() => palette.value?.accent ?? '#a78bfa')
+const skinAccentSoft = computed(() => palette.value?.accentSoft ?? 'rgba(139, 92, 246, 0.2)')
+/** 选中态选项：边框/底色/文字统一取环境强调色（未选中走默认 class，返回 undefined） */
+function skinActiveStyle(active: boolean) {
+  return active
+    ? { borderColor: skinAccent.value, backgroundColor: skinAccentSoft.value, color: skinAccent.value }
+    : undefined
+}
+
 const skinPop = ref<HTMLElement | null>(null)
 
 watch(
@@ -288,7 +305,7 @@ const volBubbleLeftPx = ref(48)
 /** 鼠标悬停位置对应的音量百分比（0-100） */
 const volPreview = ref(player.volume * 100)
 /** 气泡显示的文本：悬停时用悬停位置的预览值，否则用当前音量 */
-const volBubbleText = computed(() => (volHover ? Math.round(volPreview.value) : volDisplay.value))
+const volBubbleText = computed(() => (volHover.value ? Math.round(volPreview.value) : volDisplay.value))
 const volBubbleStyle = computed(() => ({
   left: `${volBubbleLeftPx.value}px`,
   transform: 'translateX(-50%)',
@@ -387,6 +404,8 @@ watch(
   },
 )
 onUnmounted(() => clearTimeout(favPopTimer))
+// 滚轮音量气泡的复位定时器：卸载后不再写已卸载组件的 ref
+onUnmounted(() => clearTimeout(volWheelTimer))
 
 function fmt(s: number) {
   if (!Number.isFinite(s) || s < 0) return '0:00'
@@ -628,14 +647,13 @@ const theme = computed(() =>
         >
           <div
             v-if="skinOpen"
-            class="fixed right-2 bottom-[88px] z-50 flex max-h-[calc(100vh-120px)] w-80 origin-bottom-right flex-col overflow-hidden rounded-xl border border-zinc-200 bg-white/98 shadow-2xl dark:border-zinc-800 dark:bg-zinc-900/98"
+            class="fixed right-2 bottom-[88px] z-50 flex max-h-[calc(100vh-120px)] w-80 origin-bottom-right flex-col overflow-hidden rounded-xl border border-white/10 shadow-2xl"
+            :style="{ background: skinPanelBg }"
           >
-            <header
-              class="flex shrink-0 items-center justify-between border-b border-zinc-200 px-4 py-3 dark:border-zinc-800"
-            >
-              <p class="text-sm font-medium text-zinc-700 dark:text-zinc-200">{{ $t('nowPlaying.skin') }}</p>
+            <header class="flex shrink-0 items-center justify-between border-b border-white/10 px-4 py-3">
+              <p class="text-sm font-medium text-white/90">{{ $t('nowPlaying.skin') }}</p>
               <button
-                class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-300"
+                class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-white/50 transition hover:bg-white/10 hover:text-white"
                 @click="skinOpen = false"
               >
                 <X class="h-4 w-4" />
@@ -643,16 +661,12 @@ const theme = computed(() =>
             </header>
             <div class="min-h-0 flex-1 overflow-y-auto p-3">
               <!-- 播放页布局：三档大预览，纵向排列 -->
-              <p class="px-1 pb-2 text-[11px] font-medium text-zinc-400">{{ $t('nowPlaying.layoutStyle') }}</p>
+              <p class="px-1 pb-2 text-[11px] font-medium text-white/40">{{ $t('nowPlaying.layoutStyle') }}</p>
               <div class="space-y-2">
                 <!-- 经典：左方形封面 + 右居中歌词 -->
                 <button
-                  class="w-full cursor-pointer rounded-xl border p-2 text-left transition"
-                  :class="
-                    npStyle === 'side'
-                      ? 'border-violet-400 bg-violet-50 dark:border-violet-400/50 dark:bg-violet-500/10'
-                      : 'border-zinc-200 hover:border-zinc-300 dark:border-zinc-800 dark:hover:border-zinc-700'
-                  "
+                  class="w-full cursor-pointer rounded-xl border border-white/10 p-2 text-left transition hover:border-white/20"
+                  :style="skinActiveStyle(npStyle === 'side')"
                   @click="npStyle = 'side'"
                 >
                   <span class="relative flex h-24 w-full items-center gap-3 overflow-hidden rounded-lg bg-zinc-950 p-2.5">
@@ -674,19 +688,20 @@ const theme = computed(() =>
                   <span class="mt-2 flex items-center justify-between px-0.5">
                     <span
                       class="text-sm"
-                      :class="npStyle === 'side' ? 'font-medium text-violet-700 dark:text-violet-300' : 'text-zinc-600 dark:text-zinc-300'"
+                      :class="npStyle === 'side' ? 'font-medium' : 'text-white/60'"
+                      :style="npStyle === 'side' ? { color: skinAccent } : undefined"
                     >{{ $t('nowPlaying.layoutSide') }}</span>
-                    <span v-if="npStyle === 'side'" class="h-2 w-2 rounded-full bg-violet-500"></span>
+                    <span
+                      v-if="npStyle === 'side'"
+                      class="h-2 w-2 rounded-full"
+                      :style="{ background: skinAccent }"
+                    ></span>
                   </span>
                 </button>
                 <!-- 上下：封面居上 + 歌词居下 -->
                 <button
-                  class="w-full cursor-pointer rounded-xl border p-2 text-left transition"
-                  :class="
-                    npStyle === 'stacked'
-                      ? 'border-violet-400 bg-violet-50 dark:border-violet-400/50 dark:bg-violet-500/10'
-                      : 'border-zinc-200 hover:border-zinc-300 dark:border-zinc-800 dark:hover:border-zinc-700'
-                  "
+                  class="w-full cursor-pointer rounded-xl border border-white/10 p-2 text-left transition hover:border-white/20"
+                  :style="skinActiveStyle(npStyle === 'stacked')"
                   @click="npStyle = 'stacked'"
                 >
                   <span
@@ -708,44 +723,40 @@ const theme = computed(() =>
                   <span class="mt-2 flex items-center justify-between px-0.5">
                     <span
                       class="text-sm"
-                      :class="npStyle === 'stacked' ? 'font-medium text-violet-700 dark:text-violet-300' : 'text-zinc-600 dark:text-zinc-300'"
+                      :class="npStyle === 'stacked' ? 'font-medium' : 'text-white/60'"
+                      :style="npStyle === 'stacked' ? { color: skinAccent } : undefined"
                     >{{ $t('nowPlaying.layoutStacked') }}</span>
-                    <span v-if="npStyle === 'stacked'" class="h-2 w-2 rounded-full bg-violet-500"></span>
+                    <span
+                      v-if="npStyle === 'stacked'"
+                      class="h-2 w-2 rounded-full"
+                      :style="{ background: skinAccent }"
+                    ></span>
                   </span>
                 </button>
               </div>
               <!-- 频谱样式：无 / 圆形粒子 / 树状 三选一 -->
-              <p class="px-1 pt-4 pb-2 text-[11px] font-medium text-zinc-400">{{ $t('nowPlaying.spectrumStyle') }}</p>
+              <p class="px-1 pt-4 pb-2 text-[11px] font-medium text-white/40">{{ $t('nowPlaying.spectrumStyle') }}</p>
               <div class="grid grid-cols-3 gap-1.5">
                 <button
                   class="cursor-pointer rounded-lg px-2 py-2 text-xs transition"
-                  :class="
-                    spectrumMode === 'none'
-                      ? 'bg-violet-100 font-medium text-violet-700 dark:bg-violet-500/15 dark:text-violet-300'
-                      : 'text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800'
-                  "
+                  :class="spectrumMode === 'none' ? 'font-medium' : 'text-white/60 hover:bg-white/10'"
+                  :style="skinActiveStyle(spectrumMode === 'none')"
                   @click="spectrumMode = 'none'"
                 >
                   {{ $t('nowPlaying.spectrumNone') }}
                 </button>
                 <button
                   class="cursor-pointer rounded-lg px-2 py-2 text-xs transition"
-                  :class="
-                    spectrumMode === 'particles'
-                      ? 'bg-violet-100 font-medium text-violet-700 dark:bg-violet-500/15 dark:text-violet-300'
-                      : 'text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800'
-                  "
+                  :class="spectrumMode === 'particles' ? 'font-medium' : 'text-white/60 hover:bg-white/10'"
+                  :style="skinActiveStyle(spectrumMode === 'particles')"
                   @click="spectrumMode = 'particles'"
                 >
                   {{ $t('nowPlaying.skinParticlesRound') }}
                 </button>
                 <button
                   class="cursor-pointer rounded-lg px-2 py-2 text-xs transition"
-                  :class="
-                    spectrumMode === 'tree'
-                      ? 'bg-violet-100 font-medium text-violet-700 dark:bg-violet-500/15 dark:text-violet-300'
-                      : 'text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800'
-                  "
+                  :class="spectrumMode === 'tree' ? 'font-medium' : 'text-white/60 hover:bg-white/10'"
+                  :style="skinActiveStyle(spectrumMode === 'tree')"
                   @click="spectrumMode = 'tree'"
                 >
                   {{ $t('nowPlaying.skinTreeShape') }}

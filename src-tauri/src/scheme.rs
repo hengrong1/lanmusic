@@ -12,7 +12,9 @@ use std::io::{Read, Seek, SeekFrom};
 use std::path::PathBuf;
 use std::sync::OnceLock;
 
-use tauri::http::header::{ACCEPT_RANGES, CACHE_CONTROL, CONTENT_LENGTH, CONTENT_RANGE, CONTENT_TYPE, RANGE};
+use tauri::http::header::{
+    ACCEPT_RANGES, CACHE_CONTROL, CONTENT_LENGTH, CONTENT_RANGE, CONTENT_TYPE, RANGE,
+};
 use tauri::http::{Request, Response, StatusCode};
 use tauri::{AppHandle, Manager, Runtime, UriSchemeContext, UriSchemeResponder};
 
@@ -97,7 +99,9 @@ pub(crate) fn route_track<R: Runtime>(
 
     match kind.as_str() {
         "local" => {
-            let Some(base) = base_path else { return not_found() };
+            let Some(base) = base_path else {
+                return not_found();
+            };
             let full = PathBuf::from(base).join(&rel);
             // macOS：WKWebView 解不了 Ogg(Vorbis/Opus)，先转码为 WAV 再按文件供流（见 transcode.rs）
             #[cfg(target_os = "macos")]
@@ -115,22 +119,39 @@ pub(crate) fn route_track<R: Runtime>(
                         })
                         .unwrap_or_else(|_| "na".to_string());
                     return match std::fs::read(&full) {
-                        Ok(bytes) => crate::transcode::serve_transcoded(app, id, &fingerprint, &bytes, range),
+                        Ok(bytes) => {
+                            crate::transcode::serve_transcoded(app, id, &fingerprint, &bytes, range)
+                        }
                         Err(_) => not_found(),
                     };
                 }
             }
-            let Ok(file) = std::fs::File::open(&full) else { return not_found() };
-            let size = if size > 0 { size as u64 } else { file.metadata().map(|m| m.len()).unwrap_or(0) };
+            let Ok(file) = std::fs::File::open(&full) else {
+                return not_found();
+            };
+            // 优先用打开文件的真实长度：扫描后文件变大时，DB 里的 file_size 会让
+            // Content-Length 超过实际可读字节（响应体被截短、头部与内容矛盾）
+            let size = file
+                .metadata()
+                .map(|m| m.len())
+                .ok()
+                .filter(|n| *n > 0)
+                .unwrap_or(size.max(0) as u64);
             serve_file_response(file, mime_of(format.as_deref()), size, range)
         }
         "webdav" => {
-            let Some(base) = base_url else { return not_found() };
-            let Ok(mut bu) = url::Url::parse(&base) else { return not_found() };
+            let Some(base) = base_url else {
+                return not_found();
+            };
+            let Ok(mut bu) = url::Url::parse(&base) else {
+                return not_found();
+            };
             if !bu.path().ends_with('/') {
                 bu.set_path(&format!("{}/", bu.path()));
             }
-            let Some(url) = bu.join(&rel).ok().map(|u| u.to_string()) else { return not_found() };
+            let Some(url) = bu.join(&rel).ok().map(|u| u.to_string()) else {
+                return not_found();
+            };
             let webdav_auth = network::webdav::Auth::from_source(config.as_deref(), source_id);
             let auth = match &webdav_auth {
                 Some(a) => ProxyAuth::Basic(a.username.clone(), a.password.clone()),
@@ -142,13 +163,16 @@ pub(crate) fn route_track<R: Runtime>(
                 if crate::transcode::needs_transcode(format.as_deref()) {
                     let mut hasher = std::collections::hash_map::DefaultHasher::new();
                     std::hash::Hasher::write(&mut hasher, url.as_bytes());
-                    let fingerprint = format!("{:016x}-{}", std::hash::Hasher::finish(&hasher), size);
+                    let fingerprint =
+                        format!("{:016x}-{}", std::hash::Hasher::finish(&hasher), size);
                     return match network::webdav::download(
                         &bu.join(&rel).unwrap_or_else(|_| bu.clone()),
                         webdav_auth.as_ref(),
                         None,
                     ) {
-                        Ok(bytes) => crate::transcode::serve_transcoded(app, id, &fingerprint, &bytes, range),
+                        Ok(bytes) => {
+                            crate::transcode::serve_transcoded(app, id, &fingerprint, &bytes, range)
+                        }
                         Err(_) => bad_gateway(),
                     };
                 }
@@ -172,7 +196,10 @@ pub(crate) fn serve_file_response(
                 return server_error();
             }
             let len = (end - start + 1) as usize;
-            let buf = file.take(len as u64).bytes().collect::<Result<Vec<u8>, _>>();
+            let buf = file
+                .take(len as u64)
+                .bytes()
+                .collect::<Result<Vec<u8>, _>>();
             match buf {
                 Ok(data) => Response::builder()
                     .status(StatusCode::PARTIAL_CONTENT)
@@ -258,7 +285,6 @@ pub(crate) fn serve_raw(data: &[u8], range_header: Option<&str>) -> Response<Vec
             .unwrap_or_else(|_| server_error()),
     }
 }
-
 
 /// 经 Rust 代理远程音频流：转发 Range 并按 CHUNK 封顶，附带认证头。
 fn client() -> &'static reqwest::blocking::Client {
@@ -373,7 +399,9 @@ pub(crate) fn proxy_response(
     // - total 优先从远端 Content-Range 的 /size 取，没有则用 "*"
     let start = extract_range_start(client_range).unwrap_or(0);
     let end = start.saturating_add(buf_len.saturating_sub(1));
-    let total = content_range.as_deref().and_then(extract_content_range_total);
+    let total = content_range
+        .as_deref()
+        .and_then(extract_content_range_total);
     let truncated = match total {
         Some(t) => buf_len < t.saturating_sub(start).min(t),
         None => buf_len >= CHUNK, // 未知 total 时：缓冲填满了 CHUNK 则视为截断
@@ -387,7 +415,11 @@ pub(crate) fn proxy_response(
     };
 
     let mut builder = Response::builder()
-        .status(if partial { StatusCode::PARTIAL_CONTENT } else { StatusCode::OK })
+        .status(if partial {
+            StatusCode::PARTIAL_CONTENT
+        } else {
+            StatusCode::OK
+        })
         .header(ACCEPT_RANGES, "bytes")
         .header(CONTENT_LENGTH, buf.len())
         .header(CACHE_CONTROL, "no-store")
@@ -433,7 +465,10 @@ fn parse_id(req: &Request<Vec<u8>>, kind: &str) -> Option<i64> {
     if uri.host() == Some(kind) {
         path.parse::<i64>().ok()
     } else {
-        path.strip_prefix(kind)?.strip_prefix('/')?.parse::<i64>().ok()
+        path.strip_prefix(kind)?
+            .strip_prefix('/')?
+            .parse::<i64>()
+            .ok()
     }
 }
 
@@ -570,7 +605,9 @@ fn server_error() -> Response<Vec<u8>> {
 // ---------------------------------------------------------------- 视频流协议
 
 /// 视频扩展名列表
-const VIDEO_EXTS: &[&str] = &["mp4", "mkv", "avi", "mov", "wmv", "flv", "webm", "m4v", "ts"];
+const VIDEO_EXTS: &[&str] = &[
+    "mp4", "mkv", "avi", "mov", "wmv", "flv", "webm", "m4v", "ts",
+];
 
 pub fn video_protocol<R: Runtime>(
     ctx: UriSchemeContext<'_, R>,
@@ -599,8 +636,29 @@ fn video_handle<R: Runtime>(app: AppHandle<R>, req: Request<Vec<u8>>) -> Respons
     serve_video(&app, id, range.as_deref())
 }
 
+/// 查找本地同名视频文件（MV）：`commands::get_mv_url` 与 `video://` 协议共用
+pub(crate) fn find_local_mv(base: &str, track_path: &str) -> Option<PathBuf> {
+    let stem = std::path::Path::new(track_path)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("")
+        .to_string();
+    let parent = std::path::Path::new(track_path)
+        .parent()
+        .unwrap_or(std::path::Path::new(""));
+    let base_dir = std::path::Path::new(base).join(parent);
+    VIDEO_EXTS
+        .iter()
+        .map(|ext| base_dir.join(format!("{stem}.{ext}")))
+        .find(|p| p.exists())
+}
+
 /// 查找同名视频文件并返回流响应
-fn serve_video<R: Runtime>(app: &AppHandle<R>, track_id: i64, range: Option<&str>) -> Response<Vec<u8>> {
+fn serve_video<R: Runtime>(
+    app: &AppHandle<R>,
+    track_id: i64,
+    range: Option<&str>,
+) -> Response<Vec<u8>> {
     let state = app.state::<crate::state::AppState>();
     let Ok(conn) = state.db.lock() else {
         return server_error();
@@ -625,36 +683,21 @@ fn serve_video<R: Runtime>(app: &AppHandle<R>, track_id: i64, range: Option<&str
     if kind != "local" {
         return not_found();
     }
-    let Some(base) = base_path else { return not_found() };
-
-    // 获取音频文件的 stem（不含扩展名）
-    let stem = std::path::Path::new(&track_path)
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("")
-        .to_string();
-    let parent = std::path::Path::new(&track_path)
-        .parent()
-        .unwrap_or(std::path::Path::new(""));
-    let base_dir = std::path::Path::new(&base).join(parent);
-
-    // 查找同名视频文件
-    let mut video_path = None;
-    let mut video_ext = "";
-    for ext in VIDEO_EXTS {
-        let path = base_dir.join(format!("{}.{}", stem, ext));
-        if path.exists() {
-            video_path = Some(path);
-            video_ext = ext;
-            break;
-        }
-    }
-    let Some(video_path) = video_path else {
+    let Some(base) = base_path else {
+        return not_found();
+    };
+    let Some(video_path) = find_local_mv(&base, &track_path) else {
         return not_found();
     };
 
-    let Ok(file) = std::fs::File::open(&video_path) else { return not_found() };
+    let Ok(file) = std::fs::File::open(&video_path) else {
+        return not_found();
+    };
     let size = file.metadata().map(|m| m.len()).unwrap_or(0);
-    let mime = mime_of(Some(video_ext));
+    let ext = video_path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|s| s.to_ascii_lowercase());
+    let mime = mime_of(ext.as_deref());
     serve_file_response(file, mime, size, range)
 }

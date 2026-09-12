@@ -18,6 +18,19 @@ fn http_client() -> &'static reqwest::blocking::Client {
     })
 }
 
+/// 封面提取专用客户端：总超时 10s。封面提取在全局互斥队列里串行执行（见 covers.rs），
+/// 复用 60s 超时的通用客户端时，一个不可达的远端会占住队列数分钟、拖垮整条封面管道。
+fn cover_http_client() -> &'static reqwest::blocking::Client {
+    static CLIENT: OnceLock<reqwest::blocking::Client> = OnceLock::new();
+    CLIENT.get_or_init(|| {
+        reqwest::blocking::Client::builder()
+            .connect_timeout(std::time::Duration::from_secs(5))
+            .timeout(std::time::Duration::from_secs(10))
+            .build()
+            .expect("构建封面 HTTP 客户端失败")
+    })
+}
+
 pub fn config_field(config: Option<&str>, key: &str) -> Option<String> {
     let cfg: serde_json::Value = serde_json::from_str(config?).ok()?;
     cfg.get(key)?.as_str().map(str::to_string)
@@ -30,7 +43,13 @@ fn download_status(err: &str) -> Option<u16> {
     if v.get("code")?.as_str()? != crate::error::codes::DOWNLOAD_STATUS {
         return None;
     }
-    v.get("params")?.get("status")?.as_str()?.split_whitespace().next()?.parse().ok()
+    v.get("params")?
+        .get("status")?
+        .as_str()?
+        .split_whitespace()
+        .next()?
+        .parse()
+        .ok()
 }
 
 /// 该失败是否值得重试。
@@ -215,7 +234,9 @@ pub mod webdav {
     }
 
     fn decoded_path(u: &Url) -> String {
-        percent_decode_str(u.path()).decode_utf8_lossy().into_owned()
+        percent_decode_str(u.path())
+            .decode_utf8_lossy()
+            .into_owned()
     }
 
     /// 确保来源根 URL 以 / 结尾（join 语义需要）
@@ -232,8 +253,30 @@ pub mod webdav {
         base.join(rel).unwrap_or_else(|_| base.clone())
     }
 
-    pub fn download(url: &Url, auth: Option<&Auth>, range: Option<(u64, u64)>) -> Result<Vec<u8>, String> {
-        let mut req = http_client().get(url.as_str());
+    pub fn download(
+        url: &Url,
+        auth: Option<&Auth>,
+        range: Option<(u64, u64)>,
+    ) -> Result<Vec<u8>, String> {
+        download_with(http_client(), url, auth, range)
+    }
+
+    /// 封面提取专用：短超时版本（失败代价低——封面缓存本就可重建，不值得等 60s）
+    pub fn download_short(
+        url: &Url,
+        auth: Option<&Auth>,
+        range: Option<(u64, u64)>,
+    ) -> Result<Vec<u8>, String> {
+        download_with(cover_http_client(), url, auth, range)
+    }
+
+    fn download_with(
+        client: &'static reqwest::blocking::Client,
+        url: &Url,
+        auth: Option<&Auth>,
+        range: Option<(u64, u64)>,
+    ) -> Result<Vec<u8>, String> {
+        let mut req = client.get(url.as_str());
         if let Some(a) = auth {
             req = req.basic_auth(&a.username, Some(&a.password));
         }
@@ -258,9 +301,9 @@ pub mod webdav {
         if let Some(a) = auth {
             req = req.basic_auth(&a.username, Some(&a.password));
         }
-        let resp = req
-            .send()
-            .map_err(|e| crate::error::err1(crate::error::codes::LYRICS_DOWNLOAD_FAILED, "error", e))?;
+        let resp = req.send().map_err(|e| {
+            crate::error::err1(crate::error::codes::LYRICS_DOWNLOAD_FAILED, "error", e)
+        })?;
         if resp.status() == reqwest::StatusCode::NOT_FOUND {
             return Ok(None);
         }
@@ -295,7 +338,10 @@ pub mod webdav {
 </D:multistatus>"#;
             let items = parse_propfind(xml, &base()).unwrap();
             assert_eq!(items.len(), 1);
-            assert_eq!(items[0].abs, "/dav/quark/张碧晨&王赫野 - 字字句句 (Live).flac");
+            assert_eq!(
+                items[0].abs,
+                "/dav/quark/张碧晨&王赫野 - 字字句句 (Live).flac"
+            );
             assert_eq!(items[0].size, 58794518);
             assert!(!items[0].is_dir);
         }

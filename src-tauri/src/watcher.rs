@@ -28,8 +28,15 @@ pub struct WatchState {
     dirty: HashMap<i64, Instant>,
 }
 
-/// 为本地来源开启递归监听（add_local_source 与启动时调用）
-pub fn watch_source<R: tauri::Runtime>(app: &AppHandle<R>, source_id: i64, base_path: &str) {
+/// 为本地来源开启目录监听（add_local_source 与启动时调用）。
+/// `recursive` 与该来源的「子目录扫描」开关一致：仅扫根目录时用 NonRecursive，
+/// 子目录变化不再触发无谓重扫。
+pub fn watch_source<R: tauri::Runtime>(
+    app: &AppHandle<R>,
+    source_id: i64,
+    base_path: &str,
+    recursive: bool,
+) {
     let app2 = app.clone();
     let result = notify::recommended_watcher(move |res: Result<notify::Event, notify::Error>| {
         // 任何类型的事件（创建/修改/删除/重命名）都视为「需要重扫」
@@ -47,7 +54,12 @@ pub fn watch_source<R: tauri::Runtime>(app: &AppHandle<R>, source_id: i64, base_
             return;
         }
     };
-    if let Err(e) = watcher.watch(Path::new(base_path), RecursiveMode::Recursive) {
+    let mode = if recursive {
+        RecursiveMode::Recursive
+    } else {
+        RecursiveMode::NonRecursive
+    };
+    if let Err(e) = watcher.watch(Path::new(base_path), mode) {
         eprintln!("监听目录失败（{base_path}）：{e}");
         return;
     }
@@ -72,7 +84,9 @@ pub fn init(app: AppHandle) {
         std::thread::sleep(POLL);
         let due: Vec<i64> = {
             let state = app.state::<AppState>();
-            let Ok(mut w) = state.watcher.lock() else { continue };
+            let Ok(mut w) = state.watcher.lock() else {
+                continue;
+            };
             let now = Instant::now();
             let due: Vec<i64> = w
                 .dirty

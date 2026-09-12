@@ -5,7 +5,7 @@
 
 use std::collections::BTreeSet;
 
-use windows::core::{PCWSTR, BOOL};
+use windows::core::{BOOL, PCWSTR};
 use windows::Win32::Globalization::GetUserDefaultLocaleName;
 use windows::Win32::Graphics::DirectWrite::{
     DWriteCreateFactory, IDWriteLocalizedStrings, DWRITE_FACTORY_TYPE_SHARED,
@@ -47,9 +47,9 @@ fn family_name(names: &IDWriteLocalizedStrings, locale: Option<&[u16]>) -> Optio
 pub fn system_fonts() -> Vec<String> {
     let mut set = BTreeSet::new();
     unsafe {
-        let Ok(factory) = DWriteCreateFactory::<windows::Win32::Graphics::DirectWrite::IDWriteFactory>(
-            DWRITE_FACTORY_TYPE_SHARED,
-        ) else {
+        let Ok(factory) = DWriteCreateFactory::<
+            windows::Win32::Graphics::DirectWrite::IDWriteFactory,
+        >(DWRITE_FACTORY_TYPE_SHARED) else {
             return Vec::new();
         };
         let mut collection = None;

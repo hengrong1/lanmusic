@@ -72,7 +72,9 @@ pub fn fetch(app: &AppHandle, track_id: i64) -> Result<Option<String>, String> {
                     return Ok(Some(String::from_utf8_lossy(&bytes).into_owned()));
                 }
             }
-            let Some(base) = src.base_path else { return Ok(None) };
+            let Some(base) = src.base_path else {
+                return Ok(None);
+            };
             let full = PathBuf::from(base).join(&rel);
             // 兼容旧库：同名 .lrc 懒检查（无需等重新扫描）
             let sibling = full.with_extension("lrc");
@@ -81,7 +83,9 @@ pub fn fetch(app: &AppHandle, track_id: i64) -> Result<Option<String>, String> {
                     return Ok(Some(String::from_utf8_lossy(&bytes).into_owned()));
                 }
             }
-            Ok(crate::metadata::read(&full, false).ok().and_then(|m| m.lyrics))
+            Ok(crate::metadata::read(&full, false)
+                .ok()
+                .and_then(|m| m.lyrics))
         }
         // WebDAV：外挂 .lrc 是完整 URL，按需下载；没有外挂歌词时回退到**内嵌歌词** ——
         // 只拉文件头部 1MB 交给 lofty 解析（与扫描读标签同一套路），不必整文件下载。
@@ -90,7 +94,9 @@ pub fn fetch(app: &AppHandle, track_id: i64) -> Result<Option<String>, String> {
             if let Some(u) = lrc_path {
                 if let Ok(parsed) = url::Url::parse(&u) {
                     // 外挂文件可能已被移动/删除：读取失败时继续尝试内嵌歌词
-                    if let Ok(Some(text)) = crate::network::webdav::download_text(&parsed, auth.as_ref()) {
+                    if let Ok(Some(text)) =
+                        crate::network::webdav::download_text(&parsed, auth.as_ref())
+                    {
                         return Ok(Some(text));
                     }
                 }
@@ -100,7 +106,9 @@ pub fn fetch(app: &AppHandle, track_id: i64) -> Result<Option<String>, String> {
             if has_embedded == 0 && meta_state == 1 {
                 return Ok(None);
             }
-            let Some(base) = src.base_url else { return Ok(None) };
+            let Some(base) = src.base_url else {
+                return Ok(None);
+            };
             let base = crate::network::webdav::normalize_base(&base)?;
             let url = crate::network::webdav::file_url(&base, &rel);
             let head = crate::network::webdav::download(
@@ -109,7 +117,9 @@ pub fn fetch(app: &AppHandle, track_id: i64) -> Result<Option<String>, String> {
                 Some((0, crate::metadata::HEAD_FETCH_SIZE - 1)),
             );
             let Ok(bytes) = head else { return Ok(None) };
-            Ok(crate::metadata::read_bytes(&bytes, false).ok().and_then(|m| m.lyrics))
+            Ok(crate::metadata::read_bytes(&bytes, false)
+                .ok()
+                .and_then(|m| m.lyrics))
         }
         _ => Ok(None),
     }

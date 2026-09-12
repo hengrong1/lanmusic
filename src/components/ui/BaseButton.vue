@@ -39,7 +39,7 @@ const variantClasses: Record<ButtonVariant, string> = {
   secondary:
     'bg-zinc-100 text-zinc-700 hover:bg-zinc-200 active:bg-zinc-300 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700 dark:active:bg-zinc-600',
   ghost:
-    'text-zinc-600 hover:bg-zinc-100 active:bg-zinc-200 dark:text-zinc-300 dark:hover:bg-zinc-800 dark:active:bg-zinc-700',
+    'text-zinc-600 hover:bg-zinc-200/70 active:bg-zinc-200 dark:text-zinc-300 dark:hover:bg-zinc-700 dark:active:bg-zinc-600',
   outline:
     'border border-zinc-300 text-zinc-700 hover:bg-zinc-50 active:bg-zinc-100 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800 dark:active:bg-zinc-700',
 }
@@ -81,7 +81,7 @@ const iconSizeClasses: Record<ButtonSize, string> = {
 }
 
 const classes = computed(() => [
-  'inline-flex cursor-pointer items-center justify-center font-medium transition-all duration-150 ease-out focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40 disabled:cursor-not-allowed',
+  'inline-flex cursor-pointer items-center justify-center font-medium whitespace-nowrap transition-all duration-150 ease-out focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40 disabled:cursor-not-allowed',
   // 圆角与按钮组口径一致（8px）。底部播放控制条的按钮是全圆角，由调用处自己写 rounded-full。
   'rounded-lg',
   props.tone === 'danger' ? dangerVariantClasses[props.variant] : variantClasses[props.variant],

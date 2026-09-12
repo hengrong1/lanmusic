@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { VerifiedCheckIcon as Check } from '@solar-icons/vue/linear/verified-check'
+import CheckboxIndicator from '@/components/ui/CheckboxIndicator.vue'
 import { RefreshIcon as LoaderCircle } from '@solar-icons/vue/linear/refresh'
 import { MusicNoteIcon as Music } from '@solar-icons/vue/linear/music-note'
 import { MagnifierIcon as Search } from '@solar-icons/vue/linear/magnifier'
@@ -48,9 +49,14 @@ const selectableCount = computed(() => items.value.filter((t) => !existing.value
 
 let page = 0
 let timer: ReturnType<typeof setTimeout> | undefined
+/** 请求序号：防抖搜索到达时不再被在途翻页挡掉（旧回包按序号丢弃），结果与关键词永不错位 */
+let loadSeq = 0
 
 async function load(reset = false) {
-  if (loading.value) return
+  // 翻页（reset=false）仍受 loading 门控，避免滚动到底部时并发追加；
+  // 重置（reset=true，搜索/打开）放行，用序号保证只有最新请求能写状态
+  if (!reset && loading.value) return
+  const my = ++loadSeq
   loading.value = true
   try {
     if (reset) {
@@ -64,13 +70,14 @@ async function load(reset = false) {
       page,
       pageSize: PAGE_SIZE,
     })
+    if (my !== loadSeq) return // 已有更新的请求接管：本次结果（含 page 推进）整体作废
     total.value = p.total
     items.value = reset ? p.items : [...items.value, ...p.items]
     page += 1
   } catch (e) {
-    toast(errorText(e), 'error')
+    if (my === loadSeq) toast(errorText(e), 'error')
   } finally {
-    loading.value = false
+    if (my === loadSeq) loading.value = false
   }
 }
 
@@ -226,12 +233,7 @@ onBeforeUnmount(() => {
           ]"
           @click="toggleTrack(t)"
         >
-          <span
-            class="flex h-4 w-4 shrink-0 items-center justify-center rounded border transition"
-            :class="isSelected(t) ? 'border-violet-500 bg-violet-500 text-white' : 'border-zinc-300 dark:border-zinc-600'"
-          >
-            <Check v-if="isSelected(t)" class="h-3 w-3" />
-          </span>
+          <CheckboxIndicator :model-value="isSelected(t)" size="sm" />
           <span class="min-w-0 flex-1 truncate text-zinc-800 dark:text-zinc-100">{{ t.title }}</span>
           <span class="w-24 shrink-0 truncate text-xs text-zinc-500 dark:text-zinc-400">{{ t.artist ?? $t('artist.unknownArtist') }}</span>
           <span v-if="existing.has(t.id)" class="w-20 shrink-0 text-right text-xs text-zinc-400">{{ $t('playlist.alreadyInPlaylist') }}</span>

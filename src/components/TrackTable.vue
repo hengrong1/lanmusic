@@ -2,7 +2,6 @@
 import { computed, ref, watch } from 'vue'
 import { ArrowDownIcon as ArrowDown } from '@solar-icons/vue/linear/arrow-down'
 import { ArrowUpIcon as ArrowUp } from '@solar-icons/vue/linear/arrow-up'
-import { VerifiedCheckIcon as Check } from '@solar-icons/vue/linear/verified-check'
 import { SortVerticalIcon as ChevronsUpDown } from '@solar-icons/vue/linear/sort-vertical'
 import { VinylRecordIcon as Disc3 } from '@solar-icons/vue/linear/vinyl-record'
 import { FolderOpenIcon as FolderOpen } from '@solar-icons/vue/linear/folder-open'
@@ -12,10 +11,14 @@ import { Playlist2Icon as ListPlus } from '@solar-icons/vue/linear/playlist-2'
 import { MapPointIcon as LocateFixed } from '@solar-icons/vue/linear/map-point'
 import { PlayIcon as Play } from '@solar-icons/vue/linear/play'
 import { VideoFramePlayHorizontalIcon as VideoFramePlay } from '@solar-icons/vue/linear/video-frame-play-horizontal'
+import { ListCrossMinimalisticIcon as ListCross } from '@solar-icons/vue/linear/list-cross-minimalistic'
+import { AddSquareIcon as AddSquare } from '@solar-icons/vue/linear/add-square'
+import { TrashBinTrashIcon as TrashBinTrash } from '@solar-icons/vue/linear/trash-bin-trash'
 import type { Track } from '@/types'
 import VirtualList from '@/components/VirtualList.vue'
 import ContextMenu from '@/components/ContextMenu.vue'
 import HighlightText from '@/components/HighlightText.vue'
+import CheckboxIndicator from '@/components/ui/CheckboxIndicator.vue'
 import type { MenuItem } from '@/components/ContextMenu.vue'
 import { usePlayerStore } from '@/stores/player'
 import { useLibraryStore } from '@/stores/library'
@@ -23,6 +26,7 @@ import { useNav } from '@/composables/useNav'
 import { useMvPlayer } from '@/composables/useMvPlayer'
 import { api } from '@/api/commands'
 import { toast } from '@/composables/useToast'
+import { confirmDialog } from '@/composables/useConfirm'
 import { useI18n } from 'vue-i18n'
 import { errorText } from '@/i18n/error'
 
@@ -135,11 +139,8 @@ watch(
     if (!m) selSet.value = new Set()
   },
 )
-watch(
-  selSet,
-  (s) => emit('selection', [...s]),
-  { deep: true },
-)
+// 所有更新路径都整只替换 Set（toggleAll/onRowClick/退出批量模式），无需 deep 追踪
+watch(selSet, (s) => emit('selection', [...s]))
 const allSelected = computed(() => props.tracks.length > 0 && props.tracks.every((t) => selSet.value.has(t.id)))
 function toggleAll() {
   const next = new Set(selSet.value)
@@ -215,6 +216,7 @@ const menuItems = computed<MenuItem[]>(() => {
   if (props.playlistId != null) {
     items.push({
       label: tr('playlist.removeFromPlaylist'),
+      icon: ListCross,
       danger: true,
       action: () => {
         library
@@ -226,6 +228,7 @@ const menuItems = computed<MenuItem[]>(() => {
   } else {
     items.push({
       label: tr('library.addToPlaylist'),
+      icon: AddSquare,
       children: library.playlists.length
         ? library.playlists.map((p) => ({
             label: p.name,
@@ -236,6 +239,34 @@ const menuItems = computed<MenuItem[]>(() => {
         : [{ label: tr('playlist.createFirstHint'), disabled: true }],
     })
   }
+
+  // 从曲库移除（不删磁盘文件；记录可在设置 → 已移除歌曲 查看）
+  items.push({
+    label: tr('library.removeFromLibrary'),
+    icon: TrashBinTrash,
+    danger: true,
+    action: () => {
+      confirmDialog({
+        title: tr('library.removeTracksTitle', { count: 1 }),
+        message: tr('library.removeTracksMessage'),
+        danger: true,
+        confirmText: tr('library.removeTracksConfirm'),
+      })
+        .then(async (ok) => {
+          if (!ok) return
+          const removed = await api.removeTracks([t.id])
+          if (removed > 0) {
+            toast(tr('library.removedFromLibrary', { count: removed }))
+            emit('refresh')
+            void library.loadStats()
+            // 移除的是正在播放的歌曲：清空播放队列
+            const still = player.current ? await api.getTrack(player.current.id).catch(() => null) : null
+            if (player.current && !still) player.clearQueue()
+          }
+        })
+        .catch((e) => toast(errorText(e), 'error'))
+    },
+  })
 
   items.push(
     {
@@ -310,12 +341,13 @@ function onDragEnd() {
     >
       <span v-if="props.batchMode" class="flex justify-center">
         <button
-          class="flex h-4 w-4 cursor-pointer items-center justify-center rounded border transition"
-          :class="allSelected ? 'border-violet-500 bg-violet-500 text-white' : 'border-zinc-300 dark:border-zinc-600'"
+          class="cursor-pointer rounded transition focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40"
+          role="checkbox"
+          :aria-checked="allSelected"
           v-tooltip="$t('common.selectAll')"
           @click.stop="toggleAll"
         >
-          <Check v-if="allSelected" class="h-3 w-3" />
+          <CheckboxIndicator :model-value="allSelected" size="sm" />
         </button>
       </span>
       <span v-else class="text-center">#</span>
@@ -371,12 +403,7 @@ function onDragEnd() {
             @dragend="onDragEnd"
           >
             <div v-if="props.batchMode" class="relative flex h-5 items-center justify-center">
-              <span
-                class="flex h-4 w-4 items-center justify-center rounded border transition"
-                :class="selSet.has(t.id) ? 'border-violet-500 bg-violet-500 text-white' : 'border-zinc-300 dark:border-zinc-600'"
-              >
-                <Check v-if="selSet.has(t.id)" class="h-3 w-3" />
-              </span>
+              <CheckboxIndicator :model-value="selSet.has(t.id)" size="sm" />
             </div>
             <div v-else class="relative flex h-5 items-center justify-center">
               <span
@@ -422,8 +449,10 @@ function onDragEnd() {
               </button>
             </div>
             <div class="min-w-0 truncate text-zinc-500 dark:text-zinc-400">
-              <!-- 多艺人：每个名字独立可点击（区分每一个艺人） -->
+              <!-- 多艺人：每个名字独立可点击（区分每一个艺人）；
+                   分隔符放在 i>0 的项前面，避免为取 length 每行再调一次 artistLinks -->
               <template v-for="(a, i) in artistLinks(t)" :key="a.id ?? `na-${i}`">
+                <span v-if="i > 0" class="opacity-50"> / </span>
                 <button
                   v-if="a.id != null"
                   class="max-w-full cursor-pointer truncate transition hover:text-violet-600 hover:underline dark:hover:text-violet-400"
@@ -431,7 +460,6 @@ function onDragEnd() {
                   @click.stop="openArtist(a)"
                 ><HighlightText :text="a.name" :keyword="searchTerm" /></button>
                 <span v-else><HighlightText :text="a.name" :keyword="searchTerm" /></span>
-                <span v-if="i < artistLinks(t).length - 1" class="opacity-50"> / </span>
               </template>
             </div>
             <div class="min-w-0 truncate text-zinc-500 dark:text-zinc-400">

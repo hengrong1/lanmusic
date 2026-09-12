@@ -78,8 +78,16 @@ pub fn migrate_plaintext(conn: &Connection) {
         _ => return,
     };
     for (id, config) in rows {
-        let Ok(mut v) = serde_json::from_str::<serde_json::Value>(&config) else { continue };
-        let Some(pw) = v.get("password").and_then(|p| p.as_str()).map(str::to_string) else { continue };
+        let Ok(mut v) = serde_json::from_str::<serde_json::Value>(&config) else {
+            continue;
+        };
+        let Some(pw) = v
+            .get("password")
+            .and_then(|p| p.as_str())
+            .map(str::to_string)
+        else {
+            continue;
+        };
         if set_password(id, &pw).is_ok() {
             if let Some(obj) = v.as_object_mut() {
                 obj.remove("password");

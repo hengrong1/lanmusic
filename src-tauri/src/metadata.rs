@@ -1,6 +1,6 @@
 use lofty::config::ParseOptions;
-use lofty::prelude::*;
 use lofty::picture::PictureType;
+use lofty::prelude::*;
 use lofty::probe::Probe;
 use lofty::tag::{ItemKey, Tag};
 use std::io::Cursor;
@@ -110,7 +110,11 @@ fn pick_cover(tag: &Tag) -> Option<Vec<u8>> {
         .find(|p| p.pic_type() == PictureType::CoverFront)
         .or_else(|| pics.first())?;
     let data = pic.data();
-    if data.is_empty() { None } else { Some(data.to_vec()) }
+    if data.is_empty() {
+        None
+    } else {
+        Some(data.to_vec())
+    }
 }
 
 /// 读取（可能是部分的）远程文件头部字节的推荐大小：足以覆盖绝大多数 ID3v2/FLAC 元数据块

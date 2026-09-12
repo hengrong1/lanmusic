@@ -5,9 +5,12 @@ import { AltArrowUpIcon as ArrowUp } from '@solar-icons/vue/linear/alt-arrow-up'
 import { PlaylistIcon as ListPlus } from '@solar-icons/vue/linear/playlist'
 import { TrashBin2Icon as Trash2 } from '@solar-icons/vue/linear/trash-bin-2'
 import { CloseIcon as X } from '@solar-icons/vue/linear/close'
+import VirtualList from '@/components/VirtualList.vue'
+import type { Track } from '@/types'
 import { usePlayerStore } from '@/stores/player'
 import { useLibraryStore } from '@/stores/library'
 import { useNav } from '@/composables/useNav'
+import { useAmbient } from '@/composables/useAmbient'
 import { toast } from '@/composables/useToast'
 import { useI18n } from 'vue-i18n'
 import { errorText } from '@/i18n/error'
@@ -20,8 +23,45 @@ const nav = useNav()
 /** 队列曲目数（带参翻译在 setup 内生成） */
 const queueCountLabel = computed(() => t('common.songsCount', { count: player.queue.length }))
 
-const props = defineProps<{ open?: boolean }>()
+const props = defineProps<{ open?: boolean; /** 播放页打开时面板跟随环境主题 */ nowPlaying?: boolean }>()
 const emit = defineEmits<{ close: [] }>()
+
+// ---- 主题：播放页打开时跟随环境配色（渐变背景 + 专辑主色强调），普通视图沿用应用卡片风 ----
+const { palette } = useAmbient()
+const themed = computed(() => props.nowPlaying === true)
+const panelBg = computed(() => {
+  const p = palette.value
+  return p
+    ? `linear-gradient(to bottom, ${p.glow} 0%, ${p.deep} 55%, #09090b 100%)`
+    : 'linear-gradient(to bottom, #2e1065 0%, #09090b 55%, #09090b 100%)'
+})
+const accent = computed(() => palette.value?.accent ?? '#a78bfa')
+const accentSoft = computed(() => palette.value?.accentSoft ?? 'rgba(139, 92, 246, 0.2)')
+const accent2 = computed(() => palette.value?.accent2 ?? '#c084fc')
+
+/** 活动行文字强调色（主题模式；普通模式走原 violet class） */
+function accentStyle(active: boolean) {
+  return themed.value && active ? { color: accent.value } : undefined
+}
+/** 活动行背景：主题模式用环境色横向渐变，普通模式走原 violet 渐变 class */
+function rowStyle(i: number) {
+  if (i !== player.index || !themed.value) return undefined
+  return { background: `linear-gradient(to right, ${accentSoft.value}, transparent 72%)` }
+}
+/** 均衡器条：主题模式取环境色双色调渐变，普通模式保持原 violet class */
+function eqStyle(delay: string) {
+  return themed.value
+    ? { animationDelay: delay, background: `linear-gradient(to top, ${accent.value}, ${accent2.value})` }
+    : { animationDelay: delay }
+}
+const activeRowClass = computed(() =>
+  themed.value
+    ? 'mx-1 rounded-xl'
+    : 'queue-active-row mx-1 rounded-xl bg-gradient-to-r from-violet-100 via-violet-50/50 to-transparent shadow-[inset_0_0_0_1px_rgba(139,92,246,0.15),0_2px_8px_-2px_rgba(139,92,246,0.2)] dark:from-violet-500/20 dark:via-violet-500/10 dark:to-transparent dark:shadow-[inset_0_0_0_1px_rgba(139,92,246,0.25),0_2px_8px_-2px_rgba(139,92,246,0.3)]',
+)
+const inactiveRowClass = computed(() =>
+  themed.value ? 'mx-1 rounded-xl hover:bg-white/10' : 'mx-1 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-800/60',
+)
 
 // 点击面板外部 / 按 Esc 关闭
 const panel = ref<HTMLElement | null>(null)
@@ -39,6 +79,7 @@ onMounted(() => {
   window.addEventListener('keydown', onKey)
 })
 onBeforeUnmount(() => {
+  if (scrollRaf) cancelAnimationFrame(scrollRaf)
   document.removeEventListener('click', onDocClick, true)
   window.removeEventListener('keydown', onKey)
 })
@@ -73,51 +114,70 @@ async function saveAsPlaylist() {
 }
 
 // ---- 定位正在播放：不可见时浮出按钮 ----
-const listEl = ref<HTMLElement | null>(null)
+// 列表用 VirtualList 虚拟滚动（与 TrackTable 同款），行高固定 52px：
+// 标题 20px + 歌手 16px + py-2 上下共 16px
+const ITEM_H = 52
+const LIST_PAD_TOP = 16
+const LIST_PAD_BOTTOM = 20
+/** 结构化类型：泛型组件不支持 InstanceType 提取 */
+const vlist = ref<{
+  scrollToTop: () => void
+  scrollToIndex: (index: number, align?: 'top' | 'center', behavior?: ScrollBehavior) => void
+} | null>(null)
 const activeVisible = ref(true)
-
-function activeRow(): HTMLElement | null {
-  return (
-    (listEl.value?.querySelector(`[data-queue-idx="${player.index}"]`) as HTMLElement | null) ?? null
-  )
-}
-function checkVisible() {
-  const el = activeRow()
-  if (!el || !listEl.value) {
-    activeVisible.value = true
-    showBackToTop.value = listEl.value ? listEl.value.scrollTop > 100 : false
-    return
-  }
-  const top = el.offsetTop
-  const c = listEl.value
-  activeVisible.value = top >= c.scrollTop - 1 && top + el.offsetHeight <= c.scrollTop + c.clientHeight + 1
-  showBackToTop.value = c.scrollTop > 100
-}
-function locateActive() {
-  const el = activeRow()
-  if (!el || !listEl.value) return
-  listEl.value.scrollTo({ top: el.offsetTop - listEl.value.clientHeight / 2, behavior: 'smooth' })
-}
-function scrollToTop() {
-  if (!listEl.value) return
-  listEl.value.scrollTo({ top: 0, behavior: 'smooth' })
-}
 const showBackToTop = ref(false)
-watch(
-  () => player.index,
-  () => void nextTick(checkVisible),
-)
+/** 最近一次滚动指标：滚动事件里记录，定位判断不再逐次裸读布局 */
+let metrics = { top: 0, height: 0 }
+
+function scrollerEl(): HTMLElement | null {
+  return panel.value?.querySelector<HTMLElement>('[data-queue-scroller]') ?? null
+}
+
+let scrollRaf = 0
+function onQueueScroll() {
+  // rAF 节流：滚动事件高频触发，布局读取与状态更新合并到每帧一次
+  if (scrollRaf) return
+  scrollRaf = requestAnimationFrame(() => {
+    scrollRaf = 0
+    syncMetrics()
+    updateActiveVisible()
+  })
+}
+
+function updateActiveVisible() {
+  if (player.index < 0) {
+    activeVisible.value = true
+  } else {
+    const top = LIST_PAD_TOP + player.index * ITEM_H
+    activeVisible.value = top >= metrics.top - 1 && top + ITEM_H <= metrics.top + metrics.height + 1
+  }
+  showBackToTop.value = metrics.top > 100
+}
+
+function locateActive() {
+  if (player.index >= 0) vlist.value?.scrollToIndex(player.index, 'center')
+}
+
+function scrollToTop() {
+  vlist.value?.scrollToTop()
+}
+
+function syncMetrics() {
+  const el = scrollerEl()
+  if (el) metrics = { top: el.scrollTop, height: el.clientHeight }
+}
 
 // 每次打开面板：当前播放不在可视区就直接滚过去
 function locateOnOpen() {
   void nextTick(() => {
-    checkVisible()
-    if (!activeVisible.value) {
-      const el = activeRow()
-      if (el && listEl.value) {
-        listEl.value.scrollTo({ top: Math.max(0, el.offsetTop - listEl.value.clientHeight / 2) })
-      }
-      checkVisible()
+    syncMetrics()
+    updateActiveVisible()
+    if (!activeVisible.value && player.index >= 0) {
+      vlist.value?.scrollToIndex(player.index, 'center', 'auto')
+      void nextTick(() => {
+        syncMetrics()
+        updateActiveVisible()
+      })
     }
   })
 }
@@ -126,6 +186,10 @@ watch(
   (v) => {
     if (v) locateOnOpen()
   },
+)
+watch(
+  () => player.index,
+  () => void nextTick(updateActiveVisible),
 )
 </script>
 
@@ -140,16 +204,22 @@ watch(
       <aside
         v-if="open && player.queue.length"
         ref="panel"
-        class="fixed right-2 bottom-[88px] z-50 flex max-h-[calc(100vh-120px)] w-80 origin-bottom-right flex-col overflow-hidden rounded-xl border border-zinc-200 bg-white/98 shadow-2xl dark:border-zinc-800 dark:bg-zinc-900/98"
+        class="fixed right-2 bottom-[88px] z-50 flex max-h-[calc(100vh-120px)] w-80 origin-bottom-right flex-col overflow-hidden rounded-xl border shadow-2xl"
+        :class="themed ? 'border-white/10' : 'border-zinc-200 bg-white/98 dark:border-zinc-800 dark:bg-zinc-900/98'"
+        :style="themed ? { background: panelBg } : undefined"
       >
-        <header class="flex shrink-0 items-center justify-between border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
+        <header
+          class="flex shrink-0 items-center justify-between border-b px-4 py-3"
+          :class="themed ? 'border-white/10' : 'border-zinc-200 dark:border-zinc-800'"
+        >
           <div>
-            <h2 class="text-sm font-semibold text-zinc-800 dark:text-zinc-100">{{ $t('queue.title') }}</h2>
-            <p class="text-xs text-zinc-500">{{ queueCountLabel }}</p>
+            <h2 class="text-sm font-semibold" :class="themed ? 'text-white/90' : 'text-zinc-800 dark:text-zinc-100'">{{ $t('queue.title') }}</h2>
+            <p class="text-xs" :class="themed ? 'text-white/40' : 'text-zinc-500'">{{ queueCountLabel }}</p>
           </div>
           <div class="flex items-center gap-1">
             <button
-              class="transition-colors duration-150 flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-zinc-500 hover:bg-zinc-100 hover:text-violet-500 disabled:cursor-default disabled:opacity-40 dark:hover:bg-zinc-800"
+              class="transition-colors duration-150 flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg disabled:cursor-default disabled:opacity-40"
+              :class="themed ? 'text-white/50 hover:bg-white/10 hover:text-white' : 'text-zinc-500 hover:bg-zinc-100 hover:text-violet-500 dark:hover:bg-zinc-800'"
               v-tooltip="$t('queue.saveAsPlaylistHint')"
               :disabled="saving"
               @click="saveAsPlaylist"
@@ -157,14 +227,16 @@ watch(
               <ListPlus class="h-4 w-4" />
             </button>
             <button
-              class="transition-colors duration-150 flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-zinc-500 hover:bg-zinc-100 hover:text-red-500 dark:hover:bg-zinc-800"
+              class="transition-colors duration-150 flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg"
+              :class="themed ? 'text-white/50 hover:bg-white/10 hover:text-red-400' : 'text-zinc-500 hover:bg-zinc-100 hover:text-red-500 dark:hover:bg-zinc-800'"
               v-tooltip="$t('queue.clearQueue')"
               @click="player.clearQueue()"
             >
               <Trash2 class="h-4 w-4" />
             </button>
             <button
-              class="transition-colors duration-150 flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+              class="transition-colors duration-150 flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg"
+              :class="themed ? 'text-white/50 hover:bg-white/10 hover:text-white' : 'text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800'"
               v-tooltip="$t('common.close')"
               @click="$emit('close')"
             >
@@ -173,53 +245,76 @@ watch(
           </div>
         </header>
 
-        <div ref="listEl" class="relative min-h-0 flex-1 select-none overflow-y-auto pt-4 pb-5" @scroll.passive="checkVisible">
-          <div
-            v-for="(t, i) in player.queue"
-            :key="`${t.id}-${i}`"
-            :data-queue-idx="i"
-            class="group flex cursor-default items-center gap-3 px-4 py-2 text-sm transition-all duration-300"
-            :class="
-              i === player.index
-                ? 'queue-active-row mx-1 rounded-xl bg-gradient-to-r from-violet-100 via-violet-50/50 to-transparent shadow-[inset_0_0_0_1px_rgba(139,92,246,0.15),0_2px_8px_-2px_rgba(139,92,246,0.2)] dark:from-violet-500/20 dark:via-violet-500/10 dark:to-transparent dark:shadow-[inset_0_0_0_1px_rgba(139,92,246,0.25),0_2px_8px_-2px_rgba(139,92,246,0.3)]'
-                : 'mx-1 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-800/60'
-            "
-            @dblclick="i === player.index ? player.toggle() : player.playAt(i)"
-          >
-            <span
-              v-if="i === player.index"
-              class="flex h-4 w-5 shrink-0 items-end justify-center gap-[2.5px]"
-              :class="player.playing ? '' : 'eq-paused'"
+        <!-- 队列虚拟滚动：pt-4/pb-5 由 pad-top/pad-bottom 提供（在滚动容器内部，光晕不被裁切） -->
+        <VirtualList
+          ref="vlist"
+          data-queue-scroller
+          class="min-h-0 flex-1 select-none"
+          :items="player.queue"
+          :item-height="ITEM_H"
+          :item-key="(t: Track, i: number) => `${t.id}-${i}`"
+          :pad-top="LIST_PAD_TOP"
+          :pad-bottom="LIST_PAD_BOTTOM"
+          @scroll="onQueueScroll"
+        >
+          <template #default="{ item: t, index: i }">
+            <div
+              class="group flex h-full cursor-default items-center gap-3 px-4 py-2 text-sm transition-colors duration-300"
+              :class="i === player.index ? activeRowClass : inactiveRowClass"
+              :style="rowStyle(i)"
+              @dblclick="i === player.index ? player.toggle() : player.playAt(i)"
             >
-              <span class="eq-bar w-[3px] rounded-full bg-gradient-to-t from-violet-600 to-fuchsia-400" style="animation-delay: 0s"></span>
-              <span class="eq-bar w-[3px] rounded-full bg-gradient-to-t from-violet-600 to-fuchsia-400" style="animation-delay: 0.25s"></span>
-              <span class="eq-bar w-[3px] rounded-full bg-gradient-to-t from-violet-600 to-fuchsia-400" style="animation-delay: 0.5s"></span>
-            </span>
-            <span v-else class="w-5 shrink-0 text-center text-xs tabular-nums" :class="i === player.index ? 'text-violet-500' : 'text-zinc-400'">
-              {{ i + 1 }}
-            </span>
-            <div class="min-w-0 flex-1">
-              <p
-                class="truncate"
-                :class="i === player.index ? 'font-medium text-violet-600 dark:text-violet-400' : 'text-zinc-800 dark:text-zinc-100'"
+              <span
+                v-if="i === player.index"
+                class="flex h-4 w-5 shrink-0 items-end justify-center gap-[2.5px]"
+                :class="player.playing ? '' : 'eq-paused'"
               >
-                {{ t.title }}
-              </p>
-              <p class="truncate text-xs text-zinc-500">{{ t.artist ?? $t('artist.unknownArtist') }}</p>
+                <span class="eq-bar w-[3px] rounded-full bg-gradient-to-t from-violet-600 to-fuchsia-400" :style="eqStyle('0s')"></span>
+                <span class="eq-bar w-[3px] rounded-full bg-gradient-to-t from-violet-600 to-fuchsia-400" :style="eqStyle('0.25s')"></span>
+                <span class="eq-bar w-[3px] rounded-full bg-gradient-to-t from-violet-600 to-fuchsia-400" :style="eqStyle('0.5s')"></span>
+              </span>
+              <span
+                v-else
+                class="w-5 shrink-0 text-center text-xs tabular-nums"
+                :class="themed ? 'text-white/35' : 'text-zinc-400'"
+              >
+                {{ i + 1 }}
+              </span>
+              <div class="min-w-0 flex-1">
+                <p
+                  class="truncate"
+                  :class="
+                    i === player.index
+                      ? themed
+                        ? 'font-medium'
+                        : 'font-medium text-violet-600 dark:text-violet-400'
+                      : themed
+                        ? 'text-white/85'
+                        : 'text-zinc-800 dark:text-zinc-100'
+                  "
+                  :style="accentStyle(i === player.index)"
+                >
+                  {{ t.title }}
+                </p>
+                <p class="truncate text-xs" :class="themed ? 'text-white/45' : 'text-zinc-500'">
+                  {{ t.artist ?? $t('artist.unknownArtist') }}
+                </p>
+              </div>
+              <span
+                class="shrink-0 font-mono text-xs tabular-nums"
+                :class="i === player.index ? (themed ? '' : 'text-violet-500') : themed ? 'text-white/40' : 'text-zinc-400'"
+                :style="accentStyle(i === player.index)"
+              >{{ fmt(t.duration) }}</span>
+              <button
+                class="transition-colors duration-150 flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-lg text-zinc-400 opacity-0 hover:bg-zinc-200 hover:text-zinc-600 group-hover:opacity-100 dark:hover:bg-zinc-700"
+                v-tooltip="$t('player.removeFromQueue')"
+                @click="player.removeFromQueue(i)"
+              >
+                <X class="h-3.5 w-3.5" />
+              </button>
             </div>
-            <span
-              class="shrink-0 font-mono text-xs tabular-nums"
-              :class="i === player.index ? 'text-violet-500' : 'text-zinc-400'"
-            >{{ fmt(t.duration) }}</span>
-            <button
-              class="transition-colors duration-150 flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-lg text-zinc-400 opacity-0 hover:bg-zinc-200 hover:text-zinc-600 group-hover:opacity-100 dark:hover:bg-zinc-700"
-              v-tooltip="$t('player.removeFromQueue')"
-              @click="player.removeFromQueue(i)"
-            >
-              <X class="h-3.5 w-3.5" />
-            </button>
-          </div>
-        </div>
+          </template>
+        </VirtualList>
         <!-- 底部操作按钮：定位正在播放 + 返回顶部 -->
         <div class="absolute right-4 bottom-4 z-10 flex flex-col items-end gap-2">
           <Transition
@@ -230,11 +325,12 @@ watch(
           >
             <button
               v-if="!activeVisible && player.index >= 0"
-              class="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full bg-white shadow-lg shadow-zinc-300/50 transition hover:bg-zinc-100 dark:bg-zinc-800 dark:shadow-zinc-900/50 dark:hover:bg-zinc-700"
+              class="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full shadow-lg transition"
+              :class="themed ? 'bg-white/10 shadow-black/30 hover:bg-white/20' : 'bg-white shadow-zinc-300/50 hover:bg-zinc-100 dark:bg-zinc-800 dark:shadow-zinc-900/50 dark:hover:bg-zinc-700'"
               v-tooltip="$t('queue.scrollToCurrent')"
               @click="locateActive"
             >
-              <LocateFixed class="h-4 w-4 text-zinc-600 dark:text-zinc-300" />
+              <LocateFixed class="h-4 w-4" :class="themed ? 'text-white/80' : 'text-zinc-600 dark:text-zinc-300'" />
             </button>
           </Transition>
           <Transition
@@ -245,11 +341,12 @@ watch(
           >
             <button
               v-if="showBackToTop"
-              class="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full bg-white shadow-lg shadow-zinc-300/50 transition hover:bg-zinc-100 dark:bg-zinc-800 dark:shadow-zinc-900/50 dark:hover:bg-zinc-700"
+              class="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full shadow-lg transition"
+              :class="themed ? 'bg-white/10 shadow-black/30 hover:bg-white/20' : 'bg-white shadow-zinc-300/50 hover:bg-zinc-100 dark:bg-zinc-800 dark:shadow-zinc-900/50 dark:hover:bg-zinc-700'"
               v-tooltip="$t('common.backToTop')"
               @click="scrollToTop"
             >
-              <ArrowUp class="h-4 w-4 text-zinc-600 dark:text-zinc-300" />
+              <ArrowUp class="h-4 w-4" :class="themed ? 'text-white/80' : 'text-zinc-600 dark:text-zinc-300'" />
             </button>
           </Transition>
         </div>

@@ -472,13 +472,33 @@ export const usePlayerStore = defineStore('player', () => {
 
   function removeFromQueue(i: number) {
     if (i < 0 || i >= queue.value.length) return
+    const removingCurrent = i === index.value
     queue.value.splice(i, 1)
     if (i < index.value) {
       index.value--
-    } else if (i === index.value) {
-      // 移除的是当前曲目：停在原地不自动播，指针指向下一首
+    } else if (removingCurrent) {
+      // 移除的是当前曲目：指针指向下一首，播放状态延续——
+      // 之前在放就接着播下一首（走完整 load：换源 + 淡入 + 播放记录），
+      // 之前暂停则保持暂停（预载 src，播放键可直接续播）。
       if (index.value >= queue.value.length) index.value = queue.value.length - 1
-      playing.value = false
+      const wasPlaying = !audio.paused
+      cancelFade()
+      audio.pause()
+      resetPlaybackState()
+      lyricsLines.value = null
+      lyricsPlain.value = null
+      const next = current.value
+      if (next) {
+        if (wasPlaying) {
+          load(next)
+        } else {
+          audio.src = trackStreamUrl(next.id)
+          duration.value = next.duration ?? 0
+          void loadLyrics(next)
+        }
+      } else {
+        audio.removeAttribute('src')
+      }
     }
     snapshotQueue()
   }
@@ -638,7 +658,9 @@ export const usePlayerStore = defineStore('player', () => {
     setVolume,
     toggleMute,
     setFadeEnabled,
-    isFadeOn: () => localStorage.getItem('lm.fade') !== '0',
+    // 与 fadeEnabled() 同口径（存 '1' 才算开，默认关闭）：否则全新安装时设置页开关显示
+    // 「已开启」而实际行为是关闭，两者对不上
+    isFadeOn: () => localStorage.getItem('lm.fade') === '1',
     playNextInQueue,
     enqueue,
     removeFromQueue,

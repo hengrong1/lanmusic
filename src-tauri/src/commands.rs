@@ -25,6 +25,8 @@ pub struct Source {
     pub last_scan_at: Option<i64>,
     pub track_count: i64,
     pub fast_import: bool,
+    /// 是否扫描来源内子目录（false = 仅扫描根目录下的文件）
+    pub scan_subdirs: bool,
 }
 
 #[derive(Serialize, Clone)]
@@ -145,7 +147,10 @@ fn row_track(r: &rusqlite::Row) -> rusqlite::Result<Track> {
 
 /// 批量附加每首曲目的完整艺人列表（track_artists 关联，按 ord 排序）。
 /// 多艺人时用 " / " 连接覆盖 artist 显示串（首个为主艺人）。
-pub(crate) fn attach_artists(conn: &rusqlite::Connection, tracks: &mut [Track]) -> Result<(), String> {
+pub(crate) fn attach_artists(
+    conn: &rusqlite::Connection,
+    tracks: &mut [Track],
+) -> Result<(), String> {
     if tracks.is_empty() {
         return Ok(());
     }
@@ -165,7 +170,10 @@ pub(crate) fn attach_artists(conn: &rusqlite::Connection, tracks: &mut [Track]) 
             .query_map(params_from_iter(chunk.iter()), |r| {
                 Ok((
                     r.get::<_, i64>(0)?,
-                    TrackArtistRef { id: r.get(1)?, name: r.get(2)? },
+                    TrackArtistRef {
+                        id: r.get(1)?,
+                        name: r.get(2)?,
+                    },
                 ))
             })
             .map_err(|e| e.to_string())?;
@@ -177,7 +185,12 @@ pub(crate) fn attach_artists(conn: &rusqlite::Connection, tracks: &mut [Track]) 
     for t in tracks.iter_mut() {
         if let Some(list) = map.remove(&t.id) {
             if list.len() > 1 {
-                t.artist = Some(list.iter().map(|a| a.name.as_str()).collect::<Vec<_>>().join(" / "));
+                t.artist = Some(
+                    list.iter()
+                        .map(|a| a.name.as_str())
+                        .collect::<Vec<_>>()
+                        .join(" / "),
+                );
                 t.artist_id = Some(list[0].id);
             }
             t.artists = list;
@@ -186,7 +199,7 @@ pub(crate) fn attach_artists(conn: &rusqlite::Connection, tracks: &mut [Track]) 
     Ok(())
 }
 
-const SOURCE_SELECT: &str = "SELECT s.id, s.kind, s.name, s.base_path, s.base_url, s.enabled, s.last_scan_at, s.fast_import, \
+const SOURCE_SELECT: &str = "SELECT s.id, s.kind, s.name, s.base_path, s.base_url, s.enabled, s.last_scan_at, s.fast_import, s.scan_subdirs, \
      (SELECT COUNT(*) FROM tracks t WHERE t.source_id = s.id) FROM sources s";
 
 fn row_source(r: &rusqlite::Row) -> rusqlite::Result<Source> {
@@ -199,7 +212,8 @@ fn row_source(r: &rusqlite::Row) -> rusqlite::Result<Source> {
         enabled: r.get::<_, i64>(5)? != 0,
         last_scan_at: r.get(6)?,
         fast_import: r.get::<_, i64>(7)? != 0,
-        track_count: r.get(8)?,
+        scan_subdirs: r.get::<_, i64>(8)? != 0,
+        track_count: r.get(9)?,
     })
 }
 
@@ -217,7 +231,11 @@ fn spawn_scan(app: &AppHandle, state: &AppState, id: i64, full_rescan: bool) -> 
 }
 
 #[tauri::command]
-pub fn add_local_source(app: AppHandle, state: State<'_, AppState>, path: String) -> Result<Source, String> {
+pub fn add_local_source(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    path: String,
+) -> Result<Source, String> {
     let p = std::path::PathBuf::from(&path);
     if !p.is_dir() {
         return Err(err(codes::SOURCE_DIR_MISSING));
@@ -238,25 +256,34 @@ pub fn add_local_source(app: AppHandle, state: State<'_, AppState>, path: String
     if exists.is_some() {
         return Err(err(codes::SOURCE_DUPLICATE));
     }
-    conn.execute("INSERT INTO sources (kind, name, base_path) VALUES ('local', ?1, ?2)", params![name, path])
-        .map_err(|e| e.to_string())?;
+    conn.execute(
+        "INSERT INTO sources (kind, name, base_path) VALUES ('local', ?1, ?2)",
+        params![name, path],
+    )
+    .map_err(|e| e.to_string())?;
     let id = conn.last_insert_rowid();
     drop(conn);
 
     spawn_scan(&app, &state, id, false)?;
 
-    // 目录监听：本地文件变化后自动增量扫描
-    crate::watcher::watch_source(&app, id, &path);
+    // 目录监听：本地文件变化后自动增量扫描（新来源默认递归扫描子目录）
+    crate::watcher::watch_source(&app, id, &path, true);
 
     let conn = state.db.lock().map_err(|e| e.to_string())?;
-    conn.query_row(&format!("{SOURCE_SELECT} WHERE s.id = ?1"), params![id], row_source)
-        .map_err(|e| e.to_string())
+    conn.query_row(
+        &format!("{SOURCE_SELECT} WHERE s.id = ?1"),
+        params![id],
+        row_source,
+    )
+    .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub fn list_sources(state: State<'_, AppState>) -> Result<Vec<Source>, String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
-    let mut stmt = conn.prepare(&format!("{SOURCE_SELECT} ORDER BY s.id")).map_err(|e| e.to_string())?;
+    let mut stmt = conn
+        .prepare(&format!("{SOURCE_SELECT} ORDER BY s.id"))
+        .map_err(|e| e.to_string())?;
     let items = stmt
         .query_map([], row_source)
         .map_err(|e| e.to_string())?
@@ -268,16 +295,23 @@ pub fn list_sources(state: State<'_, AppState>) -> Result<Vec<Source>, String> {
 #[tauri::command]
 pub fn remove_source(app: AppHandle, state: State<'_, AppState>, id: i64) -> Result<(), String> {
     let state2 = app.state::<AppState>();
-    if state2.scanning.lock().map_err(|e| e.to_string())?.contains(&id) {
+    if state2
+        .scanning
+        .lock()
+        .map_err(|e| e.to_string())?
+        .contains(&id)
+    {
         return Err(err(codes::SOURCE_SCANNING_BUSY));
     }
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     let kind: Option<String> = conn
-        .query_row("SELECT kind FROM sources WHERE id = ?1", params![id], |r| r.get(0))
+        .query_row("SELECT kind FROM sources WHERE id = ?1", params![id], |r| {
+            r.get(0)
+        })
         .ok();
-    // 先删来源（ON DELETE CASCADE 级联移除 tracks）
-    conn.execute("DELETE FROM sources WHERE id = ?1", params![id]).map_err(|e| e.to_string())?;
-    // 显式清理属于该来源的 tracks 的子表引用（兼容未配置 ON DELETE CASCADE 的旧数据库，避免 FOREIGN KEY constraint failed）
+    // 先删曲目再删来源。现库 schema 的 tracks.source_id 带 ON DELETE CASCADE（连接均开启
+    // 外键），删来源本可级联清曲目；这里改为显式删除，让子表清理真实执行——既兼容外键
+    // 未生效的异常连接，也让每条 DELETE 都作用于真实存在的行，而不是恒为空的子查询。
     conn.execute(
         "DELETE FROM track_artists WHERE track_id IN (SELECT id FROM tracks WHERE source_id = ?1)",
         params![id],
@@ -298,15 +332,20 @@ pub fn remove_source(app: AppHandle, state: State<'_, AppState>, id: i64) -> Res
         params![id],
     )
     .map_err(|e| e.to_string())?;
-    // 显式删除属于该来源的 tracks（如果 CASCADE 未生效）
-    conn.execute("DELETE FROM tracks WHERE source_id = ?1", params![id]).map_err(|e| e.to_string())?;
-    // 级联完成后再查真正的孤儿专辑（包含：原就没被引用的 + 因级联 tracks 被删后新变成孤儿的）
+    conn.execute("DELETE FROM tracks WHERE source_id = ?1", params![id])
+        .map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM sources WHERE id = ?1", params![id])
+        .map_err(|e| e.to_string())?;
+    // 曲目删除后再查真正的孤儿专辑
     let orphan_albums: Vec<i64> = {
         let mut stmt = conn
             .prepare("SELECT id FROM albums WHERE id NOT IN (SELECT DISTINCT album_id FROM tracks)")
             .map_err(|e| e.to_string())?;
-        let rows = stmt.query_map([], |r| r.get::<_, i64>(0)).map_err(|e| e.to_string())?;
-        rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?
+        let rows = stmt
+            .query_map([], |r| r.get::<_, i64>(0))
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())?
     };
     // 先删封面文件再删 DB 行：如果先删 DB 行后 SQLite rowid 被复用，后续 purge 可能误删新专辑同名缓存
     let covers_dir = state.covers_dir.clone();
@@ -315,7 +354,11 @@ pub fn remove_source(app: AppHandle, state: State<'_, AppState>, id: i64) -> Res
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     // 按已收集的 id 精确删除（与传给 purge 的集合完全一致）
     if !orphan_albums.is_empty() {
-        let placeholders = orphan_albums.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+        let placeholders = orphan_albums
+            .iter()
+            .map(|_| "?")
+            .collect::<Vec<_>>()
+            .join(",");
         let sql = format!("DELETE FROM albums WHERE id IN ({placeholders})");
         let _ = conn.execute(&sql, rusqlite::params_from_iter(orphan_albums.iter()));
     }
@@ -340,12 +383,19 @@ pub fn remove_source(app: AppHandle, state: State<'_, AppState>, id: i64) -> Res
 
 /// mode: "auto" = 增量（新文件/变化文件/快速导入未解析的行）；"full" = 全部重新解析
 #[tauri::command]
-pub fn rescan_source(app: AppHandle, state: State<'_, AppState>, id: i64, mode: Option<String>) -> Result<(), String> {
+pub fn rescan_source(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: i64,
+    mode: Option<String>,
+) -> Result<(), String> {
     let full = mode.as_deref() == Some("full");
     {
         let conn = state.db.lock().map_err(|e| e.to_string())?;
         let exists: Option<i64> = conn
-            .query_row("SELECT id FROM sources WHERE id = ?1", params![id], |r| r.get(0))
+            .query_row("SELECT id FROM sources WHERE id = ?1", params![id], |r| {
+                r.get(0)
+            })
             .ok();
         if exists.is_none() {
             return Err(err(codes::SOURCE_NOT_FOUND));
@@ -356,13 +406,48 @@ pub fn rescan_source(app: AppHandle, state: State<'_, AppState>, id: i64, mode: 
 
 /// 开关快速导入：开启后扫描只按文件名/目录结构入库（不读文件内容），适合慢速网络目录
 #[tauri::command]
-pub fn set_source_fast_import(state: State<'_, AppState>, id: i64, enabled: bool) -> Result<(), String> {
+pub fn set_source_fast_import(
+    state: State<'_, AppState>,
+    id: i64,
+    enabled: bool,
+) -> Result<(), String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     conn.execute(
         "UPDATE sources SET fast_import = ?1 WHERE id = ?2 AND kind = 'local'",
         params![enabled as i64, id],
     )
     .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// 开关子目录扫描：开启后递归扫描来源内所有子目录；关闭后仅扫描根目录下的文件
+/// （本地与 WebDAV 来源通用）。本地来源同时按新模式重建目录监听。
+#[tauri::command]
+pub fn set_source_scan_subdirs(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: i64,
+    enabled: bool,
+) -> Result<(), String> {
+    let local_base: Option<String> = {
+        let conn = state.db.lock().map_err(|e| e.to_string())?;
+        conn.execute(
+            "UPDATE sources SET scan_subdirs = ?1 WHERE id = ?2",
+            params![enabled as i64, id],
+        )
+        .map_err(|e| e.to_string())?;
+        conn.query_row(
+            "SELECT base_path FROM sources WHERE id = ?1 AND kind = 'local' AND base_path IS NOT NULL",
+            params![id],
+            |r| r.get(0),
+        )
+        .ok()
+    };
+    // 监听模式跟随扫描模式：仅根目录时用 NonRecursive，子目录变化不再触发无谓重扫
+    if let Some(base) = local_base {
+        crate::watcher::unwatch_source(&app, id);
+        crate::watcher::watch_source(&app, id, &base, enabled);
+    }
     Ok(())
 }
 
@@ -427,7 +512,11 @@ pub fn query_tracks(state: State<'_, AppState>, q: TrackQuery) -> Result<Page<Tr
     let conn = state.db.lock().map_err(|e| e.to_string())?;
 
     // 搜索路径：多字段 + 拼音 + 歌词/文件名匹配、相关度评分（见 search.rs）
-    if q.search.as_deref().map(|s| !s.trim().is_empty()).unwrap_or(false) {
+    if q.search
+        .as_deref()
+        .map(|s| !s.trim().is_empty())
+        .unwrap_or(false)
+    {
         return crate::search::search_tracks(&conn, &q);
     }
 
@@ -455,10 +544,17 @@ pub fn query_tracks(state: State<'_, AppState>, q: TrackQuery) -> Result<Page<Tr
         "SELECT COUNT(*) FROM tracks t LEFT JOIN artists a ON a.id = t.artist_id LEFT JOIN albums al ON al.id = t.album_id {where_sql}"
     );
     let total: i64 = conn
-        .query_row(&count_sql, params_from_iter(args.iter().map(|b| b.as_ref())), |r| r.get(0))
+        .query_row(
+            &count_sql,
+            params_from_iter(args.iter().map(|b| b.as_ref())),
+            |r| r.get(0),
+        )
         .map_err(|e| e.to_string())?;
 
-    let sql = format!("{TRACK_SELECT} {where_sql} {order_sql} LIMIT {page_size} OFFSET {}", page * page_size);
+    let sql = format!(
+        "{TRACK_SELECT} {where_sql} {order_sql} LIMIT {page_size} OFFSET {}",
+        page * page_size
+    );
     let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
     let mut items: Vec<Track> = stmt
         .query_map(params_from_iter(args.iter().map(|b| b.as_ref())), row_track)
@@ -514,21 +610,16 @@ pub fn query_albums(
          FROM albums al LEFT JOIN artists a ON a.id = al.artist_id \
          {where_sql} ORDER BY al.title COLLATE NOCASE LIMIT {page_size} OFFSET {offset}"
     );
-    let items: Vec<AlbumItem> = collect_rows(
-        &conn,
-        &sql,
-        like.as_ref(),
-        |r| {
-            Ok(AlbumItem {
-                id: r.get(0)?,
-                title: r.get(1)?,
-                artist: r.get(2)?,
-                year: r.get(3)?,
-                has_cover: r.get::<_, i64>(4)? != 0,
-                track_count: r.get(5)?,
-            })
-        },
-    )?;
+    let items: Vec<AlbumItem> = collect_rows(&conn, &sql, like.as_ref(), |r| {
+        Ok(AlbumItem {
+            id: r.get(0)?,
+            title: r.get(1)?,
+            artist: r.get(2)?,
+            year: r.get(3)?,
+            has_cover: r.get::<_, i64>(4)? != 0,
+            track_count: r.get(5)?,
+        })
+    })?;
     Ok(Page { total, items })
 }
 
@@ -550,7 +641,8 @@ pub fn query_artists(
         .filter(|s| !s.is_empty())
         .map(|s| format!("%{s}%"));
     // 只展示有曲目的艺人（主艺人或合作艺人）：albums.artist_id 现在可指向纯合辑/专辑归属艺人（无直接曲目），不进列表
-    let base_where = "ar.id IN (SELECT artist_id FROM tracks UNION SELECT artist_id FROM track_artists)";
+    let base_where =
+        "ar.id IN (SELECT artist_id FROM tracks UNION SELECT artist_id FROM track_artists)";
     let where_sql = if like.is_some() {
         format!("WHERE {base_where} AND ar.name LIKE ?1")
     } else {
@@ -558,11 +650,19 @@ pub fn query_artists(
     };
 
     let total: i64 = if like.is_some() {
-        conn.query_row(&format!("SELECT COUNT(*) FROM artists ar {where_sql}"), params![like], |r| r.get(0))
-            .map_err(|e| e.to_string())?
+        conn.query_row(
+            &format!("SELECT COUNT(*) FROM artists ar {where_sql}"),
+            params![like],
+            |r| r.get(0),
+        )
+        .map_err(|e| e.to_string())?
     } else {
-        conn.query_row(&format!("SELECT COUNT(*) FROM artists ar {where_sql}"), [], |r| r.get(0))
-            .map_err(|e| e.to_string())?
+        conn.query_row(
+            &format!("SELECT COUNT(*) FROM artists ar {where_sql}"),
+            [],
+            |r| r.get(0),
+        )
+        .map_err(|e| e.to_string())?
     };
 
     let sql = format!(
@@ -572,7 +672,11 @@ pub fn query_artists(
          FROM artists ar {where_sql} ORDER BY ar.name COLLATE NOCASE LIMIT {page_size} OFFSET {offset}"
     );
     let items: Vec<ArtistItem> = collect_rows(&conn, &sql, like.as_ref(), |r| {
-        Ok(ArtistItem { id: r.get(0)?, name: r.get(1)?, track_count: r.get(2)? })
+        Ok(ArtistItem {
+            id: r.get(0)?,
+            name: r.get(1)?,
+            track_count: r.get(2)?,
+        })
     })?;
     Ok(Page { total, items })
 }
@@ -581,7 +685,11 @@ pub fn query_artists(
 pub fn get_track(state: State<'_, AppState>, id: i64) -> Result<Option<Track>, String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     let mut track = conn
-        .query_row(&format!("{TRACK_SELECT} WHERE t.id = ?1"), params![id], row_track)
+        .query_row(
+            &format!("{TRACK_SELECT} WHERE t.id = ?1"),
+            params![id],
+            row_track,
+        )
         .optional()
         .map_err(|e| e.to_string())?;
     if let Some(t) = track.as_mut() {
@@ -620,7 +728,9 @@ pub fn get_stream_url(state: State<'_, AppState>, id: i64) -> Result<String, Str
     {
         let conn = state.db.lock().map_err(|e| e.to_string())?;
         let exists: Option<i64> = conn
-            .query_row("SELECT id FROM tracks WHERE id = ?1", params![id], |r| r.get(0))
+            .query_row("SELECT id FROM tracks WHERE id = ?1", params![id], |r| {
+                r.get(0)
+            })
             .ok();
         if exists.is_none() {
             return Err(err(codes::TRACK_NOT_FOUND));
@@ -637,13 +747,26 @@ pub fn get_stream_url(state: State<'_, AppState>, id: i64) -> Result<String, Str
 #[tauri::command]
 pub fn library_stats(state: State<'_, AppState>) -> Result<LibraryStats, String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
-    let tracks: i64 = conn.query_row("SELECT COUNT(*) FROM tracks", [], |r| r.get(0)).map_err(|e| e.to_string())?;
-    let albums: i64 = conn.query_row("SELECT COUNT(*) FROM albums", [], |r| r.get(0)).map_err(|e| e.to_string())?;
-    let artists: i64 = conn.query_row("SELECT COUNT(*) FROM artists", [], |r| r.get(0)).map_err(|e| e.to_string())?;
-    let favorites: i64 = conn
-        .query_row("SELECT COUNT(*) FROM tracks WHERE fav = 1", [], |r| r.get(0))
+    let tracks: i64 = conn
+        .query_row("SELECT COUNT(*) FROM tracks", [], |r| r.get(0))
         .map_err(|e| e.to_string())?;
-    Ok(LibraryStats { tracks, albums, artists, favorites })
+    let albums: i64 = conn
+        .query_row("SELECT COUNT(*) FROM albums", [], |r| r.get(0))
+        .map_err(|e| e.to_string())?;
+    let artists: i64 = conn
+        .query_row("SELECT COUNT(*) FROM artists", [], |r| r.get(0))
+        .map_err(|e| e.to_string())?;
+    let favorites: i64 = conn
+        .query_row("SELECT COUNT(*) FROM tracks WHERE fav = 1", [], |r| {
+            r.get(0)
+        })
+        .map_err(|e| e.to_string())?;
+    Ok(LibraryStats {
+        tracks,
+        albums,
+        artists,
+        favorites,
+    })
 }
 
 // ---------- 喜欢（M2.5） ----------
@@ -651,8 +774,11 @@ pub fn library_stats(state: State<'_, AppState>) -> Result<LibraryStats, String>
 #[tauri::command]
 pub fn favorite_toggle(state: State<'_, AppState>, id: i64, fav: bool) -> Result<(), String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
-    conn.execute("UPDATE tracks SET fav = ?1 WHERE id = ?2", params![fav as i64, id])
-        .map_err(|e| e.to_string())?;
+    conn.execute(
+        "UPDATE tracks SET fav = ?1 WHERE id = ?2",
+        params![fav as i64, id],
+    )
+    .map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -786,7 +912,9 @@ pub fn reveal_track(state: State<'_, AppState>, id: i64) -> Result<(), String> {
         )
         .map_err(|e| e.to_string())?
     };
-    let Some(base) = base else { return Err(err(codes::TRACK_NOT_LOCAL)) };
+    let Some(base) = base else {
+        return Err(err(codes::TRACK_NOT_LOCAL));
+    };
     let full = std::path::PathBuf::from(base).join(rel);
     if !full.exists() {
         return Err(err(codes::FILE_MISSING));
@@ -852,10 +980,20 @@ pub fn playlist_create(state: State<'_, AppState>, name: String) -> Result<Playl
         .unwrap_or_default()
         .as_secs() as i64;
     let conn = state.db.lock().map_err(|e| e.to_string())?;
-    conn.execute("INSERT INTO playlists (name, created_at) VALUES (?1, ?2)", params![name, now])
-        .map_err(|e| e.to_string())?;
+    conn.execute(
+        "INSERT INTO playlists (name, created_at) VALUES (?1, ?2)",
+        params![name, now],
+    )
+    .map_err(|e| e.to_string())?;
     let id = conn.last_insert_rowid();
-    Ok(Playlist { id, name, track_count: 0, created_at: Some(now), cover_album_id: None, description: None })
+    Ok(Playlist {
+        id,
+        name,
+        track_count: 0,
+        created_at: Some(now),
+        cover_album_id: None,
+        description: None,
+    })
 }
 
 #[tauri::command]
@@ -865,26 +1003,41 @@ pub fn playlist_rename(state: State<'_, AppState>, id: i64, name: String) -> Res
         return Err(err(codes::PLAYLIST_NAME_EMPTY));
     }
     let conn = state.db.lock().map_err(|e| e.to_string())?;
-    conn.execute("UPDATE playlists SET name = ?1 WHERE id = ?2", params![name, id])
-        .map_err(|e| e.to_string())?;
+    conn.execute(
+        "UPDATE playlists SET name = ?1 WHERE id = ?2",
+        params![name, id],
+    )
+    .map_err(|e| e.to_string())?;
     Ok(())
 }
 
 /// 设置歌单简介（空字符串视为清除简介）
 #[tauri::command]
-pub fn playlist_set_description(state: State<'_, AppState>, id: i64, description: String) -> Result<(), String> {
+pub fn playlist_set_description(
+    state: State<'_, AppState>,
+    id: i64,
+    description: String,
+) -> Result<(), String> {
     let trimmed = description.trim().to_string();
-    let value: Option<String> = if trimmed.is_empty() { None } else { Some(trimmed) };
+    let value: Option<String> = if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed)
+    };
     let conn = state.db.lock().map_err(|e| e.to_string())?;
-    conn.execute("UPDATE playlists SET description = ?1 WHERE id = ?2", params![value, id])
-        .map_err(|e| e.to_string())?;
+    conn.execute(
+        "UPDATE playlists SET description = ?1 WHERE id = ?2",
+        params![value, id],
+    )
+    .map_err(|e| e.to_string())?;
     Ok(())
 }
 
 #[tauri::command]
 pub fn playlist_delete(state: State<'_, AppState>, id: i64) -> Result<(), String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
-    conn.execute("DELETE FROM playlists WHERE id = ?1", params![id]).map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM playlists WHERE id = ?1", params![id])
+        .map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -896,16 +1049,23 @@ pub fn playlist_get_items(state: State<'_, AppState>, id: i64) -> Result<Vec<Tra
         "{TRACK_SELECT} JOIN playlist_items i ON i.track_id = t.id WHERE i.playlist_id = ?1 ORDER BY i.added_at DESC, i.id DESC"
     );
     let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
-    let items = stmt
+    let mut items: Vec<Track> = stmt
         .query_map([id], row_track)
         .map_err(|e| e.to_string())?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?;
+    // 与 query_tracks / get_tracks_by_ids 同口径：附加完整艺人列表，
+    // 否则歌单里多艺人曲目只显示主艺人（与曲库/搜索视图不一致）
+    attach_artists(&conn, &mut items)?;
     Ok(items)
 }
 
 #[tauri::command]
-pub fn playlist_add_tracks(state: State<'_, AppState>, id: i64, track_ids: Vec<i64>) -> Result<usize, String> {
+pub fn playlist_add_tracks(
+    state: State<'_, AppState>,
+    id: i64,
+    track_ids: Vec<i64>,
+) -> Result<usize, String> {
     let mut conn = state.db.lock().map_err(|e| e.to_string())?;
     let tx = conn.transaction().map_err(|e| e.to_string())?;
     let now: i64 = std::time::SystemTime::now()
@@ -944,7 +1104,11 @@ pub fn playlist_add_tracks(state: State<'_, AppState>, id: i64, track_ids: Vec<i
 }
 
 #[tauri::command]
-pub fn playlist_remove_track(state: State<'_, AppState>, id: i64, track_id: i64) -> Result<(), String> {
+pub fn playlist_remove_track(
+    state: State<'_, AppState>,
+    id: i64,
+    track_id: i64,
+) -> Result<(), String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     conn.execute(
         "DELETE FROM playlist_items WHERE playlist_id = ?1 AND track_id = ?2",
@@ -956,7 +1120,11 @@ pub fn playlist_remove_track(state: State<'_, AppState>, id: i64, track_id: i64)
 
 /// 批量移除歌单中的多首歌曲
 #[tauri::command]
-pub fn playlist_remove_tracks(state: State<'_, AppState>, id: i64, track_ids: Vec<i64>) -> Result<(), String> {
+pub fn playlist_remove_tracks(
+    state: State<'_, AppState>,
+    id: i64,
+    track_ids: Vec<i64>,
+) -> Result<(), String> {
     let mut conn = state.db.lock().map_err(|e| e.to_string())?;
     let tx = conn.transaction().map_err(|e| e.to_string())?;
     for tid in track_ids {
@@ -970,7 +1138,11 @@ pub fn playlist_remove_tracks(state: State<'_, AppState>, id: i64, track_ids: Ve
 }
 
 #[tauri::command]
-pub fn playlist_reorder(state: State<'_, AppState>, id: i64, track_ids: Vec<i64>) -> Result<(), String> {
+pub fn playlist_reorder(
+    state: State<'_, AppState>,
+    id: i64,
+    track_ids: Vec<i64>,
+) -> Result<(), String> {
     use std::collections::HashMap;
     let mut conn = state.db.lock().map_err(|e| e.to_string())?;
     let tx = conn.transaction().map_err(|e| e.to_string())?;
@@ -981,7 +1153,10 @@ pub fn playlist_reorder(state: State<'_, AppState>, id: i64, track_ids: Vec<i64>
             .map_err(|e| e.to_string())?;
         let rows = stmt
             .query_map([id], |r| {
-                Ok((r.get::<_, i64>(0)?, r.get::<_, Option<i64>>(1)?.unwrap_or(0)))
+                Ok((
+                    r.get::<_, i64>(0)?,
+                    r.get::<_, Option<i64>>(1)?.unwrap_or(0),
+                ))
             })
             .map_err(|e| e.to_string())?
             .collect::<Result<Vec<_>, _>>()
@@ -1087,8 +1262,12 @@ pub fn set_artist_separators(
 ) -> Result<Vec<ArtistSplitChange>, String> {
     let seps = scanner::parse_separators(&value);
     let mut conn = state.db.lock().map_err(|e| e.to_string())?;
-    db::set_setting(&conn, scanner::ARTIST_SEPARATORS_KEY, &seps.iter().collect::<String>())
-        .map_err(|e| e.to_string())?;
+    db::set_setting(
+        &conn,
+        scanner::ARTIST_SEPARATORS_KEY,
+        &seps.iter().collect::<String>(),
+    )
+    .map_err(|e| e.to_string())?;
 
     let tx = conn.transaction().map_err(|e| e.to_string())?;
 
@@ -1103,7 +1282,11 @@ pub fn set_artist_separators(
             .map_err(|e| e.to_string())?;
         let rows = stmt
             .query_map([], |r| {
-                Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?, r.get::<_, String>(2)?))
+                Ok((
+                    r.get::<_, i64>(0)?,
+                    r.get::<_, i64>(1)?,
+                    r.get::<_, String>(2)?,
+                ))
             })
             .map_err(|e| e.to_string())?;
         for row in rows {
@@ -1124,14 +1307,20 @@ pub fn set_artist_separators(
             .map_err(|e| e.to_string())?;
         let rows = stmt
             .query_map([], |r| {
-                Ok(Row { id: r.get(0)?, title: r.get(1)?, raw: r.get(2)? })
+                Ok(Row {
+                    id: r.get(0)?,
+                    title: r.get(1)?,
+                    raw: r.get(2)?,
+                })
             })
             .map_err(|e| e.to_string())?;
-        rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())?
     };
 
     let mut changes: Vec<ArtistSplitChange> = Vec::new();
-    let mut cache: HashMap<String, i64> = HashMap::new();
+    // 完整缓存（含艺人别名）：重拆走与扫描一致的解析路径，合并过的旧名仍归到主艺人
+    let mut caches = scanner::load_caches(&tx)?;
     for r in rows {
         let new_names = scanner::split_artists(&r.raw, &seps);
         let old_names: Vec<String> = current
@@ -1140,17 +1329,23 @@ pub fn set_artist_separators(
             .unwrap_or_default();
         // 与现有关联一致（大小写不敏感）则无需改动
         let same = old_names.len() == new_names.len()
-            && old_names.iter().zip(&new_names).all(|(a, b)| a.eq_ignore_ascii_case(b));
+            && old_names
+                .iter()
+                .zip(&new_names)
+                .all(|(a, b)| a.eq_ignore_ascii_case(b));
         if same {
             continue;
         }
 
         let ids: Vec<i64> = new_names
             .iter()
-            .map(|n| scanner::get_or_create_artist(&tx, &mut cache, n))
+            .map(|n| scanner::get_or_create_artist(&tx, &mut caches, n))
             .collect::<Result<Vec<i64>, String>>()?;
-        tx.execute("DELETE FROM track_artists WHERE track_id = ?1", params![r.id])
-            .map_err(|e| e.to_string())?;
+        tx.execute(
+            "DELETE FROM track_artists WHERE track_id = ?1",
+            params![r.id],
+        )
+        .map_err(|e| e.to_string())?;
         for (i, aid) in ids.iter().enumerate() {
             tx.execute(
                 "INSERT OR IGNORE INTO track_artists (track_id, artist_id, ord) VALUES (?1, ?2, ?3)",
@@ -1158,8 +1353,11 @@ pub fn set_artist_separators(
             )
             .map_err(|e| e.to_string())?;
         }
-        tx.execute("UPDATE tracks SET artist_id = ?1 WHERE id = ?2", params![ids.first().copied().unwrap_or(0), r.id])
-            .map_err(|e| e.to_string())?;
+        tx.execute(
+            "UPDATE tracks SET artist_id = ?1 WHERE id = ?2",
+            params![ids.first().copied().unwrap_or(0), r.id],
+        )
+        .map_err(|e| e.to_string())?;
 
         changes.push(ArtistSplitChange {
             track_id: r.id,
@@ -1195,7 +1393,9 @@ pub struct ArtistNormalizeChange {
 /// 并把曲目 / 专辑关联合并到规整名对应的同一位艺人。幂等：重复调用不产生新增变更。
 /// 新扫描与分隔符重拆已自带规整，此命令用于清理已入库的历史数据。
 #[tauri::command]
-pub fn normalize_artist_names(state: State<'_, AppState>) -> Result<Vec<ArtistNormalizeChange>, String> {
+pub fn normalize_artist_names(
+    state: State<'_, AppState>,
+) -> Result<Vec<ArtistNormalizeChange>, String> {
     let mut conn = state.db.lock().map_err(|e| e.to_string())?;
     let tx = conn.transaction().map_err(|e| e.to_string())?;
 
@@ -1212,11 +1412,31 @@ pub fn normalize_artist_names(state: State<'_, AppState>) -> Result<Vec<ArtistNo
             rows.push(row.map_err(|e| e.to_string())?);
         }
     }
-    // 规整名（小写）→ 目标艺人 id：先登记原名已是规整名的艺人，后续同规整名命中同一目标
+    // 规整名（小写）→ 目标艺人 id。只登记「原名即规整名」的艺人：
+    // 若括号名先入表，后到的规整名映射本应覆盖它；反过来（规整名先入表）则会让
+    // 括号艺人「自己合并进自己」——拆光关联后删除艺人触发外键失败、整个事务回滚。
+    // 两遍法保证目标永远是规整名艺人本体。
     let mut by_canon: HashMap<String, i64> = HashMap::new();
     for (id, name) in &rows {
-        by_canon.insert(scanner::canonical_artist(name).to_lowercase(), *id);
+        if scanner::canonical_artist(name) == *name {
+            by_canon.insert(name.to_lowercase(), *id);
+        }
     }
+    // 已有别名（小写）→ 主艺人 id：规整名命中别名时直接落到主艺人，不再为其新建艺人。
+    // INNER JOIN 过滤掉主艺人已被删除的悬空别名（此时按正常路径新建艺人）。
+    let alias_to_artist: HashMap<String, i64> = {
+        let mut stmt = tx
+            .prepare(
+                "SELECT aa.alias, aa.artist_id FROM artist_aliases aa \
+                 JOIN artists a ON a.id = aa.artist_id",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?)))
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<HashMap<_, _>, _>>()
+            .map_err(|e| e.to_string())?
+    };
 
     // 收集待合并：(旧 id, 目标 id, 旧名, 规整名)；先收集后迁移，避免中间态影响判定
     let mut pending: Vec<(i64, i64, String, String)> = Vec::new();
@@ -1228,48 +1448,394 @@ pub fn normalize_artist_names(state: State<'_, AppState>) -> Result<Vec<ArtistNo
         let key = canon.to_lowercase();
         let target: i64 = match by_canon.get(&key).copied() {
             Some(existing) => existing,
-            None => {
-                tx.execute("INSERT OR IGNORE INTO artists (name) VALUES (?1)", [&canon])
-                    .map_err(|e| e.to_string())?;
-                let nid: i64 = tx
-                    .query_row("SELECT id FROM artists WHERE name = ?1 COLLATE NOCASE", [&canon], |r| r.get(0))
-                    .map_err(|e| e.to_string())?;
-                by_canon.insert(key, nid);
-                nid
-            }
+            None => match alias_to_artist.get(&key).copied() {
+                Some(existing) => existing,
+                None => {
+                    tx.execute("INSERT OR IGNORE INTO artists (name) VALUES (?1)", [&canon])
+                        .map_err(|e| e.to_string())?;
+                    let nid: i64 = tx
+                        .query_row(
+                            "SELECT id FROM artists WHERE name = ?1 COLLATE NOCASE",
+                            [&canon],
+                            |r| r.get(0),
+                        )
+                        .map_err(|e| e.to_string())?;
+                    by_canon.insert(key, nid);
+                    nid
+                }
+            },
         };
         pending.push((*id, target, name.clone(), canon));
     }
 
     let mut changes: Vec<ArtistNormalizeChange> = Vec::new();
+    // 撞 key 被合并的旧专辑：提交后清封面缓存（行已删，rowid 会被复用）
+    let mut merged_album_ids: Vec<i64> = Vec::new();
     for (old, target, old_name, new_name) in pending {
-        // 同一首曲目若已关联目标艺人：先拆除旧关联，避免主键冲突
+        let (count, merged) = merge_artist_into(&tx, old, target)?;
+        merged_album_ids.extend(merged);
+        // 合并记忆：旧名 → 目标艺人。之后扫描（含改名后的标签）再遇到旧名，
+        // 经别名解析仍归到目标艺人名下，不会重新建成独立艺人。
         tx.execute(
-            "DELETE FROM track_artists WHERE artist_id = ?1 \
-             AND track_id IN (SELECT track_id FROM track_artists WHERE artist_id = ?2)",
-            params![old, target],
+            "INSERT INTO artist_aliases (alias, artist_id) VALUES (?1, ?2) \
+             ON CONFLICT(alias) DO UPDATE SET artist_id = excluded.artist_id",
+            params![old_name, target],
         )
         .map_err(|e| e.to_string())?;
-        let count: i64 = tx
-            .query_row("SELECT COUNT(*) FROM track_artists WHERE artist_id = ?1", [old], |r| r.get(0))
-            .map_err(|e| e.to_string())?;
-        tx.execute("UPDATE track_artists SET artist_id = ?1 WHERE artist_id = ?2", params![target, old])
-            .map_err(|e| e.to_string())?;
-        tx.execute("UPDATE albums SET artist_id = ?1 WHERE artist_id = ?2", params![target, old])
-            .map_err(|e| e.to_string())?;
-        // 旧艺人已无任何引用：删除
-        tx.execute(
-            "DELETE FROM artists WHERE id = ?1 \
-             AND NOT EXISTS (SELECT 1 FROM track_artists WHERE artist_id = ?1) \
-             AND NOT EXISTS (SELECT 1 FROM albums WHERE artist_id = ?1)",
-            [old],
-        )
-        .map_err(|e| e.to_string())?;
-        changes.push(ArtistNormalizeChange { old_name, new_name, track_count: count });
+        changes.push(ArtistNormalizeChange {
+            old_name,
+            new_name,
+            track_count: count,
+        });
     }
     tx.commit().map_err(|e| e.to_string())?;
+    if !merged_album_ids.is_empty() {
+        crate::covers::purge(&state.covers_dir, &merged_album_ids);
+    }
 
     Ok(changes)
+}
+
+/// 把 `source` 艺人并入 `target`（视为同一位艺人）：
+/// - 曲目关联重挂到 target（同曲目已关联 target 的先拆掉，避免主键冲突）
+/// - 专辑迁移；target 名下存在同名（不区分大小写）同年专辑时合并——
+///   albums.key 唯一约束下直接 UPDATE 会失败，改为曲目并入目标专辑后删除旧专辑
+/// - 迁移后 source 不再被任何引用则删除；其名下已有别名一并改指 target
+/// - 返回 (受影响曲目数, 因合并被删除的专辑 id——调用方负责清理封面缓存)
+fn merge_artist_into(
+    tx: &rusqlite::Transaction,
+    source: i64,
+    target: i64,
+) -> Result<(i64, Vec<i64>), String> {
+    tx.execute(
+        "DELETE FROM track_artists WHERE artist_id = ?1 \
+         AND track_id IN (SELECT track_id FROM track_artists WHERE artist_id = ?2)",
+        params![source, target],
+    )
+    .map_err(|e| e.to_string())?;
+    let count: i64 = tx
+        .query_row(
+            "SELECT COUNT(*) FROM track_artists WHERE artist_id = ?1",
+            [source],
+            |r| r.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+    tx.execute(
+        "UPDATE track_artists SET artist_id = ?1 WHERE artist_id = ?2",
+        params![target, source],
+    )
+    .map_err(|e| e.to_string())?;
+
+    let album_ids: Vec<i64> = {
+        let mut stmt = tx
+            .prepare("SELECT id FROM albums WHERE artist_id = ?1")
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([source], |r| r.get::<_, i64>(0))
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())?
+    };
+    let mut merged_albums: Vec<i64> = Vec::new();
+    for album_id in album_ids {
+        let (title, year, has_cover): (String, Option<i64>, i64) = tx
+            .query_row(
+                "SELECT title, year, has_cover FROM albums WHERE id = ?1",
+                [album_id],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .map_err(|e| e.to_string())?;
+        let target_album: Option<i64> = tx
+            .query_row(
+                "SELECT id FROM albums WHERE artist_id = ?1 AND lower(title) = lower(?2) \
+                 AND IFNULL(year, 0) = IFNULL(?3, 0)",
+                params![target, title, year],
+                |r| r.get(0),
+            )
+            .optional()
+            .map_err(|e| e.to_string())?;
+        match target_album {
+            Some(target_album) => {
+                tx.execute(
+                    "UPDATE tracks SET album_id = ?1 WHERE album_id = ?2",
+                    params![target_album, album_id],
+                )
+                .map_err(|e| e.to_string())?;
+                tx.execute(
+                    "UPDATE albums SET has_cover = max(has_cover, ?1) WHERE id = ?2",
+                    params![has_cover, target_album],
+                )
+                .map_err(|e| e.to_string())?;
+                tx.execute("DELETE FROM albums WHERE id = ?1", [album_id])
+                    .map_err(|e| e.to_string())?;
+                merged_albums.push(album_id);
+            }
+            None => {
+                tx.execute(
+                    "UPDATE albums SET artist_id = ?1 WHERE id = ?2",
+                    params![target, album_id],
+                )
+                .map_err(|e| e.to_string())?;
+            }
+        }
+    }
+    // 源艺人名下已有的别名改指 target（否则 target 将来再被并入他人时链条断裂）
+    tx.execute(
+        "UPDATE artist_aliases SET artist_id = ?1 WHERE artist_id = ?2",
+        params![target, source],
+    )
+    .map_err(|e| e.to_string())?;
+    // 源艺人已无任何引用：删除
+    tx.execute(
+        "DELETE FROM artists WHERE id = ?1 \
+         AND NOT EXISTS (SELECT 1 FROM track_artists WHERE artist_id = ?1) \
+         AND NOT EXISTS (SELECT 1 FROM albums WHERE artist_id = ?1)",
+        [source],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok((count, merged_albums))
+}
+
+/// 艺人别名：旧名 → 主艺人（规整 / 自定义合并的合并记忆，设置页展示用）
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ArtistAlias {
+    pub alias: String,
+    pub artist_id: i64,
+    pub artist_name: String,
+}
+
+/// 列出全部合并记录（含历次规整与自定义合并），按主艺人名分组展示由前端处理
+#[tauri::command]
+pub fn list_artist_aliases(state: State<'_, AppState>) -> Result<Vec<ArtistAlias>, String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    let mut stmt = conn
+        .prepare(
+            "SELECT aa.alias, a.id, a.name FROM artist_aliases aa \
+             JOIN artists a ON a.id = aa.artist_id \
+             ORDER BY a.name COLLATE NOCASE, aa.alias COLLATE NOCASE",
+        )
+        .map_err(|e| e.to_string())?;
+    let items = stmt
+        .query_map([], |r| {
+            Ok(ArtistAlias {
+                alias: r.get(0)?,
+                artist_id: r.get(1)?,
+                artist_name: r.get(2)?,
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+    Ok(items)
+}
+
+/// 自定义合并：把 source 艺人并入 target（用户认定两者是同一人，如改名 / 写法不同）。
+/// 曲目与专辑关联全部迁移到 target，source 删除，并把 source 的名字记为别名——
+/// 之后扫描再遇到这个名字（含改名前的旧标签）仍会归到 target 名下。
+#[tauri::command]
+pub fn merge_artist(
+    state: State<'_, AppState>,
+    source_id: i64,
+    target_id: i64,
+) -> Result<ArtistNormalizeChange, String> {
+    if source_id == target_id {
+        return Err(err(codes::ARTIST_MERGE_SAME));
+    }
+    let mut conn = state.db.lock().map_err(|e| e.to_string())?;
+    let (source_name, target_name): (String, String) = {
+        let source_name: Option<String> = conn
+            .query_row(
+                "SELECT name FROM artists WHERE id = ?1",
+                params![source_id],
+                |r| r.get(0),
+            )
+            .ok();
+        let target_name: Option<String> = conn
+            .query_row(
+                "SELECT name FROM artists WHERE id = ?1",
+                params![target_id],
+                |r| r.get(0),
+            )
+            .ok();
+        match (source_name, target_name) {
+            (Some(s), Some(t)) => (s, t),
+            _ => return Err(err(codes::ARTIST_NOT_FOUND)),
+        }
+    };
+
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    let (count, merged_album_ids) = merge_artist_into(&tx, source_id, target_id)?;
+    tx.execute(
+        "INSERT INTO artist_aliases (alias, artist_id) VALUES (?1, ?2) \
+         ON CONFLICT(alias) DO UPDATE SET artist_id = excluded.artist_id",
+        params![source_name, target_id],
+    )
+    .map_err(|e| e.to_string())?;
+    tx.commit().map_err(|e| e.to_string())?;
+    if !merged_album_ids.is_empty() {
+        crate::covers::purge(&state.covers_dir, &merged_album_ids);
+    }
+
+    Ok(ArtistNormalizeChange {
+        old_name: source_name,
+        new_name: target_name,
+        track_count: count,
+    })
+}
+
+// ================================================================ 曲库移除与记录
+
+/// 已移除歌曲记录（设置 → 已移除歌曲 展示用）
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct RemovedTrack {
+    pub id: i64,
+    pub title: String,
+    pub artist: Option<String>,
+    pub album: Option<String>,
+    pub path: String,
+    /// 'manual' = 手动从曲库移除；'scan' = 扫描发现文件消失
+    pub reason: String,
+    pub removed_at: i64,
+}
+
+/// 已移除歌曲列表（最新在前，最多 500 条；上限 1000 条自动裁剪）
+#[tauri::command]
+pub fn list_removed_tracks(state: State<'_, AppState>) -> Result<Vec<RemovedTrack>, String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, title, artist, album, path, reason, removed_at FROM removed_tracks \
+             ORDER BY removed_at DESC, id DESC LIMIT 500",
+        )
+        .map_err(|e| e.to_string())?;
+    let items = stmt
+        .query_map([], |r| {
+            Ok(RemovedTrack {
+                id: r.get(0)?,
+                title: r.get(1)?,
+                artist: r.get(2)?,
+                album: r.get(3)?,
+                path: r.get(4)?,
+                reason: r.get(5)?,
+                removed_at: r.get(6)?,
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+    Ok(items)
+}
+
+/// 清空已移除歌曲记录
+#[tauri::command]
+pub fn clear_removed_tracks(state: State<'_, AppState>) -> Result<(), String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM removed_tracks", [])
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// 从曲库移除指定曲目（不删除磁盘上的文件）：清理子表引用、回收孤儿专辑/艺人并
+/// 清理封面缓存，同时写入移除记录（reason='manual'）。返回实际移除数量。
+#[tauri::command]
+pub fn remove_tracks(state: State<'_, AppState>, ids: Vec<i64>) -> Result<usize, String> {
+    let mut ids = ids;
+    ids.sort_unstable();
+    ids.dedup();
+    if ids.is_empty() {
+        return Ok(0);
+    }
+    let mut conn = state.db.lock().map_err(|e| e.to_string())?;
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    let removed_at: i64 = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as i64;
+
+    let mut removed = 0usize;
+    /// 移除记录行：(标题, 艺人, 专辑, 路径, 来源 id)
+    type RemovedInfo = (String, Option<String>, Option<String>, String, i64);
+    for chunk in ids.chunks(500) {
+        // 移除前先取展示信息写记录
+        let placeholders = chunk.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+        let infos: Vec<RemovedInfo> = {
+            let mut stmt = tx
+                .prepare(&format!(
+                    "SELECT t.title, a.name, al.title, t.path, t.source_id FROM tracks t \
+                     LEFT JOIN artists a ON a.id = t.artist_id \
+                     LEFT JOIN albums al ON al.id = t.album_id \
+                     WHERE t.id IN ({placeholders})"
+                ))
+                .map_err(|e| e.to_string())?;
+            let rows = stmt
+                .query_map(params_from_iter(chunk.iter()), |r| {
+                    Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?))
+                })
+                .map_err(|e| e.to_string())?;
+            rows.collect::<Result<Vec<_>, _>>()
+                .map_err(|e| e.to_string())?
+        };
+        for (title, artist, album, path, source_id) in &infos {
+            tx.execute(
+                "INSERT INTO removed_tracks (title, artist, album, path, source_id, reason, removed_at) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, 'manual', ?6)",
+                params![title, artist, album, path, source_id, removed_at],
+            )
+            .map_err(|e| e.to_string())?;
+        }
+        // 子表引用清理（曲目删除由外键级联，但显式删除保证旧库兼容）
+        for table in [
+            "track_artists",
+            "playlist_items",
+            "lrc_files",
+            "lyrics_index",
+        ] {
+            tx.execute(
+                &format!("DELETE FROM {table} WHERE track_id IN ({placeholders})"),
+                params_from_iter(chunk.iter()),
+            )
+            .map_err(|e| e.to_string())?;
+        }
+        removed += tx
+            .execute(
+                &format!("DELETE FROM tracks WHERE id IN ({placeholders})"),
+                params_from_iter(chunk.iter()),
+            )
+            .map_err(|e| e.to_string())?;
+    }
+
+    // 回收孤儿专辑（先收集再删，与 purge 集合完全一致）与孤儿艺人
+    let orphan_albums: Vec<i64> = {
+        let mut stmt = tx
+            .prepare("SELECT id FROM albums WHERE id NOT IN (SELECT DISTINCT album_id FROM tracks)")
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| r.get::<_, i64>(0))
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())?
+    };
+    tx.execute(
+        "DELETE FROM albums WHERE id NOT IN (SELECT DISTINCT album_id FROM tracks)",
+        [],
+    )
+    .map_err(|e| e.to_string())?;
+    tx.execute(
+        "DELETE FROM artists WHERE id NOT IN (SELECT DISTINCT artist_id FROM tracks)
+         AND id NOT IN (SELECT DISTINCT artist_id FROM track_artists)
+         AND id NOT IN (SELECT DISTINCT artist_id FROM albums)",
+        [],
+    )
+    .map_err(|e| e.to_string())?;
+    db::cap_removed_log(&tx).map_err(|e| e.to_string())?;
+    tx.commit().map_err(|e| e.to_string())?;
+
+    if !orphan_albums.is_empty() {
+        crate::covers::purge(&state.covers_dir, &orphan_albums);
+    }
+    Ok(removed)
 }
 
 // ================================================================ WebDAV 来源（M3）
@@ -1285,7 +1851,10 @@ pub fn webdav_add_source(
     name: Option<String>,
 ) -> Result<Source, String> {
     let base = crate::network::webdav::normalize_base(&url)?;
-    let host = base.host_str().map(|h| h.to_string()).unwrap_or_else(|| url.clone());
+    let host = base
+        .host_str()
+        .map(|h| h.to_string())
+        .unwrap_or_else(|| url.clone());
     let display_name = name.unwrap_or_else(|| format!("WebDAV ({host})"));
     let auth = crate::network::webdav::Auth { username, password };
     // 连通性验证：列根目录
@@ -1293,7 +1862,11 @@ pub fn webdav_add_source(
 
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     let exists: Option<i64> = conn
-        .query_row("SELECT id FROM sources WHERE kind = 'webdav' AND base_url = ?1", params![base.as_str()], |r| r.get(0))
+        .query_row(
+            "SELECT id FROM sources WHERE kind = 'webdav' AND base_url = ?1",
+            params![base.as_str()],
+            |r| r.get(0),
+        )
         .ok();
     if exists.is_some() {
         return Err(err(codes::SOURCE_DUPLICATE_URL));
@@ -1308,58 +1881,59 @@ pub fn webdav_add_source(
     .map_err(|e| e.to_string())?;
     let id = conn.last_insert_rowid();
     if crate::keyring::set_password(id, &auth.password).is_err() {
-        let fallback = serde_json::json!({ "username": auth.username, "password": auth.password }).to_string();
-        let _ = conn.execute("UPDATE sources SET config = ?1 WHERE id = ?2", params![fallback, id]);
+        let fallback =
+            serde_json::json!({ "username": auth.username, "password": auth.password }).to_string();
+        let _ = conn.execute(
+            "UPDATE sources SET config = ?1 WHERE id = ?2",
+            params![fallback, id],
+        );
     }
     drop(conn);
 
     spawn_scan(&app, &state, id, false)?;
     let conn = state.db.lock().map_err(|e| e.to_string())?;
-    conn.query_row(&format!("{SOURCE_SELECT} WHERE s.id = ?1"), params![id], row_source)
-        .map_err(|e| e.to_string())
+    conn.query_row(
+        &format!("{SOURCE_SELECT} WHERE s.id = ?1"),
+        params![id],
+        row_source,
+    )
+    .map_err(|e| e.to_string())
 }
 
 // ================================================================ MV 播放
 
-/// 获取视频文件的流 URL（用于播放 MV）
+/// 获取视频文件的流 URL（用于播放 MV）；同名视频文件的探测与 video:// 协议共用
+/// `scheme::find_local_mv`，避免两处各维护一份扩展名/stem 逻辑
 #[tauri::command]
-pub fn get_mv_url(_app: AppHandle, state: State<'_, AppState>, track_id: i64) -> Result<Option<String>, String> {
-    let conn = state.db.lock().map_err(|e| e.to_string())?;
-    let (source_kind, base_path, _base_url, track_path): (String, Option<String>, Option<String>, String) = conn
-        .query_row(
-            "SELECT s.kind, s.base_path, s.base_url, t.path FROM tracks t JOIN sources s ON s.id = t.source_id WHERE t.id = ?1",
+pub fn get_mv_url(
+    _app: AppHandle,
+    state: State<'_, AppState>,
+    track_id: i64,
+) -> Result<Option<String>, String> {
+    let (source_kind, base_path, track_path): (String, Option<String>, String) = {
+        let conn = state.db.lock().map_err(|e| e.to_string())?;
+        conn.query_row(
+            "SELECT s.kind, s.base_path, t.path FROM tracks t JOIN sources s ON s.id = t.source_id WHERE t.id = ?1",
             [track_id],
-            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
         )
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| e.to_string())?
+    };
 
-    // 获取音频文件的 stem（不含扩展名）
-    let stem = std::path::Path::new(&track_path)
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("")
-        .to_string();
-
-    // 视频扩展名列表
-    let video_exts = ["mp4", "mkv", "avi", "mov", "wmv", "flv", "webm", "m4v", "ts"];
-
-    if source_kind == "local" {
-        let Some(base) = base_path else { return Ok(None) };
-        let base_dir = std::path::Path::new(&base).join(std::path::Path::new(&track_path).parent().unwrap_or(std::path::Path::new("")));
-        // 查找同名视频文件
-        for ext in &video_exts {
-            let video_path = base_dir.join(format!("{}.{}", stem, ext));
-            if video_path.exists() {
-                // 返回自定义协议 URL
-                let url = if cfg!(windows) {
-                    format!("http://video.localhost/mv/{}", track_id)
-                } else {
-                    format!("video://mv/{}", track_id)
-                };
-                return Ok(Some(url));
-            }
-        }
+    // MV 探测只对本地来源生效（WebDAV 曲目没有 MV）
+    if source_kind != "local" {
+        return Ok(None);
     }
-
-    Ok(None)
+    let Some(base) = base_path else {
+        return Ok(None);
+    };
+    if crate::scheme::find_local_mv(&base, &track_path).is_none() {
+        return Ok(None);
+    }
+    // 返回自定义协议 URL
+    Ok(Some(if cfg!(windows) {
+        format!("http://video.localhost/mv/{track_id}")
+    } else {
+        format!("video://mv/{track_id}")
+    }))
 }

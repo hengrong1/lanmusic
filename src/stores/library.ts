@@ -90,6 +90,7 @@ export const useLibraryStore = defineStore('library', () => {
   }
 
   async function loadMore() {
+    if (loading.value) return // 请求在途时忽略追加触发（虚拟列表在底部区域会连续上报 nearEnd）
     if (trackPage.value.items.length >= trackPage.value.total) return
     query.value.page++
     await loadTracks(true)
@@ -144,6 +145,11 @@ export const useLibraryStore = defineStore('library', () => {
 
   async function setFastImport(id: number, enabled: boolean) {
     await api.setSourceFastImport(id, enabled)
+    await loadSources()
+  }
+
+  async function setScanSubdirs(id: number, enabled: boolean) {
+    await api.setSourceScanSubdirs(id, enabled)
     await loadSources()
   }
 
@@ -240,6 +246,7 @@ export const useLibraryStore = defineStore('library', () => {
     removeSource,
     rescan,
     setFastImport,
+    setScanSubdirs,
     loadPlaylists,
     createPlaylist,
     renamePlaylist,

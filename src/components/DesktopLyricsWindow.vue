@@ -10,6 +10,7 @@ import { Rewind5SecondsForwardIcon as RewindForward } from '@solar-icons/vue/lin
 import { RestartIcon as RotateCcw } from '@solar-icons/vue/linear/restart'
 import { CloseIcon as X } from '@solar-icons/vue/linear/close'
 import { EMPTY_LYRIC, type DeskControl, type DeskLyricsConfig } from '@/composables/useDesktopLyrics'
+import { hexToRgba } from '@/utils/color'
 
 // 桌面歌词浮窗：接收主窗口推送的歌词行与配置进行渲染；
 // 整窗透明，按住文字区域可拖动（data-tauri-drag-region）。
@@ -60,14 +61,6 @@ onBeforeUnmount(() => unlisten?.())
 
 function control(action: DeskControl) {
   void emit('lyrics:control', action)
-}
-
-/** hex 颜色 + 不透明度 → rgba() */
-function hexToRgba(hex: string, alpha: number): string {
-  const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim())
-  if (!m) return `rgba(0, 0, 0, ${alpha})`
-  const n = parseInt(m[1], 16)
-  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`
 }
 
 const rootStyle = computed(() => ({

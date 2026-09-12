@@ -64,8 +64,8 @@ fn ensure_wav<R: Runtime>(
     fingerprint: &str,
     source_bytes: &[u8],
 ) -> Result<PathBuf, String> {
-    let dir =
-        cache_dir(app).ok_or_else(|| crate::error::err(crate::error::codes::TRANSCODE_CACHE_DIR))?;
+    let dir = cache_dir(app)
+        .ok_or_else(|| crate::error::err(crate::error::codes::TRANSCODE_CACHE_DIR))?;
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let out = dir.join(format!("{track_id}-{fingerprint}.wav"));
     if out.metadata().map(|m| m.len() > 44).unwrap_or(false) {
@@ -110,7 +110,12 @@ fn decode_to_wav(source_bytes: &[u8], out: &Path) -> Result<(), String> {
     // 容器探测以内容为准，扩展名仅作提示（ogg/oga/opus 都走 Ogg 容器）
     hint.with_extension("ogg");
     let probed = symphonia::default::get_probe()
-        .format(&hint, mss, &FormatOptions::default(), &MetadataOptions::default())
+        .format(
+            &hint,
+            mss,
+            &FormatOptions::default(),
+            &MetadataOptions::default(),
+        )
         .map_err(|e| crate::error::err1(crate::error::codes::TRANSCODE_PROBE_FAILED, "error", e))?;
     let mut format = probed.format;
     let track = format
@@ -133,8 +138,16 @@ fn decode_to_wav(source_bytes: &[u8], out: &Path) -> Result<(), String> {
         let packet = match format.next_packet() {
             Ok(p) => p,
             // 流正常结束
-            Err(SymphoniaError::IoError(e)) if e.kind() == std::io::ErrorKind::UnexpectedEof => break,
-            Err(e) => return Err(crate::error::err1(crate::error::codes::TRANSCODE_READ_FRAME, "error", e)),
+            Err(SymphoniaError::IoError(e)) if e.kind() == std::io::ErrorKind::UnexpectedEof => {
+                break
+            }
+            Err(e) => {
+                return Err(crate::error::err1(
+                    crate::error::codes::TRANSCODE_READ_FRAME,
+                    "error",
+                    e,
+                ))
+            }
         };
         if packet.track_id() != track_id {
             continue;
@@ -157,14 +170,21 @@ fn decode_to_wav(source_bytes: &[u8], out: &Path) -> Result<(), String> {
             }
             // 单帧损坏：跳过继续，尽量转出可用音频
             Err(SymphoniaError::DecodeError(_)) => continue,
-            Err(e) => return Err(crate::error::err1(crate::error::codes::TRANSCODE_DECODE_FAILED, "error", e)),
+            Err(e) => {
+                return Err(crate::error::err1(
+                    crate::error::codes::TRANSCODE_DECODE_FAILED,
+                    "error",
+                    e,
+                ))
+            }
         }
     }
 
-    let s = spec
-        .ok_or_else(|| crate::error::err(crate::error::codes::TRANSCODE_NO_DECODABLE))?;
+    let s = spec.ok_or_else(|| crate::error::err(crate::error::codes::TRANSCODE_NO_DECODABLE))?;
     let channels = s.channels.count() as u16;
-    out_file.seek(SeekFrom::Start(0)).map_err(|e| e.to_string())?;
+    out_file
+        .seek(SeekFrom::Start(0))
+        .map_err(|e| e.to_string())?;
     out_file
         .write_all(&wav_header(s.rate, channels, pcm_len))
         .map_err(|e| e.to_string())?;
@@ -217,7 +237,10 @@ mod tests {
         assert_eq!(u16::from_le_bytes([h[20], h[21]]), 1);
         assert_eq!(u16::from_le_bytes([h[22], h[23]]), 2);
         assert_eq!(u32::from_le_bytes([h[24], h[25], h[26], h[27]]), 44_100);
-        assert_eq!(u32::from_le_bytes([h[28], h[29], h[30], h[31]]), 44_100 * 2 * 2);
+        assert_eq!(
+            u32::from_le_bytes([h[28], h[29], h[30], h[31]]),
+            44_100 * 2 * 2
+        );
         assert_eq!(u16::from_le_bytes([h[34], h[35]]), 16);
         assert_eq!(&h[36..40], b"data");
         assert_eq!(u32::from_le_bytes([h[40], h[41], h[42], h[43]]), 1000);
@@ -246,4 +269,3 @@ mod tests {
         let _ = std::fs::remove_file(&out);
     }
 }
-

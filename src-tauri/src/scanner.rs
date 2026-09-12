@@ -44,6 +44,47 @@ const WEBDAV_WORKERS: usize = 4;
 /// WebDAV 单文件头部拉取的总尝试次数（首次 + 重试）
 const WEBDAV_FETCH_ATTEMPTS: usize = 2;
 
+/// 扫描时始终跳过的目录名（NAS 回收站 / 系统元数据等），与用户配置合并生效、
+/// 不区分大小写。匹配的是目录名本身（不是路径），任何层级命中都会整棵剪掉。
+pub const BUILTIN_SKIP_DIRS: &[&str] = &[
+    "#recycle",                  // Synology 回收站
+    "#snapshot",                 // Synology 快照
+    "@eaDir",                    // Synology 缩略图/索引元数据
+    ".@__thumb",                 // QNAP 缩略图
+    "$RECYCLE.BIN",              // Windows 回收站
+    "System Volume Information", // Windows 卷信息
+    "lost+found",                // Linux 文件系统恢复目录
+    ".Trash",                    // macOS 回收站（.Trash-uid 变体见 is_skipped_dir 的前缀规则）
+    ".Trashes",                  // macOS U 盘回收站
+    ".trash",                    // 桌面环境 / 网盘通用回收站
+];
+
+/// 用户自定义跳过目录在 app_settings 中的键（逗号/换行分隔的目录名）
+pub const SKIP_DIRS_KEY: &str = "scan.skipDirs";
+
+/// 读取生效的跳过目录集合（内置 + 用户配置，统一小写）
+pub fn load_skip_dirs(conn: &rusqlite::Connection) -> HashSet<String> {
+    let mut set: HashSet<String> = BUILTIN_SKIP_DIRS.iter().map(|s| s.to_lowercase()).collect();
+    let raw = db::get_setting(conn, SKIP_DIRS_KEY).unwrap_or_default();
+    for part in raw
+        .split([',', '，', ';', '；', '\n', '\r'])
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        set.insert(part.to_lowercase());
+    }
+    set
+}
+
+/// 目录名是否应跳过：精确命中（不区分大小写），或 `.Trash-0` 这类带后缀的回收站
+pub fn is_skipped_dir(name: &std::ffi::OsStr, skip: &HashSet<String>) -> bool {
+    let Some(name) = name.to_str() else {
+        return false;
+    };
+    let lower = name.to_lowercase();
+    skip.contains(&lower) || lower.starts_with(".trash-")
+}
+
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ScanProgress {
@@ -111,7 +152,11 @@ pub fn scan_source(app: AppHandle, source_id: i64, full_rescan: bool) {
                 full_rescan,
             ),
             "webdav" => run_webdav_scan(&app, source_id, base_url, config, full_rescan),
-            other => Err(crate::error::err1(crate::error::codes::SOURCE_KIND_UNKNOWN, "kind", other)),
+            other => Err(crate::error::err1(
+                crate::error::codes::SOURCE_KIND_UNKNOWN,
+                "kind",
+                other,
+            )),
         }
     });
 
@@ -164,14 +209,26 @@ fn load_source(
 fn emit_enumerate(app: &AppHandle, source_id: i64, done: usize, current: String) {
     let _ = app.emit(
         "scan:progress",
-        ScanProgress { source_id, phase: "enumerate".into(), done, total: 0, current },
+        ScanProgress {
+            source_id,
+            phase: "enumerate".into(),
+            done,
+            total: 0,
+            current,
+        },
     );
 }
 
 fn emit_parse(app: &AppHandle, source_id: i64, done: usize, total: usize) {
     let _ = app.emit(
         "scan:progress",
-        ScanProgress { source_id, phase: "parse".into(), done, total, current: String::new() },
+        ScanProgress {
+            source_id,
+            phase: "parse".into(),
+            done,
+            total,
+            current: String::new(),
+        },
     );
 }
 
@@ -185,16 +242,33 @@ fn run_local_scan(
 ) -> Result<(usize, usize, usize), String> {
     let state = app.state::<AppState>();
     let mut conn = db::open_conn(&state.db_path, false).map_err(|e| e.to_string())?;
-    let fast_import: bool = conn
-        .query_row("SELECT fast_import FROM sources WHERE id = ?1", [source_id], |r| r.get(0))
+    let (fast_import, scan_subdirs): (bool, bool) = conn
+        .query_row(
+            "SELECT fast_import, scan_subdirs FROM sources WHERE id = ?1",
+            [source_id],
+            |r| Ok((r.get::<_, i64>(0)? != 0, r.get::<_, i64>(1)? != 0)),
+        )
         .map_err(|e| e.to_string())?;
+    let skip_dirs = load_skip_dirs(&conn);
 
     // ---- 1. 枚举目录 + 收集 .lrc + 检测视频文件 ----
     let mut files: Vec<(String, i64, i64)> = Vec::new();
     let mut lrc_map: HashMap<String, String> = HashMap::new(); // rel 去扩展名 → 本地 .lrc 绝对路径
     let mut video_stems: HashSet<String> = HashSet::new(); // 视频文件的 stem_key 集合
     let mut seen = 0usize; // 遍历的文件总数（含非音频文件，进度按此上报更平滑）
-    for entry in WalkDir::new(&base).follow_links(false).into_iter().filter_map(|e| e.ok()) {
+                           // 跳过目录 + 子目录开关：
+                           // - 命中跳过名单的目录整个剪掉（filter_entry 不再下降），回收站/系统目录不进曲库
+                           // - scan_subdirs = false 时 max_depth(1) 只看根目录的直接文件
+    let walk = WalkDir::new(&base).follow_links(false);
+    let walker: Box<dyn Iterator<Item = walkdir::Result<walkdir::DirEntry>>> =
+        if scan_subdirs {
+            Box::new(walk.into_iter().filter_entry(move |e| {
+                e.depth() == 0 || !is_skipped_dir(e.file_name(), &skip_dirs)
+            }))
+        } else {
+            Box::new(walk.max_depth(1).into_iter())
+        };
+    for entry in walker.filter_map(|e| e.ok()) {
         if !entry.file_type().is_file() {
             continue;
         }
@@ -203,12 +277,19 @@ fn run_local_scan(
         if seen.is_multiple_of(1000) {
             emit_enumerate(app, source_id, files.len(), file_name_of(&rel));
         }
-        let Some(ext) = entry.path().extension().and_then(|e| e.to_str()).map(|s| s.to_ascii_lowercase())
+        let Some(ext) = entry
+            .path()
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|s| s.to_ascii_lowercase())
         else {
             continue;
         };
         if ext == "lrc" {
-            lrc_map.insert(stem_key(&rel), base.join(&rel).to_string_lossy().to_string());
+            lrc_map.insert(
+                stem_key(&rel),
+                base.join(&rel).to_string_lossy().to_string(),
+            );
             continue;
         }
         // 检测视频文件
@@ -236,7 +317,9 @@ fn run_local_scan(
     let existing = load_existing(&conn, source_id)?;
     let to_parse: Vec<(String, i64, i64)> = files
         .iter()
-        .filter(|(p, mtime, size)| needs_parse(&existing, p, *mtime, *size, full_rescan, fast_import))
+        .filter(|(p, mtime, size)| {
+            needs_parse(&existing, p, *mtime, *size, full_rescan, fast_import)
+        })
         .cloned()
         .collect();
 
@@ -275,7 +358,9 @@ fn run_local_scan(
     if !lrc_map.is_empty() {
         let tx = conn.transaction().map_err(|e| e.to_string())?;
         for (rel, _, _) in &files {
-            let Some(target) = lrc_map.get(&stem_key(rel)) else { continue };
+            let Some(target) = lrc_map.get(&stem_key(rel)) else {
+                continue;
+            };
             let tid: Option<i64> = tx
                 .query_row(
                     "SELECT id FROM tracks WHERE source_id = ?1 AND path = ?2",
@@ -300,8 +385,11 @@ fn run_local_scan(
     let walked: HashSet<String> = files.iter().map(|(p, _, _)| p.clone()).collect();
     let removed = delete_missing(app, &mut conn, source_id, &existing, &walked)?;
     let now = now_secs();
-    conn.execute("UPDATE sources SET last_scan_at = ?1 WHERE id = ?2", params![now, source_id])
-        .map_err(|e| e.to_string())?;
+    conn.execute(
+        "UPDATE sources SET last_scan_at = ?1 WHERE id = ?2",
+        params![now, source_id],
+    )
+    .map_err(|e| e.to_string())?;
 
     Ok((added, updated, removed))
 }
@@ -315,12 +403,27 @@ fn run_webdav_scan(
     config: Option<String>,
     full_rescan: bool,
 ) -> Result<(usize, usize, usize), String> {
-    let Some(base_str) = base_url else { return Err(crate::error::err(crate::error::codes::SOURCE_URL_MISSING)) };
+    let Some(base_str) = base_url else {
+        return Err(crate::error::err(crate::error::codes::SOURCE_URL_MISSING));
+    };
     let base = webdav::normalize_base(&base_str)?;
     let auth = webdav::Auth::from_source(config.as_deref(), source_id);
     let base_path = decoded_url_path(&base).trim_end_matches('/').to_string();
+    // 跳过目录 / 子目录开关与本地扫描同一套口径
+    let (skip_dirs, scan_subdirs) = {
+        let state = app.state::<AppState>();
+        let conn = db::open_conn(&state.db_path, false).map_err(|e| e.to_string())?;
+        let subdirs: bool = conn
+            .query_row(
+                "SELECT scan_subdirs FROM sources WHERE id = ?1",
+                [source_id],
+                |r| r.get::<_, i64>(0).map(|v| v != 0),
+            )
+            .unwrap_or(true);
+        (load_skip_dirs(&conn), subdirs)
+    };
 
-    // ---- 1. PROPFIND 广度遍历 ----
+    // ---- 1. PROPFIND 遍历 ----
     let mut files: Vec<(String, i64)> = Vec::new(); // (rel, size)
     let mut lrc_map: HashMap<String, String> = HashMap::new(); // rel 去扩展名 → 完整 URL
     let mut cover_map: HashMap<String, String> = HashMap::new(); // 目录 rel → 封面 URL
@@ -353,8 +456,18 @@ fn run_webdav_scan(
                 continue;
             }
             if item.is_dir {
-                let child = base.join(&format!("{rel}/")).unwrap_or_else(|_| base.clone());
-                queue.push(child);
+                // 命中跳过名单的目录不进入（其内容不会被枚举）；
+                // 关闭子目录扫描时只列根目录，不再下钻
+                let dir_name = file_name_of(&rel);
+                if is_skipped_dir(std::path::Path::new(&dir_name).as_os_str(), &skip_dirs) {
+                    continue;
+                }
+                if scan_subdirs {
+                    let child = base
+                        .join(&format!("{rel}/"))
+                        .unwrap_or_else(|_| base.clone());
+                    queue.push(child);
+                }
             } else {
                 let ext = ext_of(&rel);
                 let name = file_name_of(&rel).to_ascii_lowercase();
@@ -367,7 +480,12 @@ fn run_webdav_scan(
                 }
             }
         }
-        emit_enumerate(app, source_id, files.len(), file_name_of(&decoded_url_path(&dir)));
+        emit_enumerate(
+            app,
+            source_id,
+            files.len(),
+            file_name_of(&decoded_url_path(&dir)),
+        );
     }
     let total = files.len();
     emit_parse(app, source_id, 0, total);
@@ -379,7 +497,11 @@ fn run_webdav_scan(
         let state = app.state::<AppState>();
         let conn = db::open_conn(&state.db_path, false).map_err(|e| e.to_string())?;
         let fast: bool = conn
-            .query_row("SELECT fast_import FROM sources WHERE id = ?1", [source_id], |r| r.get(0))
+            .query_row(
+                "SELECT fast_import FROM sources WHERE id = ?1",
+                [source_id],
+                |r| r.get(0),
+            )
             .map_err(|e| e.to_string())?;
         (load_existing(&conn, source_id)?, fast)
     };
@@ -453,28 +575,39 @@ fn run_webdav_scan(
     let walked: HashSet<String> = files.iter().map(|(p, _)| p.clone()).collect();
     let removed = delete_missing(app, &mut conn, source_id, &existing, &walked)?;
     let now = now_secs();
-    conn.execute("UPDATE sources SET last_scan_at = ?1 WHERE id = ?2", params![now, source_id])
-        .map_err(|e| e.to_string())?;
+    conn.execute(
+        "UPDATE sources SET last_scan_at = ?1 WHERE id = ?2",
+        params![now, source_id],
+    )
+    .map_err(|e| e.to_string())?;
 
     Ok((added, updated, removed))
 }
 
 // ================================================================ 共用写入管线
 
-struct ScanCaches {
+pub(crate) struct ScanCaches {
     artists: HashMap<String, i64>,
     /// key → 本地专辑 id
     albums: HashMap<String, i64>,
+    /// 艺人别名（小写）→ 主艺人展示名：规整/自定义合并的「合并记忆」，
+    /// 扫描再遇到旧名时仍归到主艺人名下（否则旧名会被重新建成独立艺人）
+    aliases: HashMap<String, String>,
 }
 
 fn now_secs() -> i64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs() as i64
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as i64
 }
 
-fn load_caches(conn: &rusqlite::Connection) -> Result<ScanCaches, String> {
+pub(crate) fn load_caches(conn: &rusqlite::Connection) -> Result<ScanCaches, String> {
     let mut artists = HashMap::new();
     {
-        let mut stmt = conn.prepare("SELECT id, name FROM artists").map_err(|e| e.to_string())?;
+        let mut stmt = conn
+            .prepare("SELECT id, name FROM artists")
+            .map_err(|e| e.to_string())?;
         let rows = stmt
             .query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?)))
             .map_err(|e| e.to_string())?;
@@ -485,7 +618,9 @@ fn load_caches(conn: &rusqlite::Connection) -> Result<ScanCaches, String> {
     }
     let mut albums = HashMap::new();
     {
-        let mut stmt = conn.prepare("SELECT id, key FROM albums").map_err(|e| e.to_string())?;
+        let mut stmt = conn
+            .prepare("SELECT id, key FROM albums")
+            .map_err(|e| e.to_string())?;
         let rows = stmt
             .query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?)))
             .map_err(|e| e.to_string())?;
@@ -494,17 +629,47 @@ fn load_caches(conn: &rusqlite::Connection) -> Result<ScanCaches, String> {
             albums.insert(key, id);
         }
     }
-    Ok(ScanCaches { artists, albums })
+    let mut aliases = HashMap::new();
+    {
+        let mut stmt = conn
+            .prepare(
+                "SELECT aa.alias, a.name FROM artist_aliases aa \
+                 JOIN artists a ON a.id = aa.artist_id",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))
+            .map_err(|e| e.to_string())?;
+        for row in rows {
+            let (alias, name) = row.map_err(|e| e.to_string())?;
+            aliases.insert(alias.to_lowercase(), name);
+        }
+    }
+    Ok(ScanCaches {
+        artists,
+        albums,
+        aliases,
+    })
 }
 
-fn load_existing(conn: &rusqlite::Connection, source_id: i64) -> Result<HashMap<String, (i64, i64, i64)>, String> {
+fn load_existing(
+    conn: &rusqlite::Connection,
+    source_id: i64,
+) -> Result<HashMap<String, (i64, i64, i64)>, String> {
     let mut map = HashMap::new();
     let mut stmt = conn
         .prepare("SELECT path, IFNULL(mtime,0), IFNULL(file_size,0), meta_state FROM tracks WHERE source_id = ?1")
         .map_err(|e| e.to_string())?;
     let rows = stmt
         .query_map([source_id], |r| {
-            Ok((r.get::<_, String>(0)?, (r.get::<_, i64>(1)?, r.get::<_, i64>(2)?, r.get::<_, i64>(3)?)))
+            Ok((
+                r.get::<_, String>(0)?,
+                (
+                    r.get::<_, i64>(1)?,
+                    r.get::<_, i64>(2)?,
+                    r.get::<_, i64>(3)?,
+                ),
+            ))
         })
         .map_err(|e| e.to_string())?;
     for row in rows {
@@ -564,11 +729,33 @@ fn consume_and_write(
         batch.push(row);
         done += 1;
         if batch.len() >= BATCH {
-            write_batch(conn, &mut caches, source_id, now, &mut batch, existing, &covers_dir, lrc_map, cover_map, &seps)?;
+            write_batch(
+                conn,
+                &mut caches,
+                source_id,
+                now,
+                &mut batch,
+                existing,
+                &covers_dir,
+                lrc_map,
+                cover_map,
+                &seps,
+            )?;
             emit_parse(app, source_id, done, total);
         }
     }
-    write_batch(conn, &mut caches, source_id, now, &mut batch, existing, &covers_dir, lrc_map, cover_map, &seps)?;
+    write_batch(
+        conn,
+        &mut caches,
+        source_id,
+        now,
+        &mut batch,
+        existing,
+        &covers_dir,
+        lrc_map,
+        cover_map,
+        &seps,
+    )?;
     emit_parse(app, source_id, done, total);
     Ok((added, updated))
 }
@@ -593,11 +780,11 @@ fn write_batch(
         // 多艺人拆分："A / B" → [A, B]，首个作为主艺人（tracks.artist_id，兼容旧查询/排序）
         let artist_ids = split_artists(&row.artist, seps)
             .iter()
-            .map(|n| get_or_create_artist(&tx, &mut caches.artists, n))
+            .map(|n| get_or_create_artist(&tx, caches, n))
             .collect::<Result<Vec<i64>, String>>()?;
         let artist_id = artist_ids.first().copied().unwrap_or(0);
         // 专辑归属按合辑艺人（album_artist）入库，艺人/专辑归类才与标签语义一致
-        let album_artist_id = get_or_create_artist(&tx, &mut caches.artists, &row.album_artist)?;
+        let album_artist_id = get_or_create_artist(&tx, caches, &row.album_artist)?;
 
         let album_key = format!(
             "{}|{}|{}",
@@ -669,8 +856,11 @@ fn write_batch(
             .map_err(|e| e.to_string())?;
 
         // 多艺人关联：先清后插保证重复扫描幂等（更新行会重建关联）
-        tx.execute("DELETE FROM track_artists WHERE track_id = ?1", params![track_id])
-            .map_err(|e| e.to_string())?;
+        tx.execute(
+            "DELETE FROM track_artists WHERE track_id = ?1",
+            params![track_id],
+        )
+        .map_err(|e| e.to_string())?;
         for (i, aid) in artist_ids.iter().enumerate() {
             tx.execute(
                 "INSERT OR IGNORE INTO track_artists (track_id, artist_id, ord) VALUES (?1, ?2, ?3)",
@@ -682,7 +872,11 @@ fn write_batch(
         // 歌词关联：local/webdav 存同名 .lrc 的本地路径或完整 URL
         let lrc_target = lrc_map.and_then(|m| m.get(&stem_key(&row.rel)).cloned());
         if let Some(target) = lrc_target.as_ref() {
-            let p = if target.is_empty() { None } else { Some(target.as_str()) };
+            let p = if target.is_empty() {
+                None
+            } else {
+                Some(target.as_str())
+            };
             tx.execute(
                 "INSERT INTO lrc_files (track_id, path) VALUES (?1, ?2)
                  ON CONFLICT(track_id) DO UPDATE SET path = excluded.path",
@@ -710,8 +904,11 @@ fn write_batch(
                 .map_err(|e| e.to_string())?;
             }
             _ if row.meta_state == 1 => {
-                tx.execute("DELETE FROM lyrics_index WHERE track_id = ?1", params![track_id])
-                    .map_err(|e| e.to_string())?;
+                tx.execute(
+                    "DELETE FROM lyrics_index WHERE track_id = ?1",
+                    params![track_id],
+                )
+                .map_err(|e| e.to_string())?;
             }
             _ => {}
         }
@@ -739,22 +936,38 @@ fn write_batch(
     tx.commit().map_err(|e| e.to_string())
 }
 
+/// 解析艺人名：先规整（剥离尾部括号注释），命中别名时替换为主艺人展示名。
+/// 专辑 key 与艺人入库都以解析结果为准，保证同一人的不同写法归到同一处。
+fn resolve_artist(caches: &ScanCaches, name: &str) -> String {
+    let base = canonical_artist(name.trim());
+    match caches.aliases.get(&base.to_lowercase()) {
+        Some(target) => target.clone(),
+        None => base,
+    }
+}
+
 pub(crate) fn get_or_create_artist(
     tx: &rusqlite::Transaction,
-    cache: &mut HashMap<String, i64>,
+    caches: &mut ScanCaches,
     name: &str,
 ) -> Result<i64, String> {
-    // 规整名入库与匹配：「陈奕迅（Eason Chan）」与「陈奕迅」命中同一位艺人，展示名取规整名
-    let base = canonical_artist(name);
+    // 规整名入库与匹配：「陈奕迅（Eason Chan）」与「陈奕迅」命中同一位艺人，展示名取规整名；
+    // 别名（合并记忆）优先级在规整之后——旧名直接落到主艺人名下，不再重建独立艺人
+    let base = resolve_artist(caches, name);
     let key = base.to_lowercase();
-    if let Some(id) = cache.get(&key) {
+    if let Some(id) = caches.artists.get(&key) {
         return Ok(*id);
     }
-    tx.execute("INSERT OR IGNORE INTO artists (name) VALUES (?1)", [&base]).map_err(|e| e.to_string())?;
-    let id: i64 = tx
-        .query_row("SELECT id FROM artists WHERE name = ?1 COLLATE NOCASE", [&base], |r| r.get(0))
+    tx.execute("INSERT OR IGNORE INTO artists (name) VALUES (?1)", [&base])
         .map_err(|e| e.to_string())?;
-    cache.insert(key, id);
+    let id: i64 = tx
+        .query_row(
+            "SELECT id FROM artists WHERE name = ?1 COLLATE NOCASE",
+            [&base],
+            |r| r.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+    caches.artists.insert(key, id);
     Ok(id)
 }
 
@@ -765,33 +978,73 @@ fn delete_missing(
     existing: &HashMap<String, (i64, i64, i64)>,
     walked: &HashSet<String>,
 ) -> Result<usize, String> {
-    let to_remove: Vec<String> = existing.keys().filter(|p| !walked.contains(*p)).cloned().collect();
+    let to_remove: Vec<String> = existing
+        .keys()
+        .filter(|p| !walked.contains(*p))
+        .cloned()
+        .collect();
     let mut removed = 0usize;
     for chunk in to_remove.chunks(500) {
         let tx = conn.transaction().map_err(|e| e.to_string())?;
 
         // 先收集要删除的 track_ids，并显式清理子表引用
         //（兼容未配置 ON DELETE CASCADE 的旧数据库，避免 FOREIGN KEY constraint failed）
-        let mut track_ids: Vec<i64> = Vec::with_capacity(chunk.len());
+        // 取待删曲目的展示信息（写移除记录用）+ id
+        struct RemovedInfo {
+            id: i64,
+            title: String,
+            artist: Option<String>,
+            album: Option<String>,
+            path: String,
+        }
+        let mut removed_infos: Vec<RemovedInfo> = Vec::with_capacity(chunk.len());
         for rel in chunk {
-            let tid: Option<i64> = tx
+            let info = tx
                 .query_row(
-                    "SELECT id FROM tracks WHERE source_id = ?1 AND path = ?2",
+                    "SELECT t.id, t.title, a.name, al.title, t.path FROM tracks t \
+                     LEFT JOIN artists a ON a.id = t.artist_id \
+                     LEFT JOIN albums al ON al.id = t.album_id \
+                     WHERE t.source_id = ?1 AND t.path = ?2",
                     params![source_id, rel],
-                    |r| r.get(0),
+                    |r| {
+                        Ok(RemovedInfo {
+                            id: r.get(0)?,
+                            title: r.get(1)?,
+                            artist: r.get(2)?,
+                            album: r.get(3)?,
+                            path: r.get(4)?,
+                        })
+                    },
                 )
                 .optional()
                 .map_err(|e| e.to_string())?;
-            if let Some(id) = tid {
-                track_ids.push(id);
+            if let Some(info) = info {
+                removed_infos.push(info);
             }
+        }
+        let track_ids: Vec<i64> = removed_infos.iter().map(|i| i.id).collect();
+        // 写移除记录（设置 → 已移除歌曲 可查看）：文件消失属于「扫描移除」
+        let removed_at = now_secs();
+        for info in &removed_infos {
+            tx.execute(
+                "INSERT INTO removed_tracks (title, artist, album, path, source_id, reason, removed_at) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, 'scan', ?6)",
+                params![info.title, info.artist, info.album, info.path, source_id, removed_at],
+            )
+            .map_err(|e| e.to_string())?;
         }
         // 显式删除子表引用（track_artists, playlist_items, lrc_files, lyrics_index）
         for tid in &track_ids {
-            tx.execute("DELETE FROM track_artists WHERE track_id = ?1", params![tid])
-                .map_err(|e| e.to_string())?;
-            tx.execute("DELETE FROM playlist_items WHERE track_id = ?1", params![tid])
-                .map_err(|e| e.to_string())?;
+            tx.execute(
+                "DELETE FROM track_artists WHERE track_id = ?1",
+                params![tid],
+            )
+            .map_err(|e| e.to_string())?;
+            tx.execute(
+                "DELETE FROM playlist_items WHERE track_id = ?1",
+                params![tid],
+            )
+            .map_err(|e| e.to_string())?;
             tx.execute("DELETE FROM lrc_files WHERE track_id = ?1", params![tid])
                 .map_err(|e| e.to_string())?;
             tx.execute("DELETE FROM lyrics_index WHERE track_id = ?1", params![tid])
@@ -810,13 +1063,21 @@ fn delete_missing(
         // 提交后同步清理封面缓存，防止 rowid 复用后新专辑命中旧封面
         let orphan_albums: Vec<i64> = {
             let mut stmt = tx
-                .prepare("SELECT id FROM albums WHERE id NOT IN (SELECT DISTINCT album_id FROM tracks)")
+                .prepare(
+                    "SELECT id FROM albums WHERE id NOT IN (SELECT DISTINCT album_id FROM tracks)",
+                )
                 .map_err(|e| e.to_string())?;
-            let rows = stmt.query_map([], |r| r.get::<_, i64>(0)).map_err(|e| e.to_string())?;
-            rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?
+            let rows = stmt
+                .query_map([], |r| r.get::<_, i64>(0))
+                .map_err(|e| e.to_string())?;
+            rows.collect::<Result<Vec<_>, _>>()
+                .map_err(|e| e.to_string())?
         };
-        tx.execute("DELETE FROM albums WHERE id NOT IN (SELECT DISTINCT album_id FROM tracks)", [])
-            .map_err(|e| e.to_string())?;
+        tx.execute(
+            "DELETE FROM albums WHERE id NOT IN (SELECT DISTINCT album_id FROM tracks)",
+            [],
+        )
+        .map_err(|e| e.to_string())?;
         // 保留仍被专辑引用的艺人（专辑归属艺人可能没有直接归属的曲目）
         tx.execute(
             "DELETE FROM artists WHERE id NOT IN (SELECT DISTINCT artist_id FROM tracks)
@@ -830,6 +1091,8 @@ fn delete_missing(
             crate::covers::purge(&app.state::<AppState>().covers_dir, &orphan_albums);
         }
     }
+    // 移除记录裁剪到上限（旧记录让位给新记录）
+    db::cap_removed_log(conn).map_err(|e| e.to_string())?;
     Ok(removed)
 }
 
@@ -888,11 +1151,16 @@ fn rel_path(base: &Path, full: &Path) -> String {
 }
 
 fn decoded_url_path(u: &Url) -> String {
-    percent_encoding::percent_decode_str(u.path()).decode_utf8_lossy().into_owned()
+    percent_encoding::percent_decode_str(u.path())
+        .decode_utf8_lossy()
+        .into_owned()
 }
 
 fn ext_of(rel: &str) -> Option<String> {
-    Path::new(rel).extension().and_then(|e| e.to_str()).map(|s| s.to_ascii_lowercase())
+    Path::new(rel)
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|s| s.to_ascii_lowercase())
 }
 
 fn stem_of(rel: &str) -> String {
@@ -904,7 +1172,10 @@ fn stem_of(rel: &str) -> String {
 
 /// "A/B/song.flac" → "A/B/song"
 fn stem_key(rel: &str) -> String {
-    Path::new(rel).with_extension("").to_string_lossy().replace('\\', "/")
+    Path::new(rel)
+        .with_extension("")
+        .to_string_lossy()
+        .replace('\\', "/")
 }
 
 fn parent_dir(rel: &str) -> String {
@@ -1049,12 +1320,15 @@ pub fn split_artists(name: &str, seps: &[char]) -> Vec<String> {
 
 #[cfg(test)]
 mod split_artists_tests {
-    use super::{split_artists, canonical_artist, ARTIST_SEPARATORS, parse_separators};
+    use super::{canonical_artist, parse_separators, split_artists, ARTIST_SEPARATORS};
 
     #[test]
     fn canonical_strips_trailing_zh_parenthesis() {
         assert_eq!(canonical_artist("陈奕迅（Eason Chan）"), "陈奕迅");
-        assert_eq!(canonical_artist("陈奕迅（Eason Chan）"), canonical_artist("陈奕迅"));
+        assert_eq!(
+            canonical_artist("陈奕迅（Eason Chan）"),
+            canonical_artist("陈奕迅")
+        );
     }
 
     #[test]
@@ -1075,7 +1349,10 @@ mod split_artists_tests {
     #[test]
     fn split_dedupes_by_canonical_name() {
         // split_artists 只做拆分与精确去重；规整（canonical_artist）在 get_or_create_artist 阶段生效
-        assert_eq!(split_artists("A（x） / a", ARTIST_SEPARATORS), vec!["A（x）", "a"]);
+        assert_eq!(
+            split_artists("A（x） / a", ARTIST_SEPARATORS),
+            vec!["A（x）", "a"]
+        );
         // 完全相同的名字才会去重
         assert_eq!(split_artists("A / A", ARTIST_SEPARATORS), vec!["A"]);
     }
@@ -1083,23 +1360,41 @@ mod split_artists_tests {
     #[test]
     fn keeps_single_artist() {
         assert_eq!(split_artists("周杰伦", ARTIST_SEPARATORS), vec!["周杰伦"]);
-        assert_eq!(split_artists("未知艺人", ARTIST_SEPARATORS), vec!["未知艺人"]);
+        assert_eq!(
+            split_artists("未知艺人", ARTIST_SEPARATORS),
+            vec!["未知艺人"]
+        );
     }
 
     #[test]
     fn splits_common_separators() {
-        assert_eq!(split_artists("周杰伦 / 费玉清", ARTIST_SEPARATORS), vec!["周杰伦", "费玉清"]);
+        assert_eq!(
+            split_artists("周杰伦 / 费玉清", ARTIST_SEPARATORS),
+            vec!["周杰伦", "费玉清"]
+        );
         assert_eq!(split_artists("A & B", ARTIST_SEPARATORS), vec!["A", "B"]);
-        assert_eq!(split_artists("A、B、C", ARTIST_SEPARATORS), vec!["A", "B", "C"]);
+        assert_eq!(
+            split_artists("A、B、C", ARTIST_SEPARATORS),
+            vec!["A", "B", "C"]
+        );
         assert_eq!(split_artists("A；B", ARTIST_SEPARATORS), vec!["A", "B"]);
         assert_eq!(split_artists("A，B", ARTIST_SEPARATORS), vec!["A", "B"]);
     }
 
     #[test]
     fn splits_featuring_tokens() {
-        assert_eq!(split_artists("A feat. B", ARTIST_SEPARATORS), vec!["A", "B"]);
-        assert_eq!(split_artists("A Feat. B", ARTIST_SEPARATORS), vec!["A", "B"]);
-        assert_eq!(split_artists("A featuring B", ARTIST_SEPARATORS), vec!["A", "B"]);
+        assert_eq!(
+            split_artists("A feat. B", ARTIST_SEPARATORS),
+            vec!["A", "B"]
+        );
+        assert_eq!(
+            split_artists("A Feat. B", ARTIST_SEPARATORS),
+            vec!["A", "B"]
+        );
+        assert_eq!(
+            split_artists("A featuring B", ARTIST_SEPARATORS),
+            vec!["A", "B"]
+        );
         assert_eq!(split_artists("A ft. B", ARTIST_SEPARATORS), vec!["A", "B"]);
         // 词中包含 feat 字样的艺人名不应被拆；结尾悬空的 "feat" 视为残留标注，拆掉后清理
         assert_eq!(split_artists("Feature", ARTIST_SEPARATORS), vec!["Feature"]);
@@ -1109,7 +1404,10 @@ mod split_artists_tests {
     #[test]
     fn dedupes_and_trims() {
         assert_eq!(split_artists("A / a", ARTIST_SEPARATORS), vec!["A"]);
-        assert_eq!(split_artists("  A  /  B  ", ARTIST_SEPARATORS), vec!["A", "B"]);
+        assert_eq!(
+            split_artists("  A  /  B  ", ARTIST_SEPARATORS),
+            vec!["A", "B"]
+        );
     }
 
     #[test]
@@ -1138,6 +1436,55 @@ mod split_artists_tests {
         assert_eq!(parse_separators(""), ARTIST_SEPARATORS.to_vec());
         // 全部停用也至少保留 ';'（feat. 归一目标）
         assert_eq!(parse_separators("、&"), vec![';', '、', '&']);
+    }
+}
+
+#[cfg(test)]
+mod skip_dirs_tests {
+    use super::{is_skipped_dir, load_skip_dirs, BUILTIN_SKIP_DIRS, SKIP_DIRS_KEY};
+    use crate::db;
+    use std::collections::HashSet;
+
+    fn builtin_set() -> HashSet<String> {
+        BUILTIN_SKIP_DIRS.iter().map(|s| s.to_lowercase()).collect()
+    }
+
+    #[test]
+    fn builtin_dirs_are_skipped_case_insensitively() {
+        let skip = builtin_set();
+        assert!(is_skipped_dir(std::ffi::OsStr::new("#recycle"), &skip));
+        assert!(is_skipped_dir(std::ffi::OsStr::new("#RECYCLE"), &skip));
+        assert!(is_skipped_dir(std::ffi::OsStr::new("@eaDir"), &skip));
+        assert!(is_skipped_dir(std::ffi::OsStr::new("$RECYCLE.BIN"), &skip));
+        // 目录名只是包含关键字不算命中（匹配的是整个目录名）
+        assert!(!is_skipped_dir(std::ffi::OsStr::new("recycle"), &skip));
+        assert!(!is_skipped_dir(std::ffi::OsStr::new("我的音乐"), &skip));
+    }
+
+    #[test]
+    fn trash_prefix_variants_are_skipped() {
+        let skip = builtin_set();
+        assert!(is_skipped_dir(std::ffi::OsStr::new(".Trash-0"), &skip));
+        assert!(is_skipped_dir(std::ffi::OsStr::new(".Trash-1000"), &skip));
+        // 纯前缀匹配只放行 .Trash 系列回收站，不影响普通目录
+        assert!(!is_skipped_dir(std::ffi::OsStr::new(".Trashy"), &skip));
+    }
+
+    #[test]
+    fn user_config_merges_with_builtin() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute_batch("CREATE TABLE app_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+            .unwrap();
+        db::set_setting(&conn, SKIP_DIRS_KEY, "私人收藏，#tmp\nMy Folder").unwrap();
+        let skip = load_skip_dirs(&conn);
+        // 逗号 / 换行都可作为分隔符
+        assert!(skip.contains("私人收藏"));
+        assert!(skip.contains("#tmp"));
+        // 目录名可含空格，整段保留并小写化
+        assert!(skip.contains("my folder"));
+        assert!(is_skipped_dir(std::ffi::OsStr::new("My Folder"), &skip));
+        // 内置名单始终生效
+        assert!(skip.contains("#recycle"));
     }
 }
 
@@ -1203,18 +1550,35 @@ fn fallback_track(rel: &str, mtime: i64, size: i64, has_mv: bool, meta_state: i6
     }
 }
 
-fn parsed_from_meta(rel: &str, meta: TrackMeta, mtime: i64, size: i64, has_mv: bool) -> ParsedTrack {
+fn parsed_from_meta(
+    rel: &str,
+    meta: TrackMeta,
+    mtime: i64,
+    size: i64,
+    has_mv: bool,
+) -> ParsedTrack {
     let artist = meta
         .artist
         .clone()
         .or_else(|| meta.album_artist.clone())
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| "未知艺人".into());
-    let album_title = meta.album.clone().filter(|s| !s.is_empty()).unwrap_or_else(|| "未知专辑".into());
-    let album_artist = meta.album_artist.clone().filter(|s| !s.is_empty()).unwrap_or_else(|| artist.clone());
+    let album_title = meta
+        .album
+        .clone()
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "未知专辑".into());
+    let album_artist = meta
+        .album_artist
+        .clone()
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| artist.clone());
     ParsedTrack {
         rel: rel.to_string(),
-        title: meta.title.filter(|s| !s.is_empty()).unwrap_or_else(|| stem_of(rel)),
+        title: meta
+            .title
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| stem_of(rel)),
         artist,
         album_title,
         album_artist,

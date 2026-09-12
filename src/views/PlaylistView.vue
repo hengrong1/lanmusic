@@ -1,16 +1,20 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { ListCheckIcon as ListChecks } from '@solar-icons/vue/linear/list-check'
+import { ListCrossMinimalisticIcon as ListCross } from '@solar-icons/vue/linear/list-cross-minimalistic'
+import { AddSquareIcon as AddSquare } from '@solar-icons/vue/linear/add-square'
+import { TrashBinTrashIcon as TrashBinTrash } from '@solar-icons/vue/linear/trash-bin-trash'
 import { PlaylistIcon as ListMusic } from '@solar-icons/vue/linear/playlist'
 import { Playlist2Icon as ListPlus } from '@solar-icons/vue/linear/playlist-2'
 import { RefreshIcon as LoaderCircle } from '@solar-icons/vue/linear/refresh'
 import { PenIcon as Pencil } from '@solar-icons/vue/linear/pen'
 import { PlayIcon as Play } from '@solar-icons/vue/bold/play'
-import { TrashBin2Icon as Trash2 } from '@solar-icons/vue/linear/trash-bin-2'
 import { AddIcon as Plus } from '@solar-icons/vue/linear/add'
 import TrackTable from '@/components/TrackTable.vue'
 import TrackPicker from '@/components/TrackPicker.vue'
 import PlaylistEditDialog from '@/components/PlaylistEditDialog.vue'
+import ContextMenu from '@/components/ContextMenu.vue'
+import type { MenuItem } from '@/components/ContextMenu.vue'
 import CoverImg from '@/components/CoverImg.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import { useLibraryStore } from '@/stores/library'
@@ -18,6 +22,7 @@ import { usePlayerStore } from '@/stores/player'
 import { useNav } from '@/composables/useNav'
 import { useStagger } from '@/composables/useStagger'
 import { toast } from '@/composables/useToast'
+import { confirmDialog } from '@/composables/useConfirm'
 import { api } from '@/api/commands'
 import type { Track } from '@/types'
 import { BaseButton } from '@/components/ui'
@@ -37,7 +42,8 @@ const pickerOpen = ref(false)
 const editOpen = ref(false)
 
 const root = ref<HTMLElement | null>(null)
-useStagger(root, computed(() => tracks.value.length > 0))
+// ready = 数据落定（加载完成，空也算就绪）：加载中先隐藏 stagger 元素，就绪后播一次
+useStagger(root, computed(() => tracks.value.length > 0 || !loading.value))
 
 const playlistId = computed(() => nav.current.value.playlistId ?? null)
 const playlistName = computed(() => nav.current.value.playlistName ?? t('playlist.title'))
@@ -123,19 +129,77 @@ async function batchRemove() {
     toast(errorText(e), 'error')
   }
 }
+/** 从曲库移除（不删磁盘文件；记录可在设置 → 已移除歌曲 查看） */
+async function batchRemoveFromLibrary() {
+  if (!selIds.value.length) return
+  const ok = await confirmDialog({
+    title: t('library.removeTracksTitle', { count: selIds.value.length }),
+    message: t('library.removeTracksMessage'),
+    danger: true,
+    confirmText: t('library.removeTracksConfirm'),
+  })
+  if (!ok) return
+  try {
+    const removed = await api.removeTracks(selIds.value)
+    toast(t('library.removedFromLibrary', { count: removed }))
+    exitBatch()
+    await Promise.all([load(), library.loadPlaylists(), library.loadStats()])
+    await ensureCurrentTrackAlive()
+  } catch (e) {
+    toast(errorText(e), 'error')
+  }
+}
+/** 移除可能波及正在播放的歌曲：仍存在则不动，已消失则清空播放队列 */
+async function ensureCurrentTrackAlive() {
+  const player = usePlayerStore()
+  if (!player.current) return
+  const still = await api.getTrack(player.current.id).catch(() => null)
+  if (!still) player.clearQueue()
+}
 
+// ---- 添加到歌单：按钮位置弹出歌单菜单（复用 ContextMenu）----
+const playlistMenu = ref<{ x: number; y: number } | null>(null)
+const playlistMenuItems = ref<MenuItem[]>([])
+
+function batchAddToPlaylist(e: MouseEvent) {
+  if (!selIds.value.length) return
+  if (!library.playlists.length) {
+    toast(t('playlist.noneToPick'))
+    return
+  }
+  playlistMenu.value = { x: e.clientX, y: e.clientY }
+  playlistMenuItems.value = library.playlists.slice(0, 50).map((p) => ({
+    label: `${p.name} (${p.trackCount})`,
+    action: () => void addSelectedToPlaylist(p.id),
+  }))
+}
+async function addSelectedToPlaylist(pid: number) {
+  try {
+    // library.addToPlaylist 自带「新增 N 首 / 全部已在歌单」toast
+    await library.addToPlaylist(pid, selIds.value)
+    exitBatch()
+  } catch (e) {
+    toast(errorText(e), 'error')
+  }
+}
+
+/** 请求序号：快速切换歌单时旧回包直接丢弃，防止「标题是 B、内容是 A」 */
+let loadSeq = 0
 async function load() {
   const id = playlistId.value
   if (id == null) return
+  const my = ++loadSeq
   loading.value = true
   try {
-    tracks.value = await api.playlistGetItems(id)
+    const [items, cover] = await Promise.all([api.playlistGetItems(id), api.playlistCover(id)])
+    if (my !== loadSeq) return
+    tracks.value = items
     // 歌单封面 = 最新加入歌曲的专辑封面
-    coverAlbumId.value = await api.playlistCover(id)
+    coverAlbumId.value = cover
   } catch (e) {
-    toast(errorText(e), 'error')
+    if (my === loadSeq) toast(errorText(e), 'error')
   } finally {
-    loading.value = false
+    if (my === loadSeq) loading.value = false
   }
 }
 
@@ -250,6 +314,15 @@ async function onPickerAdded() {
       @deleted="onDeleted"
     />
 
+    <!-- 添加到歌单：歌单选择菜单 -->
+    <ContextMenu
+      v-if="playlistMenu"
+      :x="playlistMenu.x"
+      :y="playlistMenu.y"
+      :items="playlistMenuItems"
+      @close="playlistMenu = null"
+    />
+
     <!-- 批量操作条 -->
     <Transition
       enter-active-class="transition duration-200 ease-out"
@@ -259,12 +332,14 @@ async function onPickerAdded() {
     >
       <div
         v-if="batchMode && selIds.length"
-        class="fixed bottom-24 left-1/2 z-30 flex -translate-x-1/2 items-center gap-1 rounded-full border border-zinc-200 bg-white px-3 py-2 shadow-xl dark:border-zinc-700 dark:bg-zinc-800"
+        class="fixed bottom-24 left-1/2 z-30 flex max-w-[calc(100vw-16px)] -translate-x-1/2 flex-wrap items-center justify-center gap-1.5 rounded-2xl border border-zinc-200 bg-white px-3.5 py-2 shadow-xl [&>*]:shrink-0 dark:border-zinc-700 dark:bg-zinc-800"
       >
         <span class="px-2 text-xs font-medium text-zinc-500 dark:text-zinc-400">{{ selLabel }}</span>
         <BaseButton variant="ghost" size="sm" :icon="Play" @click="batchPlay">{{ $t('player.play') }}</BaseButton>
         <BaseButton variant="ghost" size="sm" :icon="ListPlus" @click="batchEnqueue">{{ $t('player.addToQueue') }}</BaseButton>
-        <BaseButton variant="ghost" tone="danger" size="sm" :icon="Trash2" @click="batchRemove">{{ $t('playlist.removeFromPlaylist') }}</BaseButton>
+        <BaseButton variant="ghost" size="sm" :icon="AddSquare" @click="batchAddToPlaylist">{{ $t('playlist.addToPlaylist') }}</BaseButton>
+        <BaseButton variant="ghost" tone="danger" size="sm" :icon="ListCross" @click="batchRemove">{{ $t('playlist.removeFromPlaylist') }}</BaseButton>
+        <BaseButton variant="ghost" tone="danger" size="sm" :icon="TrashBinTrash" @click="batchRemoveFromLibrary">{{ $t('library.removeFromLibrary') }}</BaseButton>
         <BaseButton variant="ghost" size="sm" class="ml-1" @click="exitBatch">{{ $t('common.cancel') }}</BaseButton>
       </div>
     </Transition>

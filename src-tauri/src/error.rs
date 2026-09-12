@@ -58,6 +58,12 @@ pub mod codes {
     /// 下载歌词返回 {status}
     pub const LYRICS_DOWNLOAD_STATUS: &str = "lyrics.downloadStatus";
 
+    // ---- 艺人 ----
+    /// 自定义合并的源与目标是同一位艺人
+    pub const ARTIST_MERGE_SAME: &str = "artist.mergeSame";
+    /// 艺人不存在（自定义合并时选中的艺人已被删除等）
+    pub const ARTIST_NOT_FOUND: &str = "artist.notFound";
+
     // ---- 系统钥匙串 ----
     /// 系统钥匙串不可用：{error}
     pub const KEYRING_UNAVAILABLE: &str = "keyring.unavailable";
@@ -103,7 +109,10 @@ struct AppErr {
 
 impl AppErr {
     fn new(code: &'static str) -> Self {
-        Self { code, params: Vec::new() }
+        Self {
+            code,
+            params: Vec::new(),
+        }
     }
 
     fn param(mut self, key: &'static str, value: impl std::fmt::Display) -> Self {
@@ -119,7 +128,11 @@ impl AppErr {
         for (k, v) in self.params {
             map.insert(k.to_string(), serde_json::Value::String(v));
         }
-        format!("{}{}", PREFIX, serde_json::json!({ "code": self.code, "params": map }))
+        format!(
+            "{}{}",
+            PREFIX,
+            serde_json::json!({ "code": self.code, "params": map })
+        )
     }
 }
 
@@ -139,12 +152,19 @@ mod tests {
 
     #[test]
     fn envelope_without_params() {
-        assert_eq!(err(codes::SOURCE_SCANNING), r#"LMERR:{"code":"source.scanning"}"#);
+        assert_eq!(
+            err(codes::SOURCE_SCANNING),
+            r#"LMERR:{"code":"source.scanning"}"#
+        );
     }
 
     #[test]
     fn envelope_with_param() {
-        let s = err1(codes::WEBDAV_INVALID_URL, "error", "relative URL without a base");
+        let s = err1(
+            codes::WEBDAV_INVALID_URL,
+            "error",
+            "relative URL without a base",
+        );
         assert!(s.starts_with(PREFIX));
         let parsed: serde_json::Value =
             serde_json::from_str(&s[PREFIX.len()..]).expect("信封必须是合法 JSON");

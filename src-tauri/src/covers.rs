@@ -12,7 +12,13 @@ use tauri::{AppHandle, Manager, Runtime};
 use crate::state::AppState;
 
 pub(crate) const COVER_NAMES: &[&str] = &[
-    "cover.jpg", "cover.jpeg", "cover.png", "folder.jpg", "folder.png", "front.jpg", "front.png",
+    "cover.jpg",
+    "cover.jpeg",
+    "cover.png",
+    "folder.jpg",
+    "folder.png",
+    "front.jpg",
+    "front.png",
 ];
 const MAX_DIM: u32 = 512;
 
@@ -21,7 +27,10 @@ const REMOTE_COVER_PROBE: u64 = 512 * 1024;
 const REMOTE_COVER_MAX: u64 = 2 * 1024 * 1024;
 
 /// 确保专辑封面已缓存。返回 Some(缓存文件路径) / None（确认无封面或暂不可得）。
-pub fn ensure_cover<R: Runtime>(app: &AppHandle<R>, album_id: i64) -> Result<Option<PathBuf>, String> {
+pub fn ensure_cover<R: Runtime>(
+    app: &AppHandle<R>,
+    album_id: i64,
+) -> Result<Option<PathBuf>, String> {
     let state = app.state::<AppState>();
     let jpg = state.covers_dir.join(format!("{album_id}.jpg"));
     let none = state.covers_dir.join(format!("{album_id}.none"));
@@ -46,9 +55,11 @@ pub fn ensure_cover<R: Runtime>(app: &AppHandle<R>, album_id: i64) -> Result<Opt
     let (cover_url, local_candidates, remote_candidates) = {
         let conn = state.db.lock().map_err(|e| e.to_string())?;
         let cover_url = conn
-            .query_row("SELECT cover_url FROM albums WHERE id = ?1", [album_id], |r| {
-                r.get::<_, Option<String>>(0)
-            })
+            .query_row(
+                "SELECT cover_url FROM albums WHERE id = ?1",
+                [album_id],
+                |r| r.get::<_, Option<String>>(0),
+            )
             .unwrap_or(None);
 
         let mut locals = Vec::new();
@@ -62,7 +73,9 @@ pub fn ensure_cover<R: Runtime>(app: &AppHandle<R>, album_id: i64) -> Result<Opt
                 )
                 .map_err(|e| e.to_string())?;
             let rows = stmt
-                .query_map([album_id], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))
+                .query_map([album_id], |r| {
+                    Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+                })
                 .map_err(|e| e.to_string())?;
             for row in rows {
                 locals.push(row.map_err(|e| e.to_string())?);
@@ -98,7 +111,8 @@ pub fn ensure_cover<R: Runtime>(app: &AppHandle<R>, album_id: i64) -> Result<Opt
         (cover_url, locals, remotes)
     };
 
-    let save = |bytes: &[u8]| -> Result<(), String> { save_cover(&state.covers_dir, album_id, bytes) };
+    let save =
+        |bytes: &[u8]| -> Result<(), String> { save_cover(&state.covers_dir, album_id, bytes) };
     let mut attempted = false; // 是否真的向某个来源发起过尝试
     let mut got_bytes = false; // 是否至少从某个来源拿到了数据
 
@@ -107,7 +121,8 @@ pub fn ensure_cover<R: Runtime>(app: &AppHandle<R>, album_id: i64) -> Result<Opt
         attempted = true;
         if let Ok(parsed) = url::Url::parse(&url) {
             let auth = webdav_auth_for_album(app, album_id);
-            if let Ok(bytes) = crate::network::webdav::download(&parsed, auth.as_ref(), None) {
+            if let Ok(bytes) = crate::network::webdav::download_short(&parsed, auth.as_ref(), None)
+            {
                 got_bytes = true;
                 if save(&bytes).is_ok() {
                     mark_cover(app, album_id)?;
@@ -120,13 +135,16 @@ pub fn ensure_cover<R: Runtime>(app: &AppHandle<R>, album_id: i64) -> Result<Opt
     // 2) WebDAV 曲目内嵌封面。云端曲库一般不放同级 cover.jpg（cover_url 因此为 NULL），
     //    封面在内嵌标签里，只能拉文件头部字节交给 lofty 解析——与扫描读标签同一套路。
     for (rel, source_id, base_url, config) in &remote_candidates {
-        let Ok(base) = crate::network::webdav::normalize_base(base_url) else { continue };
+        let Ok(base) = crate::network::webdav::normalize_base(base_url) else {
+            continue;
+        };
         let url = crate::network::webdav::file_url(&base, rel);
         let auth = crate::network::webdav::Auth::from_source(config.as_deref(), *source_id);
         // 先用 512KB 试探（覆盖绝大多数 ID3v2/FLAC 封面），不中再退到 2MB
         for size in [REMOTE_COVER_PROBE, REMOTE_COVER_MAX] {
             attempted = true;
-            let fetched = crate::network::webdav::download(&url, auth.as_ref(), Some((0, size - 1)));
+            let fetched =
+                crate::network::webdav::download_short(&url, auth.as_ref(), Some((0, size - 1)));
             let Ok(bytes) = fetched else { break };
             got_bytes = true;
             let short = (bytes.len() as u64) < size; // 响应体小于请求量 ⇒ 文件已全部拿到
@@ -197,7 +215,9 @@ fn webdav_auth_for_album<R: Runtime>(
         |r| Ok((r.get::<_, i64>(0)?, r.get::<_, Option<String>>(1)?)),
     )
     .ok()
-    .and_then(|(source_id, cfg)| crate::network::webdav::Auth::from_source(cfg.as_deref(), source_id))
+    .and_then(|(source_id, cfg)| {
+        crate::network::webdav::Auth::from_source(cfg.as_deref(), source_id)
+    })
 }
 
 fn mark_cover<R: Runtime>(app: &AppHandle<R>, album_id: i64) -> Result<(), String> {
@@ -267,7 +287,9 @@ pub fn enforce_limit(covers_dir: &Path, max_bytes: u64) {
     if max_bytes == 0 {
         return;
     }
-    let Ok(rd) = std::fs::read_dir(covers_dir) else { return };
+    let Ok(rd) = std::fs::read_dir(covers_dir) else {
+        return;
+    };
     let mut files: Vec<(PathBuf, u64, std::time::SystemTime, bool)> = Vec::new();
     let mut total = 0u64;
     for entry in rd.flatten() {
@@ -282,7 +304,12 @@ pub fn enforce_limit(covers_dir: &Path, max_bytes: u64) {
             continue;
         }
         total += meta.len();
-        files.push((p, meta.len(), meta.modified().unwrap_or(std::time::UNIX_EPOCH), is_sentinel));
+        files.push((
+            p,
+            meta.len(),
+            meta.modified().unwrap_or(std::time::UNIX_EPOCH),
+            is_sentinel,
+        ));
     }
     if total <= max_bytes {
         return;

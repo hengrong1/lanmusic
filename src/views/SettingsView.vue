@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { open as openDialog } from '@tauri-apps/plugin-dialog'
 import { getVersion } from '@tauri-apps/api/app'
 import { DatabaseIcon as HardDriveBold } from '@solar-icons/vue/bold/database'
@@ -33,7 +33,7 @@ import { useUpdater } from '@/composables/useUpdater'
 import { usePlayerStore } from '@/stores/player'
 import { api } from '@/api/commands'
 import { getSearchSettings, setSearchSettings, type SearchSettings } from '@/composables/useSearchSettings'
-import type { ArtistNormalizeChange, ArtistSplitChange, Source } from '@/types'
+import type { ArtistAlias, ArtistNormalizeChange, ArtistSplitChange, RemovedTrack, Source } from '@/types'
 import { setLocale } from '@/i18n'
 import { useI18n } from 'vue-i18n'
 import {
@@ -42,12 +42,15 @@ import {
   BaseCheckbox,
   BaseColorPicker,
   BaseInput,
+  BaseModal,
   BaseSwitch,
   BaseSelect,
   BaseSlider,
+  BaseTagInput,
 } from '@/components/ui'
 import type { ButtonGroupItem, SelectOption } from '@/components/ui'
 import { errorText } from '@/i18n/error'
+import { hexToRgba } from '@/utils/color'
 
 const library = useLibraryStore()
 const { mode, setTheme } = useTheme()
@@ -126,12 +129,14 @@ function getCloseAction(): CloseAction {
 }
 function setCloseAction(action: string | number) {
   const v = action as CloseAction
+  closeActionTouched = true // 用户已手动操作：启动期的 SQLite 回读不得再回滚此值
   localStorage.setItem('lm.closeAction', v)
   // 同步到 SQLite，供 Rust 侧关闭事件使用
   api.setSetting('lm.closeAction', v).catch(() => {})
   toast(v === 'tray' ? t('settings.closeToTray') : t('settings.closeToQuit'))
 }
 const closeAction = ref(getCloseAction())
+let closeActionTouched = false
 const closeActionItems = computed<ButtonGroupItem[]>(() => [
   { value: 'tray', label: t('settings.closeActionTray') },
   { value: 'quit', label: t('settings.closeActionQuit') },
@@ -140,6 +145,7 @@ const closeActionItems = computed<ButtonGroupItem[]>(() => [
 onMounted(() => {
   api.getSetting('lm.closeAction')
     .then((v) => {
+      if (closeActionTouched) return
       if (v === 'tray' || v === 'quit') {
         closeAction.value = v
         localStorage.setItem('lm.closeAction', v)
@@ -254,10 +260,67 @@ async function onNormalizeArtists() {
     } else {
       toast(t('settings.artistNormalizeNone'))
     }
+    // 规整会产生新的合并记录，已合并名单与艺人下拉同步刷新
+    await Promise.all([loadArtistAliases(), loadArtistOptions()])
   } catch (e) {
     toast(errorText(e), 'error')
   } finally {
     normalizeApplying.value = false
+  }
+}
+
+// ---- 已合并名单 + 自定义合并（a 与 b 实为同一人时手动归并）----
+const artistAliases = ref<ArtistAlias[]>([])
+
+async function loadArtistAliases() {
+  try {
+    artistAliases.value = await api.listArtistAliases()
+  } catch (e) {
+    toast(errorText(e), 'error')
+  }
+}
+void loadArtistAliases()
+
+/** 艺人下拉选项（按名称排序，最多前 1000 位——与艺人页同一上限口径） */
+const artistOptions = ref<SelectOption[]>([])
+const artistOptionsLoading = ref(false)
+
+async function loadArtistOptions() {
+  artistOptionsLoading.value = true
+  try {
+    const page = await api.queryArtists(undefined, 0, 1000)
+    artistOptions.value = page.items.map((a) => ({ value: a.id, label: a.name }))
+  } catch (e) {
+    toast(errorText(e), 'error')
+  } finally {
+    artistOptionsLoading.value = false
+  }
+}
+void loadArtistOptions()
+
+const mergeKeep = ref<string | number>('')
+const mergeAbsorb = ref<string | number>('')
+const merging = ref(false)
+
+async function onMergeArtist() {
+  if (mergeKeep.value === '' || mergeAbsorb.value === '' || mergeKeep.value === mergeAbsorb.value) return
+  merging.value = true
+  try {
+    const change = await api.mergeArtist(Number(mergeAbsorb.value), Number(mergeKeep.value))
+    toast(
+      t('settings.artistMergeDone', {
+        old: change.oldName,
+        new: change.newName,
+        count: change.trackCount,
+      }),
+    )
+    mergeAbsorb.value = ''
+    // 合并后旧名成为别名、下拉里少一位艺人：两份列表都要刷新
+    await Promise.all([loadArtistAliases(), loadArtistOptions(), library.loadStats()])
+  } catch (e) {
+    toast(errorText(e), 'error')
+  } finally {
+    merging.value = false
   }
 }
 const DL_PLAY_PRESETS = ['#a78bfa', '#ffffff', '#22d3ee', '#4ade80', '#f472b6', '#fbbf24']
@@ -344,13 +407,7 @@ const debounceSelectOptions: SelectOption[] = [
   { value: 800, label: '800ms' },
 ]
 
-/** 桌面歌词预览：与浮窗完全一致的样式计算 */
-function hexToRgba(hex: string, alpha: number): string {
-  const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim())
-  if (!m) return `rgba(0, 0, 0, ${alpha})`
-  const n = parseInt(m[1], 16)
-  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`
-}
+/** 桌面歌词预览：与浮窗完全一致的样式计算（hexToRgba 实现在 utils/color.ts，与歌词浮窗共用） */
 const previewBoxStyle = computed(() => ({
   background:
     dlConfig.value.bgOpacity > 0 ? hexToRgba(dlConfig.value.bgColor, dlConfig.value.bgOpacity) : 'transparent',
@@ -381,11 +438,15 @@ useStagger(root, ref(true))
 // ---- 滚动高亮（scroll spy，rAF 节流）：高亮「顶部已越过容器顶 80px」的最后一个分区 ----
 const contentEl = ref<HTMLElement | null>(null)
 let spyTicking = false
+let spyRaf = 0
 function onContentScroll() {
   if (spyTicking) return
   spyTicking = true
-  requestAnimationFrame(updateActiveFromScroll)
+  spyRaf = requestAnimationFrame(updateActiveFromScroll)
 }
+onBeforeUnmount(() => {
+  if (spyRaf) cancelAnimationFrame(spyRaf)
+})
 function sectionEls(): HTMLElement[] {
   return root.value ? Array.from(root.value.querySelectorAll<HTMLElement>('[data-settings-section]')) : []
 }
@@ -414,7 +475,7 @@ onMounted(() => {
   if (active.value !== 'library') {
     document.getElementById(SECTION_ID_PREFIX + active.value)?.scrollIntoView({ block: 'start' })
   }
-  requestAnimationFrame(updateActiveFromScroll)
+  spyRaf = requestAnimationFrame(updateActiveFromScroll)
 })
 
 const appVersion = ref('')
@@ -491,6 +552,99 @@ async function toggleFastImport(s: Source, val?: boolean) {
   try {
     await library.setFastImport(s.id, next)
     toast(next ? t('settings.quickImportOn') : t('settings.quickImportOff'))
+  } catch (e) {
+    toast(errorText(e), 'error')
+  }
+}
+
+async function toggleScanSubdirs(s: Source, val?: boolean) {
+  const next = val ?? !s.scanSubdirs
+  if (next === s.scanSubdirs) return
+  try {
+    await library.setScanSubdirs(s.id, next)
+    toast(next ? t('settings.scanSubdirsOn') : t('settings.scanSubdirsOff'))
+  } catch (e) {
+    toast(errorText(e), 'error')
+  }
+}
+
+// ---- 跳过目录：扫描时忽略的目录名（与内置 NAS 回收站/系统目录合并生效）----
+// 存档沿用逗号分隔字符串（后端 load_skip_dirs 已按逗号/换行拆分），前端以标签数组编辑
+const SKIP_DIRS_KEY = 'scan.skipDirs'
+const skipDirs = ref<string[]>([])
+/** 最近一次成功保存的值（null = 还没从 SQLite 读到），用于判断标签变化是否需要落库 */
+let skipDirsSaved: string | null = null
+
+/** 把存档字符串拆成标签（去空白、大小写不敏感去重），与 BaseTagInput 的口径一致 */
+function parseSkipDirs(raw: string): string[] {
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const part of raw.split(/[，,；;\n\r]/).map((s) => s.trim()).filter(Boolean)) {
+    const key = part.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push(part)
+  }
+  return out
+}
+
+watch(skipDirs, (tags) => {
+  const joined = tags.join(',')
+  // 存档还没读到 / 与已保存值一致：不落库（读到存档后的首次赋值也会走到这里，属于空操作）
+  if (skipDirsSaved === null || joined === skipDirsSaved) return
+  void (async () => {
+    try {
+      await api.setSetting(SKIP_DIRS_KEY, joined)
+      skipDirsSaved = joined
+      toast(t('settings.skipDirsSaved'))
+    } catch (e) {
+      toast(errorText(e), 'error')
+    }
+  })()
+})
+
+api
+  .getSetting(SKIP_DIRS_KEY)
+  .then((v) => {
+    skipDirsSaved = v ?? ''
+    skipDirs.value = parseSkipDirs(v ?? '')
+  })
+  .catch(() => {
+    skipDirsSaved = ''
+  })
+
+// ---- 已移除歌曲记录（从曲库移除 / 扫描消失，留底便于找回；列表在弹出窗中查看）----
+const removedTracks = ref<RemovedTrack[]>([])
+const removedTracksLoaded = ref(false)
+const removedTracksOpen = ref(false)
+
+function openRemovedTracks() {
+  removedTracksOpen.value = true
+  if (!removedTracksLoaded.value) void loadRemovedTracks()
+}
+async function loadRemovedTracks() {
+  try {
+    removedTracks.value = await api.listRemovedTracks()
+    removedTracksLoaded.value = true
+  } catch (e) {
+    toast(errorText(e), 'error')
+  }
+}
+function removedReasonLabel(reason: string) {
+  return reason === 'scan' ? t('settings.removedTracksScan') : t('settings.removedTracksManual')
+}
+async function clearRemovedTracks() {
+  const ok = await confirmDialog({
+    title: t('settings.removedTracksClearTitle'),
+    message: t('settings.removedTracksClearMessage'),
+    danger: true,
+    confirmText: t('common.delete'),
+  })
+  if (!ok) return
+  try {
+    await api.clearRemovedTracks()
+    removedTracks.value = []
+    toast(t('settings.removedTracksCleared'))
   } catch (e) {
     toast(errorText(e), 'error')
   }
@@ -589,6 +743,17 @@ const showWebdavLimits = computed(() => showWebdav.value || library.sources.some
                         @update:model-value="(v) => toggleFastImport(s, v)"
                       />
                     </div>
+                    <div
+                      class="flex shrink-0 items-center gap-1.5 text-xs text-zinc-500"
+                      v-tooltip="t('settings.scanSubdirsTip')"
+                    >
+                      {{ t('settings.scanSubdirs') }}
+                      <BaseSwitch
+                        :model-value="s.scanSubdirs"
+                        size="sm"
+                        @update:model-value="(v) => toggleScanSubdirs(s, v)"
+                      />
+                    </div>
                     <div class="flex shrink-0 items-center gap-1">
                       <BaseButton
                         variant="ghost"
@@ -661,6 +826,80 @@ const showWebdavLimits = computed(() => showWebdav.value || library.sources.some
                 <p v-if="!library.sources.length" class="rounded-xl border border-dashed border-zinc-300 p-4 text-center text-sm text-zinc-400 dark:border-zinc-700">
                   {{ t('settings.noSources') }}
                 </p>
+              </div>
+
+              <!-- 跳过目录：NAS 回收站 / 系统目录内置跳过，可按目录名追加；修改后重新扫描生效 -->
+              <div class="rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
+                <p class="text-sm font-semibold text-zinc-800 dark:text-zinc-100">{{ t('settings.skipDirs') }}</p>
+                <p class="mt-1 text-xs leading-relaxed text-zinc-400">{{ t('settings.skipDirsHint') }}</p>
+                <BaseTagInput
+                  v-model="skipDirs"
+                  class="mt-3"
+                  :placeholder="t('settings.skipDirsPlaceholder')"
+                />
+              </div>
+
+              <!-- 已移除歌曲：手动移除 / 扫描消失的记录（仅曲目信息，便于找回文件位置）；数量多，列表收在弹出窗里 -->
+              <div class="rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                  <p class="text-sm font-semibold text-zinc-800 dark:text-zinc-100">
+                    {{ t('settings.removedTracks') }}
+                    <span v-if="removedTracksLoaded && removedTracks.length" class="ml-1 text-xs font-normal text-zinc-400">
+                      {{ removedTracks.length }}
+                    </span>
+                  </p>
+                  <BaseButton variant="secondary" size="xs" @click="openRemovedTracks">
+                    {{ t('settings.removedTracksView') }}
+                  </BaseButton>
+                </div>
+                <p class="mt-1 text-xs leading-relaxed text-zinc-400">{{ t('settings.removedTracksHint') }}</p>
+
+                <BaseModal
+                  :open="removedTracksOpen"
+                  size="lg"
+                  :title="`${t('settings.removedTracks')}${removedTracks.length ? ` (${removedTracks.length})` : ''}`"
+                  @close="removedTracksOpen = false"
+                >
+                  <ul v-if="removedTracks.length" class="max-h-[60vh] space-y-0.5 overflow-y-auto pr-1">
+                    <li
+                      v-for="r in removedTracks"
+                      :key="r.id"
+                      class="flex min-w-0 items-center gap-2 rounded-lg px-2 py-1.5 text-xs hover:bg-zinc-100/70 dark:hover:bg-zinc-800/50"
+                      v-tooltip="r.path"
+                    >
+                      <span class="min-w-0 flex-1 truncate text-zinc-700 dark:text-zinc-200">{{ r.title }}</span>
+                      <span class="hidden w-36 shrink-0 truncate text-zinc-400 sm:block">{{ r.artist ?? $t('artist.unknownArtist') }}</span>
+                      <span
+                        class="shrink-0 rounded-full px-1.5 py-px text-[10px] font-medium"
+                        :class="
+                          r.reason === 'scan'
+                            ? 'bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-300'
+                            : 'bg-zinc-200 text-zinc-500 dark:bg-zinc-700 dark:text-zinc-300'
+                        "
+                      >
+                        {{ removedReasonLabel(r.reason) }}
+                      </span>
+                      <span class="shrink-0 tabular-nums text-zinc-400">
+                        {{ new Date(r.removedAt * 1000).toLocaleString() }}
+                      </span>
+                    </li>
+                  </ul>
+                  <p v-else class="py-2 text-xs text-zinc-400">{{ t('settings.removedTracksEmpty') }}</p>
+                  <template #footer>
+                    <BaseButton
+                      variant="ghost"
+                      tone="danger"
+                      size="sm"
+                      :disabled="!removedTracks.length"
+                      @click="clearRemovedTracks"
+                    >
+                      {{ t('settings.removedTracksClear') }}
+                    </BaseButton>
+                    <BaseButton variant="secondary" size="sm" @click="removedTracksOpen = false">
+                      {{ t('common.close') }}
+                    </BaseButton>
+                  </template>
+                </BaseModal>
               </div>
             </section>
 
@@ -803,6 +1042,61 @@ const showWebdavLimits = computed(() => showWebdav.value || library.sources.some
                     </p>
                   </div>
                 </template>
+
+                <!-- 已合并名单：历次规整与自定义合并的记录（扫描遇到旧名仍归到主艺人名下） -->
+                <div class="mt-3 border-t border-zinc-100 pt-3 dark:border-zinc-800">
+                  <p class="text-xs font-medium text-zinc-500">
+                    {{ t('settings.artistMergedTitle', { count: artistAliases.length }) }}
+                  </p>
+                  <p v-if="!artistAliases.length" class="mt-1.5 text-xs text-zinc-400">
+                    {{ t('settings.artistMergedEmpty') }}
+                  </p>
+                  <ul v-else class="mt-2 max-h-56 space-y-1.5 overflow-y-auto pr-1">
+                    <li
+                      v-for="a in artistAliases.slice(0, 200)"
+                      :key="`${a.alias}-${a.artistId}`"
+                      class="flex min-w-0 flex-wrap items-baseline gap-x-1 text-xs"
+                    >
+                      <span class="text-zinc-400 line-through">{{ a.alias }}</span>
+                      <span class="text-violet-500">→</span>
+                      <span class="font-medium text-zinc-700 dark:text-zinc-200">{{ a.artistName }}</span>
+                    </li>
+                  </ul>
+                  <p v-if="artistAliases.length > 200" class="mt-1 text-xs text-zinc-400">
+                    {{ t('settings.artistNormalizeMore', { count: artistAliases.length - 200 }) }}
+                  </p>
+                </div>
+
+                <!-- 自定义合并：a 与 b 实为同一人（改名 / 写法不同）时手动归并 -->
+                <div class="mt-3 border-t border-zinc-100 pt-3 dark:border-zinc-800">
+                  <p class="text-xs font-medium text-zinc-500">{{ t('settings.artistMergeCustom') }}</p>
+                  <p class="mt-1 text-xs leading-relaxed text-zinc-400">{{ t('settings.artistMergeHint') }}</p>
+                  <div class="mt-2.5 grid items-center gap-2 sm:grid-cols-[1fr_1fr_auto]">
+                    <BaseSelect
+                      v-model="mergeKeep"
+                      :options="artistOptions"
+                      :placeholder="t('settings.artistMergeKeep')"
+                      size="sm"
+                      searchable
+                    />
+                    <BaseSelect
+                      v-model="mergeAbsorb"
+                      :options="artistOptions"
+                      :placeholder="t('settings.artistMergeAbsorb')"
+                      size="sm"
+                      searchable
+                    />
+                    <BaseButton
+                      size="sm"
+                      variant="secondary"
+                      :loading="merging"
+                      :disabled="merging || artistOptionsLoading || mergeKeep === '' || mergeAbsorb === '' || mergeKeep === mergeAbsorb"
+                      @click="onMergeArtist"
+                    >
+                      {{ t('settings.artistMergeAction') }}
+                    </BaseButton>
+                  </div>
+                </div>
               </div>
             </section>
           </div>
@@ -822,11 +1116,17 @@ const showWebdavLimits = computed(() => showWebdav.value || library.sources.some
                   <span class="text-zinc-600 dark:text-zinc-300">{{ t('settings.theme') }}</span>
                   <BaseButtonGroup :model-value="mode" :items="themeItems" size="sm" @update:model-value="onThemeChange" />
                 </div>
-                <!-- 全局字体：应用于整个软件（含桌面歌词），从系统读取 -->
+                <!-- 全局字体：应用于整个软件（含桌面歌词），从系统读取；系统字体多，开启搜索过滤 -->
                 <div class="flex items-center justify-between gap-3 border-t border-zinc-100 pt-4 dark:border-zinc-800">
                   <span class="text-zinc-600 dark:text-zinc-300">{{ t('settings.fontFamily') }}</span>
                   <div class="max-w-[280px] flex-1">
-                    <BaseSelect :model-value="appFont" :options="fontSelectOptions" size="sm" @update:model-value="onFontChange" />
+                    <BaseSelect
+                      :model-value="appFont"
+                      :options="fontSelectOptions"
+                      size="sm"
+                      searchable
+                      @update:model-value="onFontChange"
+                    />
                   </div>
                 </div>
               </div>

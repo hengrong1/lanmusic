@@ -19,7 +19,10 @@ let ro: ResizeObserver | null = null
 onMounted(() => {
   void nextTick(measure)
   ro = new ResizeObserver(measure)
+  // 同时观察外层容器与内层文本：全局字体切换会改变 scrollWidth 而 wrap 尺寸不变，
+  // 只 observe 外层会漏掉这种变化导致跑马灯测量失准
   if (wrap.value) ro.observe(wrap.value)
+  if (el.value) ro.observe(el.value)
 })
 onBeforeUnmount(() => ro?.disconnect())
 watch(

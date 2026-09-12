@@ -291,7 +291,7 @@ window.addEventListener('keydown', (e) => {
           </Transition>
         </main>
       </div>
-      <QueuePanel :open="queueOpen" @close="queueOpen = false" />
+      <QueuePanel :open="queueOpen" :now-playing="nowPlaying" @close="queueOpen = false" />
     </div>
     <!-- 底部播放条卡片：未载入任何歌曲时隐藏；双击播放 / 启动恢复上一首时从底部滑入 -->
     <Transition :css="false" @enter="playerBarEnter" @leave="playerBarLeave">

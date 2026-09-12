@@ -189,9 +189,12 @@ export const tooltip: Directive<HTMLElement, string | null | undefined> = {
       el.removeEventListener('mouseenter', b.onEnter)
       el.removeEventListener('mousemove', b.onMove)
       el.removeEventListener('mouseleave', b.onLeave)
+      el.removeEventListener('click', hide)
     }
     bindings.delete(el)
-    if (shownOn === el) hide()
+    // 正在显示或已排定延迟显示都要收起：后者不清的话，定时器到期会对已脱离 DOM 的
+    // 元素弹气泡，且该元素再也不会有 mouseleave 来收起它
+    if (shownOn === el || pendingOn === el) hide()
   },
 }
 

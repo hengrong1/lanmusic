@@ -34,7 +34,9 @@ const W_COLLAPSED = 60
 // 基础占位固定为 h-4 w-4，视觉缩放由 GSAP transform 控制，与宽度动画统一调度更顺滑
 const ICON_SCALE_COLLAPSED = 20 / 16
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
+/** 带参翻译在 setup 内生成（模板 `$t` 无带参重载） */
+const songCount = (n: number) => t('common.songsCount', { count: n })
 const library = useLibraryStore()
 const { current, go } = useNav()
 const { collapsed } = useSidebar()
@@ -150,6 +152,8 @@ function isActive(e: NavEntry) {
 // ---- 歌单：新建 / 重命名 / 删除 ----
 const editing = ref<{ id?: number; value: string } | null>(null)
 const inputEl = ref<HTMLInputElement | null>(null)
+/** 提交进行中：防止回车提交后的失焦再触发一次（await 期间输入框尚未卸载） */
+const committing = ref(false)
 
 function startCreate() {
   editing.value = { value: '' }
@@ -159,15 +163,17 @@ function startRename(id: number, name: string) {
   editing.value = { id, value: name }
   void nextTick(() => inputEl.value?.focus())
 }
+/** 空输入的默认名：未命名歌单 + 按当前语言的本地化日期（如「未命名歌单 2026/9/13」） */
+function defaultName(): string {
+  return `${t('playlist.untitled')} ${new Date().toLocaleDateString(locale.value)}`
+}
 async function confirmEdit() {
   const e = editing.value
-  if (!e) return
-  const name = e.value.trim()
-  if (!name) {
-    editing.value = null
-    return
-  }
+  if (!e || committing.value) return
+  committing.value = true
   try {
+    // 回车 / 点击输入框以外（失焦）都会提交；没输入则用「未命名 + 日期」
+    const name = e.value.trim() || defaultName()
     if (e.id != null) {
       await library.renamePlaylist(e.id, name)
       if (current.value.playlistId === e.id) current.value = { ...current.value, playlistName: name }
@@ -178,6 +184,7 @@ async function confirmEdit() {
   } catch (err) {
     toast(errorText(err), 'error')
   } finally {
+    committing.value = false
     editing.value = null
   }
 }
@@ -274,10 +281,11 @@ function openPlaylistMenu(e: MouseEvent, p: { id: number; name: string }) {
         </button>
       </div>
 
-      <!-- 新建/重命名输入行（随 editing 常驻，避免收起结束时高度增减推挤下方歌单项） -->
+      <!-- 新建/重命名输入行（随 editing 常驻，避免收起结束时高度增减推挤下方歌单项）：
+           回车或点击输入框以外（失焦）提交，Esc / ✕ 取消（✕ 用 mousedown.prevent 防止先触发失焦提交） -->
       <div
         v-if="editing"
-        class="sidebar-fade mb-1 flex items-center gap-1 rounded-lg bg-white px-2 py-1 ring-1 ring-violet-400 dark:bg-zinc-800"
+        class="sidebar-fade mb-1 flex h-10 items-center gap-1.5 rounded-lg bg-white px-2 ring-1 ring-violet-400 dark:bg-zinc-800"
         :class="{ 'pointer-events-none': collapsed }"
       >
         <input
@@ -287,8 +295,14 @@ function openPlaylistMenu(e: MouseEvent, p: { id: number; name: string }) {
           :placeholder="$t('playlist.namePlaceholder')"
           @keydown.enter="confirmEdit"
           @keydown.esc="editing = null"
+          @blur="confirmEdit"
         />
-        <button class="cursor-pointer text-zinc-400 hover:text-zinc-600" @click="editing = null">
+        <button
+          class="cursor-pointer text-zinc-400 hover:text-zinc-600"
+          :aria-label="$t('common.cancel')"
+          @mousedown.prevent
+          @click="editing = null"
+        >
           <X class="h-3.5 w-3.5" />
         </button>
       </div>
@@ -297,9 +311,9 @@ function openPlaylistMenu(e: MouseEvent, p: { id: number; name: string }) {
         <button
           v-if="editing?.id !== p.id"
           v-tooltip:right="collapsed ? p.name : ''"
-          class="mb-0.5 flex h-9 w-full cursor-pointer items-center rounded-lg text-sm transition"
+          class="group mb-1 flex h-10 w-full cursor-pointer items-center rounded-lg text-sm transition"
           :class="[
-            showText ? 'gap-2.5 px-2.5' : 'justify-center px-0',
+            showText ? 'gap-2.5 px-2' : 'justify-center px-0',
             current.view === 'playlist' && current.playlistId === p.id
               ? 'bg-violet-100 font-medium text-violet-700 dark:bg-violet-500/15 dark:text-violet-300'
               : 'text-zinc-600 hover:bg-zinc-200/60 dark:text-zinc-300 dark:hover:bg-zinc-800/60',
@@ -308,12 +322,16 @@ function openPlaylistMenu(e: MouseEvent, p: { id: number; name: string }) {
           @contextmenu="openPlaylistMenu($event, p)"
         >
           <CoverImg
-            class="nav-icon h-4 w-4 shrink-0 overflow-hidden"
+            class="nav-icon h-8 w-8 shrink-0 overflow-hidden shadow-sm"
             :album-id="p.coverAlbumId"
-            rounded="rounded"
+            rounded="rounded-md"
           />
-          <span v-if="showText" class="sidebar-fade flex-1 truncate text-left">{{ p.name }}</span>
-          <span v-if="showText" class="sidebar-fade text-xs tabular-nums text-zinc-400">{{ p.trackCount }}</span>
+          <span v-if="showText" class="sidebar-fade min-w-0 flex-1">
+            <span class="block truncate text-left leading-tight">{{ p.name }}</span>
+            <span class="block truncate text-left text-[11px] leading-tight font-normal text-zinc-400">
+              {{ songCount(p.trackCount) }}
+            </span>
+          </span>
         </button>
       </div>
       <p v-if="showText && !library.playlists.length && !editing" class="sidebar-fade px-2.5 py-2 text-sm text-zinc-400 dark:text-zinc-600">

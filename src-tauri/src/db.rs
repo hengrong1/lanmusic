@@ -18,6 +18,15 @@ CREATE TABLE IF NOT EXISTS artists (
   name TEXT NOT NULL UNIQUE COLLATE NOCASE
 );
 
+-- 艺人别名（合并记忆）：旧名/别名 → 主艺人。规整与自定义合并后写入，
+-- 扫描再遇到旧名时仍归到主艺人名下。刻意不加外键：主艺人被删除后别名仍在
+-- （按名字解析），同名主艺人重建时别名继续生效。
+CREATE TABLE IF NOT EXISTS artist_aliases (
+  alias TEXT NOT NULL UNIQUE COLLATE NOCASE,
+  artist_id INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_artist_aliases_artist ON artist_aliases(artist_id);
+
 CREATE TABLE IF NOT EXISTS albums (
   id INTEGER PRIMARY KEY,
   title TEXT NOT NULL,
@@ -97,7 +106,34 @@ CREATE TABLE IF NOT EXISTS app_settings (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL
 );
+
+-- 已移除歌曲记录：手动从曲库移除 / 扫描发现文件消失时写入（仅记录曲目信息便于事后查找，
+-- 不含文件本身）。超出上限按时间从旧到新裁剪（见 cap_removed_log）。
+CREATE TABLE IF NOT EXISTS removed_tracks (
+  id INTEGER PRIMARY KEY,
+  title TEXT NOT NULL,
+  artist TEXT,
+  album TEXT,
+  path TEXT NOT NULL,
+  source_id INTEGER,
+  reason TEXT NOT NULL DEFAULT 'manual',
+  removed_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_removed_tracks_at ON removed_tracks(removed_at DESC, id DESC);
 "#;
+
+/// 移除记录上限：超出时按时间从旧到新裁剪
+pub const REMOVED_LOG_CAP: i64 = 1000;
+
+/// 裁剪移除记录到上限之内
+pub fn cap_removed_log(conn: &Connection) -> rusqlite::Result<()> {
+    conn.execute(
+        "DELETE FROM removed_tracks WHERE id NOT IN \
+         (SELECT id FROM removed_tracks ORDER BY removed_at DESC, id DESC LIMIT ?1)",
+        [REMOVED_LOG_CAP],
+    )
+    .map(|_| ())
+}
 
 /// 打开连接并初始化（建表 + 迁移）。扫描线程用 init=false，只设 PRAGMA。
 pub fn open(path: &Path) -> rusqlite::Result<Connection> {
@@ -122,6 +158,13 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
     // meta_state: 0=快速导入（仅文件名入库），1=完整解析过标签
     ensure_column(conn, "tracks", "meta_state", "INTEGER NOT NULL DEFAULT 1")?;
     ensure_column(conn, "sources", "fast_import", "INTEGER NOT NULL DEFAULT 0")?;
+    // scan_subdirs: 是否扫描来源内子目录（0 = 仅扫描根目录下的文件）
+    ensure_column(
+        conn,
+        "sources",
+        "scan_subdirs",
+        "INTEGER NOT NULL DEFAULT 1",
+    )?;
     ensure_column(conn, "tracks", "remote_id", "INTEGER")?;
     ensure_column(conn, "albums", "remote_id", "INTEGER")?;
     ensure_column(conn, "albums", "cover_url", "TEXT")?;
@@ -132,13 +175,19 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
     // 原始艺人标签（未按分隔符拆分），用于调整分隔符后重新拆分艺人
     ensure_column(conn, "tracks", "raw_artist", "TEXT")?;
     // 旧数据无加入时间：回填 0 视为最早加入，倒序时排在最前
-    conn.execute("UPDATE playlist_items SET added_at = 0 WHERE added_at IS NULL", [])?;
+    conn.execute(
+        "UPDATE playlist_items SET added_at = 0 WHERE added_at IS NULL",
+        [],
+    )?;
 
     // LAN 共享功能已移除：清理遗留的 lan 来源（曲目经外键级联删除），
     // 并回收因此产生的孤儿专辑/艺人（含仅被专辑引用的归属艺人）
     let lan_removed = conn.execute("DELETE FROM sources WHERE kind = 'lan'", [])?;
     if lan_removed > 0 {
-        conn.execute("DELETE FROM albums WHERE id NOT IN (SELECT DISTINCT album_id FROM tracks)", [])?;
+        conn.execute(
+            "DELETE FROM albums WHERE id NOT IN (SELECT DISTINCT album_id FROM tracks)",
+            [],
+        )?;
         conn.execute(
             "DELETE FROM artists WHERE id NOT IN (SELECT DISTINCT artist_id FROM tracks)
              AND id NOT IN (SELECT DISTINCT artist_id FROM track_artists)
@@ -170,7 +219,10 @@ fn ensure_column(conn: &Connection, table: &str, column: &str, def: &str) -> rus
     let sql = format!("SELECT COUNT(*) FROM pragma_table_info('{table}') WHERE name = '{column}'");
     let exists: i64 = conn.query_row(&sql, [], |r| r.get(0))?;
     if exists == 0 {
-        conn.execute(&format!("ALTER TABLE {table} ADD COLUMN {column} {def}"), [])?;
+        conn.execute(
+            &format!("ALTER TABLE {table} ADD COLUMN {column} {def}"),
+            [],
+        )?;
     }
     Ok(())
 }
@@ -178,8 +230,12 @@ fn ensure_column(conn: &Connection, table: &str, column: &str, def: &str) -> rus
 // ---------- 应用设置（KV） ----------
 
 pub fn get_setting(conn: &Connection, key: &str) -> Option<String> {
-    conn.query_row("SELECT value FROM app_settings WHERE key = ?1", [key], |r| r.get(0))
-        .ok()
+    conn.query_row(
+        "SELECT value FROM app_settings WHERE key = ?1",
+        [key],
+        |r| r.get(0),
+    )
+    .ok()
 }
 
 pub fn set_setting(conn: &Connection, key: &str, value: &str) -> rusqlite::Result<()> {

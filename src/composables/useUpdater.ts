@@ -116,13 +116,7 @@ async function downloadAndInstall(): Promise<void> {
   }
 }
 
-/** 打开/关闭更新弹窗 */
-function openUpdateDialog(): void {
-  if (status.value === 'available' || status.value === 'downloading' || status.value === 'ready') {
-    void loadCurrentVersion()
-    dialogOpen.value = true
-  }
-}
+/** 关闭更新弹窗（打开由启动静默检查 / 手动检查流程内部驱动） */
 function closeUpdateDialog(): void {
   dialogOpen.value = false
 }
@@ -145,7 +139,6 @@ export function useUpdater() {
     checkForUpdate,
     downloadAndInstall,
     restartToUpdate,
-    openUpdateDialog,
     closeUpdateDialog,
   }
 }

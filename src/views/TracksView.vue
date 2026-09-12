@@ -5,13 +5,23 @@ import { HeartIcon as Heart } from '@solar-icons/vue/linear/heart'
 import { RefreshIcon as LoaderCircle } from '@solar-icons/vue/linear/refresh'
 import { MusicNoteIcon as Music } from '@solar-icons/vue/linear/music-note'
 import { EyeClosedIcon as SearchX } from '@solar-icons/vue/linear/eye-closed'
+import { ListCheckIcon as ListChecks } from '@solar-icons/vue/linear/list-check'
+import { PlayIcon as Play } from '@solar-icons/vue/bold/play'
+import { Playlist2Icon as ListPlus } from '@solar-icons/vue/linear/playlist-2'
+import { AddSquareIcon as AddSquare } from '@solar-icons/vue/linear/add-square'
+import { TrashBinTrashIcon as TrashBinTrash } from '@solar-icons/vue/linear/trash-bin-trash'
 import { open as openFileDialog } from '@tauri-apps/plugin-dialog'
 import TrackTable from '@/components/TrackTable.vue'
 import EmptyState from '@/components/EmptyState.vue'
+import ContextMenu from '@/components/ContextMenu.vue'
+import type { MenuItem } from '@/components/ContextMenu.vue'
 import { useLibraryStore } from '@/stores/library'
+import { usePlayerStore } from '@/stores/player'
 import { useNav } from '@/composables/useNav'
 import { useStagger } from '@/composables/useStagger'
 import { toast } from '@/composables/useToast'
+import { confirmDialog } from '@/composables/useConfirm'
+import { api } from '@/api/commands'
 import { BaseButton, BaseSelect } from '@/components/ui'
 import type { SelectOption } from '@/components/ui'
 import { useI18n } from 'vue-i18n'
@@ -19,9 +29,11 @@ import { errorText } from '@/i18n/error'
 
 const { t } = useI18n()
 const library = useLibraryStore()
+const player = usePlayerStore()
 const nav = useNav()
 const root = ref<HTMLElement | null>(null)
-useStagger(root, computed(() => library.trackPage.items.length > 0))
+// ready = 数据落定（加载完成，空也算就绪）：加载中先隐藏 stagger 元素，就绪后播一次
+useStagger(root, computed(() => library.trackPage.items.length > 0 || !library.loading))
 
 const sortOptions = computed<SelectOption[]>(() => [
   { value: 'title', label: t('library.byTitle') },
@@ -98,6 +110,91 @@ async function addFolder() {
     adding.value = false
   }
 }
+
+// ---- 多选批量操作（全部歌曲 / 喜欢 / 最近播放 / 专辑 / 艺人 / 搜索结果通用）----
+const batchMode = ref(false)
+const selIds = ref<number[]>([])
+const selLabel = computed(() => t('common.selectedWithCount', { count: selIds.value.length }))
+const selTracks = computed(() => library.trackPage.items.filter((t) => selIds.value.includes(t.id)))
+
+function enterBatch() {
+  batchMode.value = true
+  selIds.value = []
+}
+function exitBatch() {
+  batchMode.value = false
+  selIds.value = []
+}
+function onSelection(ids: number[]) {
+  selIds.value = ids
+}
+// 切换视图/路由时退出多选（列表已整体更换，旧选择失去意义）
+watch(
+  () => nav.current.value,
+  () => exitBatch(),
+)
+
+function batchPlay() {
+  if (selTracks.value.length) {
+    player.playList(selTracks.value, 0)
+    exitBatch()
+  }
+}
+function batchEnqueue() {
+  if (selTracks.value.length) {
+    selTracks.value.forEach((t) => player.enqueue(t))
+    toast(t('toast.addedToQueueCount', { count: selTracks.value.length }))
+    exitBatch()
+  }
+}
+
+// 添加到歌单：按钮位置弹出歌单菜单（复用 ContextMenu）
+const playlistMenu = ref<{ x: number; y: number } | null>(null)
+const playlistMenuItems = ref<MenuItem[]>([])
+
+function batchAddToPlaylist(e: MouseEvent) {
+  if (!selIds.value.length) return
+  if (!library.playlists.length) {
+    toast(t('playlist.noneToPick'))
+    return
+  }
+  playlistMenu.value = { x: e.clientX, y: e.clientY }
+  playlistMenuItems.value = library.playlists.slice(0, 50).map((p) => ({
+    label: `${p.name} (${p.trackCount})`,
+    action: () => void addSelectedToPlaylist(p.id),
+  }))
+}
+async function addSelectedToPlaylist(pid: number) {
+  try {
+    // library.addToPlaylist 自带「新增 N 首 / 全部已在歌单」toast
+    await library.addToPlaylist(pid, selIds.value)
+    exitBatch()
+  } catch (e) {
+    toast(errorText(e), 'error')
+  }
+}
+
+/** 从曲库移除（不删磁盘文件；记录可在设置 → 已移除歌曲 查看） */
+async function batchRemoveFromLibrary() {
+  if (!selIds.value.length) return
+  const ok = await confirmDialog({
+    title: t('library.removeTracksTitle', { count: selIds.value.length }),
+    message: t('library.removeTracksMessage'),
+    danger: true,
+    confirmText: t('library.removeTracksConfirm'),
+  })
+  if (!ok) return
+  try {
+    const removed = await api.removeTracks(selIds.value)
+    toast(t('library.removedFromLibrary', { count: removed }))
+    exitBatch()
+    await Promise.all([library.loadTracks(), library.loadStats(), library.loadPlaylists()])
+    const still = player.current ? await api.getTrack(player.current.id).catch(() => null) : null
+    if (player.current && !still) player.clearQueue()
+  } catch (e) {
+    toast(errorText(e), 'error')
+  }
+}
 </script>
 
 <template>
@@ -108,14 +205,27 @@ async function addFolder() {
         <p data-stagger class="text-xs font-semibold tracking-wider text-violet-500 uppercase">{{ header.subtitle || $t('common.result') }}</p>
         <h1 data-stagger class="mt-0.5 text-2xl font-bold text-zinc-900 dark:text-zinc-50">{{ header.title }}</h1>
       </div>
-      <div class="flex items-center gap-3">
+      <div class="flex shrink-0 items-center gap-3">
         <span v-if="library.trackPage.total" data-stagger class="text-sm text-zinc-500 whitespace-nowrap">
           {{ totalLabel }}
         </span>
+        <!-- 多选：批量播放 / 加入队列 / 添加到歌单 / 从曲库移除 -->
+        <BaseButton
+          v-if="library.trackPage.total"
+          data-stagger
+          class="shrink-0"
+          size="sm"
+          :variant="batchMode ? 'primary' : 'outline'"
+          :icon="ListChecks"
+          @click="batchMode ? exitBatch() : enterBatch()"
+        >
+          {{ batchMode ? $t('playlist.exitBatch') : $t('playlist.batchMode') }}
+        </BaseButton>
         <BaseSelect
           v-if="!nav.current.value.search && !nav.current.value.recent"
           v-model="sort"
           data-stagger
+          class="w-36"
           :options="[{ value: 'none', label: $t('library.sortLibraryOrder') }, ...sortOptions]"
           size="sm"
         />
@@ -162,9 +272,41 @@ async function addFolder() {
       <TrackTable
         :tracks="library.trackPage.items"
         :sort="library.query.sort"
+        :batch-mode="batchMode"
+        @selection="onSelection"
         @sort-change="(v: string) => library.setQuery({ sort: v })"
         @near-end="library.loadMore()"
+        @refresh="library.loadTracks()"
       />
     </div>
+
+    <!-- 批量操作条 -->
+    <Transition
+      enter-active-class="transition duration-200 ease-out"
+      enter-from-class="opacity-0 translate-y-3"
+      leave-active-class="transition duration-150 ease-in"
+      leave-to-class="opacity-0 translate-y-3"
+    >
+      <div
+        v-if="batchMode && selIds.length"
+        class="fixed bottom-24 left-1/2 z-30 flex max-w-[calc(100vw-16px)] -translate-x-1/2 flex-wrap items-center justify-center gap-1.5 rounded-2xl border border-zinc-200 bg-white px-3.5 py-2 shadow-xl [&>*]:shrink-0 dark:border-zinc-700 dark:bg-zinc-800"
+      >
+        <span class="px-2 text-xs font-medium text-zinc-500 dark:text-zinc-400">{{ selLabel }}</span>
+        <BaseButton variant="ghost" size="sm" :icon="Play" @click="batchPlay">{{ $t('player.play') }}</BaseButton>
+        <BaseButton variant="ghost" size="sm" :icon="ListPlus" @click="batchEnqueue">{{ $t('player.addToQueue') }}</BaseButton>
+        <BaseButton variant="ghost" size="sm" :icon="AddSquare" @click="batchAddToPlaylist">{{ $t('playlist.addToPlaylist') }}</BaseButton>
+        <BaseButton variant="ghost" tone="danger" size="sm" :icon="TrashBinTrash" @click="batchRemoveFromLibrary">{{ $t('library.removeFromLibrary') }}</BaseButton>
+        <BaseButton variant="ghost" size="sm" class="ml-1" @click="exitBatch">{{ $t('common.cancel') }}</BaseButton>
+      </div>
+    </Transition>
+
+    <!-- 添加到歌单：歌单选择菜单 -->
+    <ContextMenu
+      v-if="playlistMenu"
+      :x="playlistMenu.x"
+      :y="playlistMenu.y"
+      :items="playlistMenuItems"
+      @close="playlistMenu = null"
+    />
   </div>
 </template>

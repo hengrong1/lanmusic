@@ -33,7 +33,11 @@ fn field_weight(f: &str) -> i32 {
 }
 
 fn default_fields() -> Vec<String> {
-    vec![F_TITLE.to_string(), F_ARTIST.to_string(), F_ALBUM.to_string()]
+    vec![
+        F_TITLE.to_string(),
+        F_ARTIST.to_string(),
+        F_ALBUM.to_string(),
+    ]
 }
 
 /// 解析启用的搜索字段（非法值过滤；空则回退默认 标题/艺人/专辑）
@@ -57,7 +61,9 @@ fn enabled_fields(q: &TrackQuery) -> Vec<String> {
 
 /// SQL LIKE 通配符转义
 fn like_escape(s: &str) -> String {
-    s.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_")
+    s.replace('\\', "\\\\")
+        .replace('%', "\\%")
+        .replace('_', "\\_")
 }
 
 /// 拼音形式：(全拼, 首字母)。忽略空白；非汉字字符小写原样保留（便于中英混合匹配）。
@@ -163,7 +169,10 @@ fn row_hit(r: &rusqlite::Row) -> rusqlite::Result<Hit> {
 pub fn search_tracks(conn: &Connection, q: &TrackQuery) -> Result<Page<Track>, String> {
     let raw = q.search.as_deref().unwrap_or("").trim();
     if raw.is_empty() {
-        return Ok(Page { total: 0, items: Vec::new() });
+        return Ok(Page {
+            total: 0,
+            items: Vec::new(),
+        });
     }
     let fields = enabled_fields(q);
     let pinyin_on = q.pinyin.unwrap_or(true);
@@ -222,7 +231,7 @@ pub fn search_tracks(conn: &Connection, q: &TrackQuery) -> Result<Page<Track>, S
     } else {
         format!("WHERE {}", wheres.join(" AND "))
     };
-let sql = format!(
+    let sql = format!(
         "SELECT t.id, t.title, a.name, t.artist_id, al.title, t.album_id, t.track_no, t.disc_no, \
                 t.duration, t.bitrate, t.sample_rate, t.bit_depth, t.format, t.path, t.has_embedded_lyrics, t.has_mv, t.fav, \
                 t.added_at, t.play_count, IFNULL(li.text,'') \
@@ -237,7 +246,9 @@ let sql = format!(
     let rows = stmt
         .query_map(params_from_iter(args.iter().map(|b| b.as_ref())), row_hit)
         .map_err(|e| e.to_string())?;
-    let mut hits: Vec<Hit> = rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?;
+    let mut hits: Vec<Hit> = rows
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
 
     // ----- 艺人列表（含合作艺人）用于匹配与展示 -----
     let mut tracks: Vec<Track> = hits.iter().map(|h| h.track.clone()).collect();
@@ -258,17 +269,34 @@ let sql = format!(
                     if !h.track.artists.is_empty() {
                         h.track.artists.iter().map(|a| a.name.as_str()).collect()
                     } else {
-                        h.track.artist.as_deref().map(|s| vec![s]).unwrap_or_default()
+                        h.track
+                            .artist
+                            .as_deref()
+                            .map(|s| vec![s])
+                            .unwrap_or_default()
                     }
                 }
-                F_ALBUM => h.track.album.as_deref().map(|s| vec![s]).unwrap_or_default(),
+                F_ALBUM => h
+                    .track
+                    .album
+                    .as_deref()
+                    .map(|s| vec![s])
+                    .unwrap_or_default(),
                 F_FILENAME => vec![h.track.path.as_str()],
                 F_LYRICS => vec![h.lyrics.as_str()],
                 _ => Vec::new(),
             };
             let mut best = 0;
             for text in texts {
-                let s = match_field(f, text, &q_lower, &q_full, &q_init, pinyin_active, &mut cache);
+                let s = match_field(
+                    f,
+                    text,
+                    &q_lower,
+                    &q_full,
+                    &q_init,
+                    pinyin_active,
+                    &mut cache,
+                );
                 if s > best {
                     best = s;
                 }
@@ -403,7 +431,9 @@ mod tests {
         let s = match_field("title", "晴天", "晴天", "qingtian", "qt", false, &mut cache);
         assert!(s > 0);
         // 拼音全拼命中
-        let s = match_field("title", "晴天", "qingtian", "qingtian", "qt", true, &mut cache);
+        let s = match_field(
+            "title", "晴天", "qingtian", "qingtian", "qt", true, &mut cache,
+        );
         assert!(s > 0);
         // 拼音首字母命中
         let s = match_field("title", "晴天", "qt", "qt", "qt", true, &mut cache);

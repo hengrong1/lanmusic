@@ -1,9 +1,9 @@
 mod commands;
 mod covers;
+mod db;
 mod error;
 #[cfg(windows)]
 mod fonts;
-mod db;
 mod keyring;
 mod lyrics;
 mod metadata;
@@ -12,10 +12,10 @@ mod scanner;
 mod scheme;
 mod search;
 mod state;
-#[cfg(target_os = "macos")]
-mod transcode;
 #[cfg(windows)]
 mod thumbbar;
+#[cfg(target_os = "macos")]
+mod transcode;
 mod watcher;
 
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
@@ -145,18 +145,21 @@ pub fn run() {
             {
                 let state = app.state::<state::AppState>();
                 let conn = state.db.lock().map_err(|e| e.to_string())?;
-                let rows: Vec<(i64, String)> = {
+                let rows: Vec<(i64, String, bool)> = {
                     let mut stmt = conn
-                        .prepare("SELECT id, base_path FROM sources WHERE kind = 'local' AND base_path IS NOT NULL")
+                        .prepare("SELECT id, base_path, scan_subdirs FROM sources WHERE kind = 'local' AND base_path IS NOT NULL")
                         .map_err(|e| e.to_string())?;
                     let rows = stmt
-                        .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+                        .query_map([], |r| {
+                            Ok((r.get(0)?, r.get(1)?, r.get::<_, i64>(2)? != 0))
+                        })
                         .map_err(|e| e.to_string())?;
                     rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?
                 };
                 drop(conn);
-                for (id, base) in rows {
-                    watcher::watch_source(app.handle(), id, &base);
+                for (id, base, recursive) in rows {
+                    // 监听模式跟随来源的「子目录扫描」开关
+                    watcher::watch_source(app.handle(), id, &base, recursive);
                 }
             }
             watcher::init(app.handle().clone());
@@ -262,6 +265,7 @@ pub fn run() {
             commands::remove_source,
             commands::rescan_source,
             commands::set_source_fast_import,
+            commands::set_source_scan_subdirs,
             commands::query_tracks,
             commands::query_albums,
             commands::query_artists,
@@ -289,12 +293,17 @@ pub fn run() {
             commands::get_artist_separators,
             commands::set_artist_separators,
             commands::normalize_artist_names,
+            commands::merge_artist,
+            commands::list_artist_aliases,
             commands::set_thumbbar_playing,
             commands::set_thumbbar_album,
             commands::desktop_lyrics_set,
             commands::list_system_fonts,
             commands::exit_app,
             commands::set_prevent_sleep,
+            commands::remove_tracks,
+            commands::list_removed_tracks,
+            commands::clear_removed_tracks,
             commands::webdav_add_source,
             commands::get_mv_url
         ])
@@ -364,10 +373,7 @@ fn position_tray_menu(
     // 若仍按常量计算，菜单底边会偏离托盘图标（空隙变大）。
     let (pw, ph) = match w.inner_size() {
         Ok(s) => (s.width as i32, s.height as i32),
-        Err(_) => (
-            (TRAY_MENU_W * scale) as i32,
-            (TRAY_MENU_H * scale) as i32,
-        ),
+        Err(_) => ((TRAY_MENU_W * scale) as i32, (TRAY_MENU_H * scale) as i32),
     };
     // 托盘图标矩形：事件的 position/size 为逻辑/物理混合的枚举，统一转物理像素
     let icon_pos = tray_rect.position.to_physical::<i32>(scale);

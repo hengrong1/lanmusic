@@ -17,11 +17,14 @@ const emit = defineEmits<{ close: [] }>()
 
 const el = ref<HTMLElement | null>(null)
 
+let clampRaf = 0
 watch(
   () => [props.x, props.y],
   () => {
     // 视口边缘保护
-    requestAnimationFrame(() => {
+    if (clampRaf) cancelAnimationFrame(clampRaf)
+    clampRaf = requestAnimationFrame(() => {
+      clampRaf = 0
       if (!el.value) return
       const rect = el.value.getBoundingClientRect()
       if (rect.right > window.innerWidth - 8) el.value.style.left = `${window.innerWidth - rect.width - 8}px`
@@ -43,6 +46,7 @@ onMounted(() => {
   window.addEventListener('keydown', onKey)
 })
 onBeforeUnmount(() => {
+  if (clampRaf) cancelAnimationFrame(clampRaf)
   window.removeEventListener('click', onDocClick, true)
   window.removeEventListener('contextmenu', onDocClick, true)
   window.removeEventListener('keydown', onKey)

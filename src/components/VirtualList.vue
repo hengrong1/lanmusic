@@ -1,5 +1,5 @@
 <script setup lang="ts" generic="T">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 
 const props = withDefaults(
   defineProps<{
@@ -14,7 +14,7 @@ const props = withDefaults(
   { buffer: 8, padTop: 0, padBottom: 0 },
 )
 
-const emit = defineEmits<{ nearEnd: []; range: [start: number, end: number]; scroll: [e: Event] }>()
+const emit = defineEmits<{ nearEnd: []; scroll: [e: Event] }>()
 
 const container = ref<HTMLElement | null>(null)
 const scrollTop = ref(0)
@@ -27,37 +27,32 @@ onMounted(() => {
     resizeObserver = new ResizeObserver(() => {
       if (container.value) {
         viewportHeight.value = container.value.clientHeight
-        emitRange()
       }
     })
     resizeObserver.observe(container.value)
-    emitRange()
   }
 })
 onBeforeUnmount(() => resizeObserver?.disconnect())
+
+/**
+ * nearEnd 边沿检测：进入底部 500px 区域只发射一次，离开后重新武装。
+ * 不做边沿的话滚动期间每个 scroll 事件都会触发追加加载，在途请求被第二次
+ * page++ 顶掉后中间整页会被静默跳过。
+ */
+let nearEndArmed = true
 
 function onScroll(e: Event) {
   if (!container.value) return
   scrollTop.value = container.value.scrollTop
   const el = container.value
-  if (el.scrollHeight - el.scrollTop - el.clientHeight < 500) emit('nearEnd')
+  const near = el.scrollHeight - el.scrollTop - el.clientHeight < 500
+  if (near && nearEndArmed) {
+    nearEndArmed = false
+    emit('nearEnd')
+  } else if (!near) {
+    nearEndArmed = true
+  }
   emit('scroll', e)
-  emitRange()
-}
-
-/** 上报当前无缓冲的可视行范围（供"定位当前播放"判断可见性） */
-function emitRange() {
-  const start = Math.floor((scrollTop.value - props.padTop) / props.itemHeight)
-  const end = Math.ceil((scrollTop.value - props.padTop + viewportHeight.value) / props.itemHeight)
-  emit('range', start, end)
-}
-
-watch(
-  () => props.items,
-  () => void nextTickFrame(),
-)
-function nextTickFrame() {
-  requestAnimationFrame(emitRange)
 }
 
 const totalHeight = computed(() => props.items.length * props.itemHeight)
@@ -81,14 +76,14 @@ function scrollToTop() {
 }
 
 /** 平滑滚动到指定行（默认垂直居中） */
-function scrollToIndex(index: number, align: 'top' | 'center' = 'center') {
+function scrollToIndex(index: number, align: 'top' | 'center' = 'center', behavior: ScrollBehavior = 'smooth') {
   if (!container.value) return
   const target = props.padTop + index * props.itemHeight
   const top =
     align === 'center'
       ? target - container.value.clientHeight / 2 + props.itemHeight / 2
       : target
-  container.value.scrollTo({ top: Math.max(0, top), behavior: 'smooth' })
+  container.value.scrollTo({ top: Math.max(0, top), behavior })
 }
 defineExpose({ scrollToTop, scrollToIndex })
 </script>

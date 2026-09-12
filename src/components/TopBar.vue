@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, computed } from 'vue'
+import { ref, watch, computed, onBeforeUnmount } from 'vue'
 import { ArrowLeftIcon as ArrowLeft } from '@solar-icons/vue/linear/arrow-left'
 import { HistoryIcon as History } from '@solar-icons/vue/linear/history'
 import { MoonIcon as Moon } from '@solar-icons/vue/linear/moon'
@@ -117,9 +117,11 @@ function applyRecent(s: string) {
 function onFocus() {
   searchFocused.value = true
 }
+/** 失焦延迟收起（给 mousedown.prevent 选中项留时间）；组件卸载时一并清理 */
+let blurTimer: ReturnType<typeof setTimeout> | undefined
 function onBlur() {
-  // 延迟收起，给 mousedown.prevent 选中项留出时间（此处不记录历史，只在明确提交时记录）
-  setTimeout(() => (searchFocused.value = false), 150)
+  clearTimeout(blurTimer)
+  blurTimer = setTimeout(() => (searchFocused.value = false), 150)
 }
 /** Enter：进入完整搜索结果页 */
 function onEnter() {
@@ -154,6 +156,10 @@ function onInput() {
   // 防抖时长可在设置中调整，避免打字过快导致频繁查询卡顿
   timer = setTimeout(() => runSearch(input.value), getSearchSettings().debounceMs)
 }
+onBeforeUnmount(() => {
+  clearTimeout(timer)
+  clearTimeout(blurTimer)
+})
 
 function clearSearch() {
   input.value = ''

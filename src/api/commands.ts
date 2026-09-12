@@ -2,12 +2,14 @@ import { invoke } from '@tauri-apps/api/core'
 import { getSearchSettings } from '@/composables/useSearchSettings'
 import type {
   AlbumItem,
+  ArtistAlias,
   ArtistItem,
   ArtistNormalizeChange,
   ArtistSplitChange,
   LibraryStats,
   Page,
   Playlist,
+  RemovedTrack,
   Source,
   Track,
   TrackQuery,
@@ -22,6 +24,9 @@ export const api = {
     invoke<void>('rescan_source', { id, mode }),
   setSourceFastImport: (id: number, enabled: boolean) =>
     invoke<void>('set_source_fast_import', { id, enabled }),
+  // 子目录扫描开关：关闭后仅扫描来源根目录下的文件（本地与 WebDAV 通用）
+  setSourceScanSubdirs: (id: number, enabled: boolean) =>
+    invoke<void>('set_source_scan_subdirs', { id, enabled }),
 
   // 库查询
   queryTracks: (q: TrackQuery) => {
@@ -93,6 +98,17 @@ export const api = {
   setArtistSeparators: (value: string) => invoke<ArtistSplitChange[]>('set_artist_separators', { value }),
   // 艺人名规整：剥离尾部括号注释（如「陈奕迅（Eason Chan）」→「陈奕迅」），合并同义艺人并迁移曲目/专辑关联
   normalizeArtistNames: () => invoke<ArtistNormalizeChange[]>('normalize_artist_names'),
+  // 已合并名单（历次规整与自定义合并的别名记录）
+  listArtistAliases: () => invoke<ArtistAlias[]>('list_artist_aliases'),
+  // 自定义合并：把 source 艺人并入 target（视为同一人），source 名字记为 target 的别名
+  mergeArtist: (sourceId: number, targetId: number) =>
+    invoke<ArtistNormalizeChange>('merge_artist', { sourceId, targetId }),
+
+  // 曲库移除与记录
+  /** 从曲库移除曲目（不删磁盘文件），返回实际移除数量 */
+  removeTracks: (ids: number[]) => invoke<number>('remove_tracks', { ids }),
+  listRemovedTracks: () => invoke<RemovedTrack[]>('list_removed_tracks'),
+  clearRemovedTracks: () => invoke<void>('clear_removed_tracks'),
 
   // WebDAV（M3）
   webdavAddSource: (url: string, username: string, password: string, name?: string) =>

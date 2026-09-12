@@ -47,7 +47,9 @@ export function ensureAnalyser(): AnalyserNode | null {
     // 推迟到首次用户手势时创建
     const tryCreate = () => {
       if (!analyser) ensureAnalyser()
-      if (analyser) {
+      // 成功或确认失败（createFailed=true，analyser 永远不会就绪）都要摘除监听，
+      // 否则失败后每次 pointerdown/keydown 都空跑一次
+      if (analyser || createFailed) {
         window.removeEventListener('pointerdown', tryCreate)
         window.removeEventListener('keydown', tryCreate)
       }

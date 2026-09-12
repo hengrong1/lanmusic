@@ -26,7 +26,7 @@ const loading = ref(false)
 const totalLabel = computed(() => t('common.albumsCount', { count: total.value.toLocaleString() }))
 
 const root = ref<HTMLElement | null>(null)
-useStagger(root, computed(() => albums.value.length > 0))
+useStagger(root, computed(() => albums.value.length > 0 || !loading.value))
 
 async function load() {
   loading.value = true
@@ -64,7 +64,13 @@ async function playAlbum(album: AlbumItem) {
         <p data-stagger class="text-xs font-semibold tracking-wider text-violet-500 uppercase">{{ $t('library.myMusic') }}</p>
         <h1 data-stagger class="mt-0.5 text-2xl font-bold text-zinc-900 dark:text-zinc-50">{{ $t('nav.albums') }}</h1>
       </div>
-      <span v-if="total" data-stagger class="text-sm text-zinc-500">{{ totalLabel }}</span>
+      <span v-if="total" data-stagger class="text-sm text-zinc-500">
+        {{ totalLabel }}
+        <!-- 单页上限截断：明确告知，避免超大库用户误以为缺了专辑 -->
+        <span v-if="albums.length < total" class="text-zinc-400 dark:text-zinc-600">
+          {{ t('common.listTruncated', { count: albums.length }) }}
+        </span>
+      </span>
     </div>
 
     <div v-if="loading && !albums.length" class="flex h-64 items-center justify-center">

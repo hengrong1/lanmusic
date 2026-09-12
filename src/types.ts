@@ -8,6 +8,8 @@ export interface Source {
   lastScanAt: number | null
   trackCount: number
   fastImport: boolean
+  /** 是否扫描来源内子目录（false = 仅扫描根目录下的文件） */
+  scanSubdirs: boolean
 }
 
 export interface Track {
@@ -53,6 +55,25 @@ export interface ArtistNormalizeChange {
   oldName: string
   newName: string
   trackCount: number
+}
+
+/** 艺人别名（合并记忆）：旧名/别名 → 主艺人 */
+export interface ArtistAlias {
+  alias: string
+  artistId: number
+  artistName: string
+}
+
+/** 已移除歌曲记录 */
+export interface RemovedTrack {
+  id: number
+  title: string
+  artist: string | null
+  album: string | null
+  path: string
+  /** 'manual' = 手动从曲库移除；'scan' = 扫描发现文件消失 */
+  reason: 'manual' | 'scan'
+  removedAt: number
 }
 
 export interface Page<T> {

@@ -9,6 +9,8 @@ import { useStagger } from '@/composables/useStagger'
 import { api } from '@/api/commands'
 import type { ArtistItem } from '@/types'
 import { useI18n } from 'vue-i18n'
+import { toast } from '@/composables/useToast'
+import { errorText } from '@/i18n/error'
 
 const { t } = useI18n()
 const library = useLibraryStore()
@@ -23,7 +25,7 @@ const totalLabel = computed(() => t('common.artistsCount', { count: total.value.
 const songCount = (n: number) => t('common.songsCount', { count: n })
 
 const root = ref<HTMLElement | null>(null)
-useStagger(root, computed(() => artists.value.length > 0))
+useStagger(root, computed(() => artists.value.length > 0 || !loading.value))
 
 async function load() {
   loading.value = true
@@ -31,6 +33,9 @@ async function load() {
     const page = await api.queryArtists(undefined, 0, 1000)
     artists.value = page.items
     total.value = page.total
+  } catch (e) {
+    // 与 AlbumsView 一致：本地明确提示，而不是依赖全局 unhandledrejection 兜底
+    toast(errorText(e), 'error')
   } finally {
     loading.value = false
   }
@@ -54,7 +59,13 @@ function initial(name: string) {
         <p data-stagger class="text-xs font-semibold tracking-wider text-violet-500 uppercase">{{ $t('library.myMusic') }}</p>
         <h1 data-stagger class="mt-0.5 text-2xl font-bold text-zinc-900 dark:text-zinc-50">{{ $t('nav.artists') }}</h1>
       </div>
-      <span v-if="total" data-stagger class="text-sm text-zinc-500">{{ totalLabel }}</span>
+      <span v-if="total" data-stagger class="text-sm text-zinc-500">
+        {{ totalLabel }}
+        <!-- 单页上限截断：明确告知，避免超大库用户误以为缺了艺人 -->
+        <span v-if="artists.length < total" class="text-zinc-400 dark:text-zinc-600">
+          {{ t('common.listTruncated', { count: artists.length }) }}
+        </span>
+      </span>
     </div>
 
     <div v-if="loading && !artists.length" class="flex h-64 items-center justify-center">
