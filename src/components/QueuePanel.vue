@@ -204,7 +204,7 @@ watch(
       <aside
         v-if="open && player.queue.length"
         ref="panel"
-        class="fixed right-2 bottom-[88px] z-50 flex max-h-[calc(100vh-120px)] w-80 origin-bottom-right flex-col overflow-hidden rounded-xl border shadow-2xl"
+        class="fixed right-2 bottom-[88px] z-50 flex h-[calc(100vh-120px)] w-80 origin-bottom-right flex-col overflow-hidden rounded-xl border shadow-2xl"
         :class="themed ? 'border-white/10' : 'border-zinc-200 bg-white/98 dark:border-zinc-800 dark:bg-zinc-900/98'"
         :style="themed ? { background: panelBg } : undefined"
       >
