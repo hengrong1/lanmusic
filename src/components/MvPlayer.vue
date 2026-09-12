@@ -1,8 +1,18 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import Plyr from 'plyr'
-import 'plyr/dist/plyr.css'
+// Plyr 懒加载：MV 很少用，把播放器本体与样式（约百余 KB）从首屏主包里拆出去，
+// 点击 MV 时才动态加载（Vite 自动分包；CSS 也会随之注入）
+type PlyrCtor = typeof import('plyr').default
+type PlyrInstance = InstanceType<PlyrCtor>
+let plyrCtor: PlyrCtor | null = null
+async function ensurePlyr(): Promise<PlyrCtor> {
+  if (!plyrCtor) {
+    const [mod] = await Promise.all([import('plyr'), import('plyr/dist/plyr.css')])
+    plyrCtor = mod.default
+  }
+  return plyrCtor
+}
 // 控件图标 sprite 本地化：默认 iconUrl 指向 cdn.plyr.io，打包后会被 CSP(connect-src 'self') 拦截导致图标全空
 import plyrIconUrl from '@/assets/plyr.svg?url'
 import { CloseIcon as X } from '@solar-icons/vue/linear/close'
@@ -13,7 +23,7 @@ const { t, locale } = useI18n()
 const { track, url, close } = useMvPlayer()
 
 const videoEl = ref<HTMLVideoElement | null>(null)
-let plyr: Plyr | null = null
+let plyr: PlyrInstance | null = null
 
 /** Plyr 控件文案（中文；英文走 Plyr 内置默认文案，无需覆盖） */
 const PLYR_I18N_ZH = {
@@ -36,6 +46,7 @@ async function initPlyr() {
   destroyPlyr()
   await nextTick()
   if (!videoEl.value) return
+  const Plyr = await ensurePlyr()
   plyr = new Plyr(videoEl.value, {
     ratio: '16:9',
     iconUrl: plyrIconUrl,

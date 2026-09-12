@@ -5,10 +5,52 @@
     <link rel="icon" type="image/png" href="/favicon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>LanMusic</title>
+    <style>
+      /* 启动闪屏：JS 解析/挂载期间先上主题底色与标识，避免首帧白屏（Vue 挂载完成后由 main.ts 移除） */
+      #splash {
+        position: fixed;
+        inset: 0;
+        z-index: 99999;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #09090b; /* zinc-950：默认深色主题；下方脚本按存储的主题覆盖 */
+      }
+      #splash .mark {
+        font-size: 44px;
+        line-height: 1;
+        color: #8b5cf6;
+        animation: splash-pulse 1.2s ease-in-out infinite;
+      }
+      @keyframes splash-pulse {
+        0%,
+        100% {
+          opacity: 0.35;
+          transform: scale(0.94);
+        }
+        50% {
+          opacity: 1;
+          transform: scale(1.06);
+        }
+      }
+    </style>
   </head>
-
   <body>
     <div id="app"></div>
+    <div id="splash"><div class="mark">&#9835;</div></div>
+    <script>
+      // 尽早按存储主题上底色，并预置 dark class（与 useTheme 同规则），避免闪一下亮色
+      ;(function () {
+        try {
+          var m = localStorage.getItem('lm.theme') || 'dark'
+          var dark =
+            m === 'dark' || (m === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)
+          if (dark) document.documentElement.classList.add('dark')
+          var s = document.getElementById('splash')
+          if (s) s.style.background = dark ? '#09090b' : '#f4f4f5'
+        } catch (e) {}
+      })()
+    </script>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
