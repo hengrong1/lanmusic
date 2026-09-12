@@ -269,7 +269,9 @@ export default {
     skinWave: '波形', skinSpectrum: '频谱', skinOn: '开启', skinOff: '关闭',
     focusMode: '专注模式', focusModeOn: '开启专注模式', focusModeOff: '关闭专注模式',
     focusModeDesc: '播放中鼠标 5 秒无操作自动隐藏顶栏与播放条',
-    spectrumStyle: '频谱样式', skinParticlesRound: '圆形粒子', skinTreeShape: '树状',
+    spectrumStyle: '频谱样式', skinParticlesRound: '圆形粒子', skinTreeShape: '树状', spectrumNone: '无',
+    layoutStyle: '布局', layoutSide: '经典', layoutStacked: '上下',
+    sampleTitle: '示例歌曲', sampleArtist: '示例艺人', sampleLyricPrev: '上一句歌词', sampleLyricNow: '当前句歌词', sampleLyricNext: '下一句歌词',
   },
   mv: {
     play: '播放 MV',

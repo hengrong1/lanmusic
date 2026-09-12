@@ -275,7 +275,9 @@ export default {
     skinWave: 'Wave', skinSpectrum: 'Spectrum', skinOn: 'On', skinOff: 'Off',
     focusMode: 'Focus Mode', focusModeOn: 'Enable Focus Mode', focusModeOff: 'Disable Focus Mode',
     focusModeDesc: 'Auto-hide top bar and player bar after 5 seconds of mouse inactivity during playback',
-    spectrumStyle: 'Spectrum Style', skinParticlesRound: 'Round Particles', skinTreeShape: 'Tree',
+    spectrumStyle: 'Spectrum Style', skinParticlesRound: 'Round Particles', skinTreeShape: 'Tree', spectrumNone: 'None',
+    layoutStyle: 'Layout', layoutSide: 'Classic', layoutStacked: 'Stacked',
+    sampleTitle: 'Sample Song', sampleArtist: 'Sample Artist', sampleLyricPrev: 'Previous line', sampleLyricNow: 'Current line', sampleLyricNext: 'Next line',
   },
   mv: {
     play: 'Play MV',

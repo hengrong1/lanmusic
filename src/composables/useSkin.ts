@@ -1,4 +1,5 @@
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
+import { ensureAnalyser } from './useSpectrum'
 
 /** 频谱皮肤样式：particles = 封面周围圆形粒子，tree = 底部控制器上方树状频谱 */
 export type SpectrumStyle = 'particles' | 'tree'
@@ -38,4 +39,23 @@ export function useSkin() {
 
 export function useSkinOpen() {
   return skinOpen
+}
+
+/** 频谱三态单选：none = 关闭；particles / tree = 对应样式（装扮弹层的选项口径，写回 on + style 两字段） */
+const spectrumMode = computed<'none' | SpectrumStyle>({
+  get: () => (skin.value.on ? skin.value.style : 'none'),
+  set: (mode) => {
+    if (mode === 'none') {
+      skin.value.on = false
+      return
+    }
+    skin.value.on = true
+    skin.value.style = mode
+    // 切到开启态时确保 AnalyserNode 已创建（AudioContext 需在用户手势内，点选选项即是手势）
+    ensureAnalyser()
+  },
+})
+
+export function useSpectrumMode() {
+  return spectrumMode
 }
