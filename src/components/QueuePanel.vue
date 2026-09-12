@@ -173,7 +173,7 @@ watch(
           </div>
         </header>
 
-        <div ref="listEl" class="relative min-h-0 flex-1 overflow-y-auto py-1" @scroll.passive="checkVisible">
+        <div ref="listEl" class="relative min-h-0 flex-1 select-none overflow-y-auto py-1" @scroll.passive="checkVisible">
           <div
             v-for="(t, i) in player.queue"
             :key="`${t.id}-${i}`"

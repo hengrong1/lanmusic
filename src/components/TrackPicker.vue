@@ -215,7 +215,7 @@ onBeforeUnmount(() => {
       </div>
 
       <!-- 曲目列表 -->
-      <div ref="scroller" class="min-h-0 flex-1 overflow-y-auto" @scroll="onScroll">
+      <div ref="scroller" class="min-h-0 flex-1 select-none overflow-y-auto" @scroll="onScroll">
         <button
           v-for="t in visibleItems"
           :key="t.id"

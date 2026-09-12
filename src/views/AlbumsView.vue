@@ -58,7 +58,7 @@ async function playAlbum(album: AlbumItem) {
 </script>
 
 <template>
-  <div ref="root" class="h-full overflow-y-auto px-6 pt-5 pb-8">
+  <div ref="root" class="h-full select-none overflow-y-auto px-6 pt-5 pb-8">
     <div class="mb-4 flex items-end justify-between">
       <div>
         <p data-stagger class="text-xs font-semibold tracking-wider text-violet-500 uppercase">{{ $t('library.myMusic') }}</p>

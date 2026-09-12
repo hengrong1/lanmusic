@@ -215,7 +215,7 @@ function openPlaylistMenu(e: MouseEvent, p: { id: number; name: string }) {
 <template>
   <nav
     ref="navEl"
-    class="flex shrink-0 flex-col overflow-hidden rounded-2xl bg-white dark:bg-zinc-900"
+    class="flex shrink-0 select-none flex-col overflow-hidden rounded-2xl bg-white dark:bg-zinc-900"
   >
     <!-- Logo：固定左内边距 14px，收起态（60px）恰好居中，避免随 collapsed 切换 justify 而左右闪动 -->
     <div class="flex h-14 shrink-0 items-center gap-2 pl-3.5 pr-3" :data-tauri-drag-region="IS_WIN ? '' : undefined">

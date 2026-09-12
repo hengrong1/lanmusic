@@ -68,7 +68,7 @@ function initial(name: string) {
       :description="$t('empty.libraryFolderHint')"
     />
 
-    <div v-else class="grid gap-4" style="grid-template-columns: repeat(auto-fill, minmax(130px, 1fr))">
+    <div v-else class="grid select-none gap-4" style="grid-template-columns: repeat(auto-fill, minmax(130px, 1fr))">
       <div
         v-for="a in artists"
         :key="a.id"
