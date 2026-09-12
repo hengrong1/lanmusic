@@ -12,7 +12,7 @@ export default {
     rename: '重命名', unknown: '未知', minimize: '最小化', maximize: '最大化', restore: '还原',
     songsCount: '{count} 首', albumsCount: '{count} 张', artistsCount: '{count} 位',
     songUnit: '首', selectedWithCount: '已选（{count}）', result: '结果',
-    revealInFolder: '在文件夹中显示', listSep: '，',
+    revealInFolder: '在文件夹中显示', listSep: '，', retry: '重试',
   },
   nav: {
     library: '歌曲库', albums: '专辑', artists: '艺人',
@@ -323,6 +323,9 @@ export default {
     scanDone: '扫描完成（{time}s）：{detail}',
     scanAdded: '新增 {count}', scanUpdated: '更新 {count}', scanRemoved: '移除 {count}',
     scanFailedDetail: '扫描失败：{message}',
+    loadTracksFailed: '歌曲列表加载失败：{error}',
+    viewLoadFailed: '视图加载失败',
+    bootFailed: '应用加载失败，请重启',
     lyricOffsetReset: '歌词时间轴已还原',
     lyricOffsetDelay: '歌词已延后 {value}s', lyricOffsetAdvance: '歌词已提前 {value}s',
     playFailed: '播放失败：{title}', playNextAfter: '将在「{title}」后播放',

@@ -71,6 +71,9 @@ export const useLibraryStore = defineStore('library', () => {
       } else {
         trackPage.value = page
       }
+    } catch (e) {
+      // 查询失败（DB 锁/损坏等）：保留旧列表，明确提示而不是静默吞掉产生 unhandled rejection
+      if (my === trackReq) toast(tr('toast.loadTracksFailed', { error: errorText(e) }), 'error')
     } finally {
       if (my === trackReq) loading.value = false
     }

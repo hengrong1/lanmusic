@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, onMounted, ref, watch, type Component } from 'vue'
 import gsap from 'gsap'
 import Sidebar from '@/components/Sidebar.vue'
 import TopBar from '@/components/TopBar.vue'
@@ -12,10 +12,15 @@ import Toast from '@/components/Toast.vue'
 import MvPlayer from '@/components/MvPlayer.vue'
 import { useUpdater } from '@/composables/useUpdater'
 import TracksView from '@/views/TracksView.vue'
-import AlbumsView from '@/views/AlbumsView.vue'
-import ArtistsView from '@/views/ArtistsView.vue'
-import PlaylistView from '@/views/PlaylistView.vue'
-import SettingsView from '@/views/SettingsView.vue'
+// 非默认视图懒加载：首屏只需要 TracksView，其余视图切过去时再加载（本地加载，几乎无感）。
+// chunk 加载失败时用 AsyncViewError 兜底（可重试），而不是渲染空白
+import AsyncViewError from '@/components/AsyncViewError.vue'
+const lazyView = (loader: () => Promise<{ default: Component }>) =>
+  defineAsyncComponent({ loader, errorComponent: AsyncViewError })
+const AlbumsView = lazyView(() => import('@/views/AlbumsView.vue'))
+const ArtistsView = lazyView(() => import('@/views/ArtistsView.vue'))
+const PlaylistView = lazyView(() => import('@/views/PlaylistView.vue'))
+const SettingsView = lazyView(() => import('@/views/SettingsView.vue'))
 import { useLibraryStore } from '@/stores/library'
 import { usePlayerStore } from '@/stores/player'
 import { useNav } from '@/composables/useNav'
@@ -156,6 +161,11 @@ const viewKey = computed(() => JSON.stringify(nav.current.value))
 
 // ---- GSAP 过渡：主视图切换（简短淡入淡出，不做缩放避免文字模糊）----
 function viewEnter(el: Element, done: () => void) {
+  // 懒加载视图首次进入时可能先渲染注释占位节点：直接完成，避免动画挂在空目标上
+  if (el.nodeType !== 1) {
+    done()
+    return
+  }
   gsap.fromTo(
     el,
     { opacity: 0, y: 18 },
@@ -265,7 +275,7 @@ window.addEventListener('keydown', (e) => {
 
 <template>
   <div
-    class="relative flex h-screen select-none flex-col gap-3 overflow-hidden bg-zinc-100 p-3 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100"
+    class="relative flex h-screen flex-col gap-3 overflow-hidden bg-zinc-100 p-3 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100"
     :class="npFocus ? 'cursor-none [&_*]:!cursor-none' : ''"
   >
     <div class="flex min-h-0 flex-1 gap-3">

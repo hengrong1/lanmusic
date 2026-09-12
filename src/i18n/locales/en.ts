@@ -12,7 +12,7 @@ export default {
     rename: 'Rename', unknown: 'Unknown', minimize: 'Minimize', maximize: 'Maximize', restore: 'Restore',
     songsCount: '{count} songs', albumsCount: '{count} albums', artistsCount: '{count} artists',
     songUnit: 'tracks', selectedWithCount: 'Selected ({count})', result: 'Results',
-    revealInFolder: 'Show in Folder', listSep: ', ',
+    revealInFolder: 'Show in Folder', listSep: ', ', retry: 'Retry',
   },
   nav: {
     library: 'Library', albums: 'Albums', artists: 'Artists',
@@ -329,6 +329,9 @@ export default {
     scanDone: 'Scan complete ({time}s): {detail}',
     scanAdded: 'added {count}', scanUpdated: 'updated {count}', scanRemoved: 'removed {count}',
     scanFailedDetail: 'Scan failed: {message}',
+    loadTracksFailed: 'Failed to load tracks: {error}',
+    viewLoadFailed: 'Failed to load this view',
+    bootFailed: 'Failed to load the app — please restart',
     lyricOffsetReset: 'Lyrics timeline reset',
     lyricOffsetDelay: 'Lyrics delayed by {value}s', lyricOffsetAdvance: 'Lyrics advanced by {value}s',
     playFailed: 'Playback failed: {title}', playNextAfter: 'Will play after "{title}"',
