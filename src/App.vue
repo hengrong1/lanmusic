@@ -73,10 +73,12 @@ const HEADER_H = 56 // 顶栏 h-14
 const REGION_GAP = 12 // 卡片分区间距 p-3 / gap-3（与布局保持一致）
 let focusTimer: ReturnType<typeof setTimeout> | undefined
 
-/** 专注模式启用条件：播放页打开 且 正在播放（暂停时不做专注隐藏）；皮肤设置弹层展开时暂停专注，
- * 避免用户调整皮肤时鼠标移到弹层上超过 5s 被触发隐藏 */
+/** 专注模式启用条件：播放页打开 且 正在播放（暂停时不做专注隐藏）；皮肤设置弹层 / 播放队列面板展开时暂停专注，
+ * 避免用户调整皮肤或翻看队列时停留超过 5s 被触发隐藏（队列面板锚定播放条，播放条一藏面板就悬空） */
 const skinOpen = useSkinOpen()
-const focusActive = computed(() => nowPlaying.value && player.playing && !skinOpen.value)
+const focusActive = computed(
+  () => nowPlaying.value && player.playing && !skinOpen.value && !queueOpen.value,
+)
 
 /** 启动/重置专注计时（5s 后隐藏控制） */
 function armFocusTimer() {
