@@ -55,18 +55,26 @@ const { enabled: dlEnabled, toggle: dlToggle, config: dlConfig } = useDesktopLyr
 const player = usePlayerStore()
 const { t, locale } = useI18n()
 
-// ---- 分类导航（左侧分类 / 右侧只渲染当前类）----
+// ---- 锚点目录：六个分类纵向铺开；左侧目录点击滚动跳转，滚动时反向高亮当前分区 ----
 const CATEGORY_IDS = ['library', 'appearance', 'playback', 'search', 'lyrics', 'general'] as const
 type CategoryId = (typeof CATEGORY_IDS)[number]
 const SETTINGS_TAB_KEY = 'lm.settingsTab'
+const SECTION_ID_PREFIX = 'settings-section-'
 
 function readActiveTab(): CategoryId {
   const saved = localStorage.getItem(SETTINGS_TAB_KEY)
   return CATEGORY_IDS.includes(saved as CategoryId) ? (saved as CategoryId) : 'library'
 }
 
+/** 当前分区：点击目录即时更新，滚动时由 scroll spy 跟随；持久化便于下次进入时回到原位置 */
 const active = ref<CategoryId>(readActiveTab())
 watch(active, (v) => localStorage.setItem(SETTINGS_TAB_KEY, v))
+
+/** 点击目录项：平滑滚动到对应分区（滚动途经的分区会依次高亮，最终停在目标分区） */
+function scrollToSection(id: CategoryId) {
+  active.value = id
+  document.getElementById(SECTION_ID_PREFIX + id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
 
 const categories = computed(() => [
   { id: 'library' as const, icon: HardDrive, iconActive: HardDriveBold, label: t('settings.library'), desc: t('settings.libraryDesc') },
@@ -76,7 +84,6 @@ const categories = computed(() => [
   { id: 'lyrics' as const, icon: Subtitles, iconActive: SubtitlesBold, label: t('settings.lyrics'), desc: t('settings.lyricsDesc') },
   { id: 'general' as const, icon: Settings, iconActive: SettingsBold, label: t('settings.general'), desc: t('settings.generalDesc') },
 ])
-const currentCategory = computed(() => categories.value.find((c) => c.id === active.value) ?? categories.value[0])
 
 // ---- 语言 ----
 const languageOptions = [
@@ -371,6 +378,45 @@ const previewPendingStyle = computed(() => ({
 const root = ref<HTMLElement | null>(null)
 useStagger(root, ref(true))
 
+// ---- 滚动高亮（scroll spy，rAF 节流）：高亮「顶部已越过容器顶 80px」的最后一个分区 ----
+const contentEl = ref<HTMLElement | null>(null)
+let spyTicking = false
+function onContentScroll() {
+  if (spyTicking) return
+  spyTicking = true
+  requestAnimationFrame(updateActiveFromScroll)
+}
+function sectionEls(): HTMLElement[] {
+  return root.value ? Array.from(root.value.querySelectorAll<HTMLElement>('[data-settings-section]')) : []
+}
+function updateActiveFromScroll() {
+  spyTicking = false
+  const container = contentEl.value
+  if (!container) return
+  const containerTop = container.getBoundingClientRect().top
+  let current: CategoryId = CATEGORY_IDS[0]
+  for (const el of sectionEls()) {
+    if (el.getBoundingClientRect().top - containerTop <= 80) {
+      current = (el.dataset.settingsSection ?? CATEGORY_IDS[0]) as CategoryId
+    } else {
+      break
+    }
+  }
+  // 滚到底时高亮最后一节（末节可能不够高、滚不到容器顶）
+  if (container.scrollTop + container.clientHeight >= container.scrollHeight - 4) {
+    current = CATEGORY_IDS[CATEGORY_IDS.length - 1]
+  }
+  if (active.value !== current) active.value = current
+}
+
+onMounted(() => {
+  // 恢复上次浏览到的分区（瞬时定位，不播滚动动画），并同步一次高亮
+  if (active.value !== 'library') {
+    document.getElementById(SECTION_ID_PREFIX + active.value)?.scrollIntoView({ block: 'start' })
+  }
+  requestAnimationFrame(updateActiveFromScroll)
+})
+
 const appVersion = ref('')
 onMounted(async () => {
   try {
@@ -481,7 +527,7 @@ const showWebdavLimits = computed(() => showWebdav.value || library.sources.some
               : 'text-zinc-600 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-800'
           "
           :aria-current="active === c.id ? 'page' : undefined"
-          @click="active = c.id"
+          @click="scrollToSection(c.id)"
         >
           <!-- 选中分类的图标用 bold 变体，与左侧栏选中态一致 -->
           <component :is="active === c.id ? c.iconActive : c.icon" class="h-4 w-4 shrink-0" />
@@ -490,641 +536,666 @@ const showWebdavLimits = computed(() => showWebdav.value || library.sources.some
       </nav>
     </aside>
 
-    <!-- 右侧：当前分类内容 -->
-    <div class="min-w-0 flex-1 overflow-y-auto px-6 pt-5 pb-8">
+    <!-- 右侧：全部分区纵向铺开，随滚动浏览；左侧目录点击跳转 -->
+    <div ref="contentEl" class="min-w-0 flex-1 overflow-y-auto px-6 pt-5 pb-8" @scroll.passive="onContentScroll">
       <div class="mx-auto max-w-2xl">
-        <header class="mb-5">
-          <h2 class="text-lg font-semibold text-zinc-900 dark:text-zinc-50">{{ currentCategory.label }}</h2>
-          <p class="mt-0.5 text-xs text-zinc-400">{{ currentCategory.desc }}</p>
-        </header>
+      <!-- ===== 音乐库 ===== -->
+        <section :id="`settings-section-library`" data-settings-section="library" class="scroll-mt-4">
+          <header data-stagger class="mb-5">
+            <h2 class="text-lg font-semibold text-zinc-900 dark:text-zinc-50">{{ t('settings.library') }}</h2>
+            <p class="mt-0.5 text-xs text-zinc-400">{{ t('settings.libraryDesc') }}</p>
+          </header>
+          <div class="space-y-6">
+            <!-- 音乐来源 -->
+            <section>
+              <div class="mb-2.5 flex items-center justify-between gap-3">
+                <h3 class="text-sm font-semibold text-zinc-800 dark:text-zinc-100">{{ t('settings.sources') }}</h3>
+                <BaseButton
+                  size="sm"
+                  :icon="adding ? LoaderCircle : FolderOpen"
+                  :loading="adding"
+                  :disabled="adding"
+                  @click="addFolder"
+                >
+                  {{ t('settings.addFolder') }}
+                </BaseButton>
+              </div>
 
-        <Transition
-          mode="out-in"
-          enter-active-class="transition duration-200 ease-out"
-          enter-from-class="translate-y-1 opacity-0"
-          enter-to-class="translate-y-0 opacity-100"
-          leave-active-class="transition duration-100 ease-in"
-          leave-to-class="opacity-0"
-        >
-          <div :key="active" class="space-y-6">
-            <!-- ===== 音乐库 ===== -->
-            <template v-if="active === 'library'">
-              <!-- 音乐来源 -->
-              <section>
-                <div class="mb-2.5 flex items-center justify-between gap-3">
-                  <h3 class="text-sm font-semibold text-zinc-800 dark:text-zinc-100">{{ t('settings.sources') }}</h3>
+              <div class="space-y-2">
+                <div
+                  v-for="s in library.sources"
+                  :key="s.id"
+                  class="rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900"
+                >
+                  <div class="flex items-center gap-3">
+                    <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">
+                      <component :is="s.kind === 'webdav' ? Globe : HardDrive" class="h-4.5 w-4.5" />
+                    </div>
+                    <div class="min-w-0 flex-1">
+                      <p class="truncate text-sm font-medium text-zinc-800 dark:text-zinc-100">{{ s.name }}</p>
+                      <p class="truncate text-xs text-zinc-500" v-tooltip="s.basePath ?? s.baseUrl ?? ''">{{ s.basePath ?? s.baseUrl }}</p>
+                    </div>
+                    <span class="shrink-0 text-xs text-zinc-400">
+                      {{ t('settings.sourceTrackCount', { count: s.trackCount }) }} · {{ fmtTime(s.lastScanAt) }}
+                    </span>
+                    <div
+                      class="flex shrink-0 items-center gap-1.5 text-xs text-zinc-500"
+                      v-tooltip="t('settings.quickImportTip')"
+                    >
+                      {{ t('settings.quickImport') }}
+                      <BaseSwitch
+                        :model-value="s.fastImport"
+                        size="sm"
+                        @update:model-value="(v) => toggleFastImport(s, v)"
+                      />
+                    </div>
+                    <div class="flex shrink-0 items-center gap-1">
+                      <BaseButton
+                        variant="ghost"
+                        size="xs"
+                        :disabled="scannedSourceIds.has(s.id)"
+                        v-tooltip="t('settings.fullParseTip')"
+                        @click="rescanFull(s)"
+                      >
+                        {{ t('settings.fullParse') }}
+                      </BaseButton>
+                      <BaseButton
+                        variant="ghost"
+                        size="xs"
+                        :icon="RefreshCw"
+                        :loading="scannedSourceIds.has(s.id)"
+                        :disabled="scannedSourceIds.has(s.id)"
+                        v-tooltip="t('settings.incrementalScan')"
+                        :aria-label="t('settings.incrementalScan')"
+                        @click="rescan(s.id)"
+                      />
+                      <BaseButton
+                        variant="ghost"
+                        tone="danger"
+                        size="xs"
+                        :icon="Trash2"
+                        v-tooltip="t('common.remove')"
+                        :aria-label="t('common.remove')"
+                        @click="remove(s)"
+                      />
+                    </div>
+                  </div>
+                  <!-- WebDAV 来源的固有限制，直接写在卡片里（不藏在 tooltip） -->
+                  <p
+                    v-if="s.kind === 'webdav'"
+                    class="mt-2.5 flex items-start gap-1.5 border-t border-zinc-100 pt-2.5 text-xs leading-relaxed text-zinc-400 dark:border-zinc-800"
+                  >
+                    <InfoCircle class="mt-px h-3.5 w-3.5 shrink-0" />
+                    <span>{{ t('settings.webdavCardHint') }}</span>
+                  </p>
+                  <div v-if="library.scanProgress[s.id]" class="mt-3">
+                    <template v-if="library.scanProgress[s.id].phase === 'enumerate'">
+                      <div class="mb-1 flex justify-between text-xs text-zinc-500">
+                        <span>{{ t('settings.scanningEnumerate') }}</span>
+                        <span class="tabular-nums">{{ t('settings.fileCount', { count: library.scanProgress[s.id].done }) }}</span>
+                      </div>
+                      <div class="h-1.5 overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-800">
+                        <div class="h-full w-1/3 animate-pulse rounded-full bg-violet-500"></div>
+                      </div>
+                    </template>
+                    <template v-else>
+                      <div class="mb-1 flex justify-between text-xs text-zinc-500">
+                        <span>{{ t('settings.scanningParse') }}</span>
+                        <span class="tabular-nums">{{ library.scanProgress[s.id].done }} / {{ library.scanProgress[s.id].total }}</span>
+                      </div>
+                      <div class="h-1.5 overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-800">
+                        <div
+                          class="h-full rounded-full bg-violet-500 transition-all"
+                          :style="{
+                            width:
+                              library.scanProgress[s.id].total > 0
+                                ? `${(library.scanProgress[s.id].done / library.scanProgress[s.id].total) * 100}%`
+                                : '0%',
+                          }"
+                        ></div>
+                      </div>
+                    </template>
+                  </div>
+                </div>
+
+                <p v-if="!library.sources.length" class="rounded-xl border border-dashed border-zinc-300 p-4 text-center text-sm text-zinc-400 dark:border-zinc-700">
+                  {{ t('settings.noSources') }}
+                </p>
+              </div>
+            </section>
+
+            <!-- WebDAV 音乐源 -->
+            <section>
+              <div class="mb-2.5 flex items-center justify-between gap-3">
+                <h3 class="text-sm font-semibold text-zinc-800 dark:text-zinc-100">{{ t('settings.webdav') }}</h3>
+                <BaseButton size="sm" :icon="Globe" @click="showWebdav = !showWebdav">
+                  {{ showWebdav ? t('settings.collapse') : t('settings.addWebdav') }}
+                </BaseButton>
+              </div>
+              <form
+                v-if="showWebdav"
+                class="space-y-3 rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900"
+                @submit.prevent="submitWebdav"
+              >
+                <p class="flex items-center gap-1.5 text-xs text-zinc-400">
+                  <Globe class="h-3.5 w-3.5" /> {{ t('settings.webdavHint') }}
+                </p>
+                <div class="grid gap-3" style="grid-template-columns: 2fr 1fr 1fr">
+                  <BaseInput v-model="webdav.url" :placeholder="t('settings.webdavUrl')" required />
+                  <BaseInput v-model="webdav.username" :placeholder="t('settings.webdavUsername')" autocomplete="off" />
+                  <BaseInput v-model="webdav.password" type="password" :placeholder="t('settings.webdavPassword')" autocomplete="off" />
+                </div>
+                <div class="flex items-center gap-3">
+                  <div class="w-56">
+                    <BaseInput v-model="webdav.name" :placeholder="t('settings.webdavNamePlaceholder')" />
+                  </div>
+                  <BaseButton type="submit" :loading="webdavBusy" :disabled="webdavBusy" :icon="webdavBusy ? undefined : Check">
+                    {{ t('settings.addAndScan') }}
+                  </BaseButton>
+                </div>
+              </form>
+
+              <!-- 云端（WebDAV）来源的已知限制：常驻展示，避免「为什么云端新歌不出现 / 没有 MV / 缺时长」被当成 bug -->
+              <div
+                v-if="showWebdavLimits"
+                class="mt-2.5 rounded-xl border border-zinc-200 bg-zinc-50/70 p-4 dark:border-zinc-800 dark:bg-zinc-900/50"
+              >
+                <p class="mb-2 flex items-center gap-1.5 text-xs font-medium text-zinc-600 dark:text-zinc-300">
+                  <InfoCircle class="h-3.5 w-3.5 shrink-0" />
+                  {{ t('settings.webdavLimitsTitle') }}
+                </p>
+                <ul class="space-y-1.5 text-xs leading-relaxed text-zinc-500">
+                  <li>{{ t('settings.webdavLimitNoWatch') }}</li>
+                  <li>{{ t('settings.webdavLimitNoMv') }}</li>
+                  <li>{{ t('settings.webdavLimitHeadOnly') }}</li>
+                  <li>{{ t('settings.webdavLimitPartial') }}</li>
+                  <li>{{ t('settings.webdavLimitRateLimit') }}</li>
+                </ul>
+              </div>
+            </section>
+
+            <!-- 多艺人分隔符 -->
+            <section>
+              <h3 class="mb-2.5 text-sm font-semibold text-zinc-800 dark:text-zinc-100">{{ t('settings.artistSeparators') }}</h3>
+              <div class="rounded-xl border border-zinc-200 bg-white p-4 text-sm dark:border-zinc-800 dark:bg-zinc-900">
+                <div class="flex flex-wrap items-center justify-between gap-3">
+                  <div class="flex w-full flex-wrap justify-end gap-2">
+                    <BaseButton
+                      v-for="sep in SEPARATOR_CANDIDATES"
+                      :key="sep"
+                      size="sm"
+                      :variant="artistSeparators.has(sep) ? 'primary' : 'secondary'"
+                      v-tooltip="sep === FIXED_SEPARATOR ? t('settings.separatorFixedTip') : t('settings.separatorToggleTip', { sep })"
+                      :disabled="sep === FIXED_SEPARATOR || splitApplying"
+                      @click="onSeparatorToggle(sep)"
+                    >
+                      {{ sep }}
+                    </BaseButton>
+                  </div>
+                </div>
+                <p class="mt-2 text-xs leading-relaxed text-zinc-400">{{ t('settings.artistSeparatorsDesc') }}</p>
+
+                <!-- 变更报告：保存后展示受影响歌曲的艺人变化 -->
+                <template v-if="splitChanges !== null">
+                  <div class="mt-3 border-t border-zinc-100 pt-3 dark:border-zinc-800">
+                    <p class="text-xs font-medium" :class="splitChanges.length > 0 ? 'text-violet-500' : 'text-zinc-400'">
+                      {{
+                        splitChanges.length > 0
+                          ? t('settings.separatorApplied', { count: splitChanges.length })
+                          : t('settings.separatorNoAffected')
+                      }}
+                    </p>
+                    <ul v-if="splitChanges.length > 0" class="mt-2 max-h-56 space-y-1.5 overflow-y-auto pr-1">
+                      <li v-for="c in splitChanges.slice(0, 200)" :key="c.trackId" class="flex min-w-0 flex-wrap items-baseline gap-x-1 text-xs">
+                        <span class="font-medium text-zinc-700 dark:text-zinc-200">{{ c.title }}</span>
+                        <span class="text-zinc-400">：</span>
+                        <span class="text-zinc-400 line-through">{{ c.oldArtists.join(' / ') }}</span>
+                        <span class="text-violet-500">→</span>
+                        <span class="text-zinc-600 dark:text-zinc-300">{{ c.newArtists.join(' / ') }}</span>
+                      </li>
+                    </ul>
+                    <p v-if="splitChanges.length > 200" class="mt-1 text-xs text-zinc-400">
+                      {{ t('settings.separatorMore', { count: splitChanges.length - 200 }) }}
+                    </p>
+                  </div>
+                </template>
+              </div>
+            </section>
+
+            <!-- 艺人名规整：合并同义艺人（如「陈奕迅（Eason Chan）」→「陈奕迅」）-->
+            <section>
+              <h3 class="mb-2.5 text-sm font-semibold text-zinc-800 dark:text-zinc-100">{{ t('settings.artistNormalize') }}</h3>
+              <div class="rounded-xl border border-zinc-200 bg-white p-4 text-sm dark:border-zinc-800 dark:bg-zinc-900">
+                <div class="flex flex-wrap items-center justify-between gap-3">
+                  <p class="max-w-md text-xs leading-relaxed text-zinc-400">{{ t('settings.artistNormalizeDesc') }}</p>
                   <BaseButton
                     size="sm"
-                    :icon="adding ? LoaderCircle : FolderOpen"
-                    :loading="adding"
-                    :disabled="adding"
-                    @click="addFolder"
+                    variant="secondary"
+                    :loading="normalizeApplying"
+                    :disabled="normalizeApplying"
+                    :icon="normalizeApplying ? undefined : Check"
+                    @click="onNormalizeArtists"
                   >
-                    {{ t('settings.addFolder') }}
+                    {{ normalizeApplying ? t('settings.artistNormalizeApplying') : t('settings.artistNormalizeBtn') }}
                   </BaseButton>
                 </div>
 
-                <div class="space-y-2">
-                  <div
-                    v-for="s in library.sources"
-                    :key="s.id"
-                    class="rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900"
-                  >
-                    <div class="flex items-center gap-3">
-                      <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">
-                        <component :is="s.kind === 'webdav' ? Globe : HardDrive" class="h-4.5 w-4.5" />
-                      </div>
-                      <div class="min-w-0 flex-1">
-                        <p class="truncate text-sm font-medium text-zinc-800 dark:text-zinc-100">{{ s.name }}</p>
-                        <p class="truncate text-xs text-zinc-500" v-tooltip="s.basePath ?? s.baseUrl ?? ''">{{ s.basePath ?? s.baseUrl }}</p>
-                      </div>
-                      <span class="shrink-0 text-xs text-zinc-400">
-                        {{ t('settings.sourceTrackCount', { count: s.trackCount }) }} · {{ fmtTime(s.lastScanAt) }}
-                      </span>
-                      <div
-                        class="flex shrink-0 items-center gap-1.5 text-xs text-zinc-500"
-                        v-tooltip="t('settings.quickImportTip')"
-                      >
-                        {{ t('settings.quickImport') }}
-                        <BaseSwitch
-                          :model-value="s.fastImport"
-                          size="sm"
-                          @update:model-value="(v) => toggleFastImport(s, v)"
-                        />
-                      </div>
-                      <div class="flex shrink-0 items-center gap-1">
-                        <BaseButton
-                          variant="ghost"
-                          size="xs"
-                          :disabled="scannedSourceIds.has(s.id)"
-                          v-tooltip="t('settings.fullParseTip')"
-                          @click="rescanFull(s)"
-                        >
-                          {{ t('settings.fullParse') }}
-                        </BaseButton>
-                        <BaseButton
-                          variant="ghost"
-                          size="xs"
-                          :icon="RefreshCw"
-                          :loading="scannedSourceIds.has(s.id)"
-                          :disabled="scannedSourceIds.has(s.id)"
-                          v-tooltip="t('settings.incrementalScan')"
-                          :aria-label="t('settings.incrementalScan')"
-                          @click="rescan(s.id)"
-                        />
-                        <BaseButton
-                          variant="ghost"
-                          tone="danger"
-                          size="xs"
-                          :icon="Trash2"
-                          v-tooltip="t('common.remove')"
-                          :aria-label="t('common.remove')"
-                          @click="remove(s)"
-                        />
-                      </div>
-                    </div>
-                    <!-- WebDAV 来源的固有限制，直接写在卡片里（不藏在 tooltip） -->
-                    <p
-                      v-if="s.kind === 'webdav'"
-                      class="mt-2.5 flex items-start gap-1.5 border-t border-zinc-100 pt-2.5 text-xs leading-relaxed text-zinc-400 dark:border-zinc-800"
-                    >
-                      <InfoCircle class="mt-px h-3.5 w-3.5 shrink-0" />
-                      <span>{{ t('settings.webdavCardHint') }}</span>
+                <!-- 变更报告：执行后展示被合并的艺人变化 -->
+                <template v-if="normalizeChanges !== null">
+                  <div class="mt-3 border-t border-zinc-100 pt-3 dark:border-zinc-800">
+                    <p class="text-xs font-medium" :class="normalizeChanges.length > 0 ? 'text-violet-500' : 'text-zinc-400'">
+                      {{
+                        normalizeChanges.length > 0
+                          ? t('settings.artistNormalizeApplied', { count: normalizeChanges.length })
+                          : t('settings.artistNormalizeNone')
+                      }}
                     </p>
-                    <div v-if="library.scanProgress[s.id]" class="mt-3">
-                      <template v-if="library.scanProgress[s.id].phase === 'enumerate'">
-                        <div class="mb-1 flex justify-between text-xs text-zinc-500">
-                          <span>{{ t('settings.scanningEnumerate') }}</span>
-                          <span class="tabular-nums">{{ t('settings.fileCount', { count: library.scanProgress[s.id].done }) }}</span>
-                        </div>
-                        <div class="h-1.5 overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-800">
-                          <div class="h-full w-1/3 animate-pulse rounded-full bg-violet-500"></div>
-                        </div>
-                      </template>
-                      <template v-else>
-                        <div class="mb-1 flex justify-between text-xs text-zinc-500">
-                          <span>{{ t('settings.scanningParse') }}</span>
-                          <span class="tabular-nums">{{ library.scanProgress[s.id].done }} / {{ library.scanProgress[s.id].total }}</span>
-                        </div>
-                        <div class="h-1.5 overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-800">
-                          <div
-                            class="h-full rounded-full bg-violet-500 transition-all"
-                            :style="{
-                              width:
-                                library.scanProgress[s.id].total > 0
-                                  ? `${(library.scanProgress[s.id].done / library.scanProgress[s.id].total) * 100}%`
-                                  : '0%',
-                            }"
-                          ></div>
-                        </div>
-                      </template>
-                    </div>
+                    <ul v-if="normalizeChanges.length > 0" class="mt-2 max-h-56 space-y-1.5 overflow-y-auto pr-1">
+                      <li v-for="c in normalizeChanges.slice(0, 200)" :key="c.oldName" class="flex min-w-0 flex-wrap items-baseline gap-x-1 text-xs">
+                        <span class="text-zinc-400 line-through">{{ c.oldName }}</span>
+                        <span class="text-violet-500">→</span>
+                        <span class="font-medium text-zinc-700 dark:text-zinc-200">{{ c.newName }}</span>
+                        <span class="text-zinc-400">({{ c.trackCount }})</span>
+                      </li>
+                    </ul>
+                    <p v-if="normalizeChanges.length > 200" class="mt-1 text-xs text-zinc-400">
+                      {{ t('settings.artistNormalizeMore', { count: normalizeChanges.length - 200 }) }}
+                    </p>
                   </div>
+                </template>
+              </div>
+            </section>
+          </div>
+        </section>
 
-                  <p v-if="!library.sources.length" class="rounded-xl border border-dashed border-zinc-300 p-4 text-center text-sm text-zinc-400 dark:border-zinc-700">
-                    {{ t('settings.noSources') }}
-                  </p>
-                </div>
-              </section>
+      <!-- ===== 外观 ===== -->
 
-              <!-- WebDAV 音乐源 -->
-              <section>
-                <div class="mb-2.5 flex items-center justify-between gap-3">
-                  <h3 class="text-sm font-semibold text-zinc-800 dark:text-zinc-100">{{ t('settings.webdav') }}</h3>
-                  <BaseButton size="sm" :icon="Globe" @click="showWebdav = !showWebdav">
-                    {{ showWebdav ? t('settings.collapse') : t('settings.addWebdav') }}
-                  </BaseButton>
+        <section :id="`settings-section-appearance`" data-settings-section="appearance" class="mt-8 scroll-mt-4 border-t border-zinc-100 pt-8 dark:border-zinc-800">
+          <header data-stagger class="mb-5">
+            <h2 class="text-lg font-semibold text-zinc-900 dark:text-zinc-50">{{ t('settings.appearance') }}</h2>
+            <p class="mt-0.5 text-xs text-zinc-400">{{ t('settings.appearanceDesc') }}</p>
+          </header>
+          <div class="space-y-6">
+            <section>
+              <div class="space-y-4 rounded-xl border border-zinc-200 bg-white p-4 text-sm dark:border-zinc-800 dark:bg-zinc-900">
+                <div class="flex items-center justify-between gap-3">
+                  <span class="text-zinc-600 dark:text-zinc-300">{{ t('settings.theme') }}</span>
+                  <BaseButtonGroup :model-value="mode" :items="themeItems" size="sm" @update:model-value="onThemeChange" />
                 </div>
-                <form
-                  v-if="showWebdav"
-                  class="space-y-3 rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900"
-                  @submit.prevent="submitWebdav"
-                >
-                  <p class="flex items-center gap-1.5 text-xs text-zinc-400">
-                    <Globe class="h-3.5 w-3.5" /> {{ t('settings.webdavHint') }}
-                  </p>
-                  <div class="grid gap-3" style="grid-template-columns: 2fr 1fr 1fr">
-                    <BaseInput v-model="webdav.url" :placeholder="t('settings.webdavUrl')" required />
-                    <BaseInput v-model="webdav.username" :placeholder="t('settings.webdavUsername')" autocomplete="off" />
-                    <BaseInput v-model="webdav.password" type="password" :placeholder="t('settings.webdavPassword')" autocomplete="off" />
+                <!-- 全局字体：应用于整个软件（含桌面歌词），从系统读取 -->
+                <div class="flex items-center justify-between gap-3 border-t border-zinc-100 pt-4 dark:border-zinc-800">
+                  <span class="text-zinc-600 dark:text-zinc-300">{{ t('settings.fontFamily') }}</span>
+                  <div class="max-w-[280px] flex-1">
+                    <BaseSelect :model-value="appFont" :options="fontSelectOptions" size="sm" @update:model-value="onFontChange" />
                   </div>
-                  <div class="flex items-center gap-3">
-                    <div class="w-56">
-                      <BaseInput v-model="webdav.name" :placeholder="t('settings.webdavNamePlaceholder')" />
-                    </div>
-                    <BaseButton type="submit" :loading="webdavBusy" :disabled="webdavBusy" :icon="webdavBusy ? undefined : Check">
-                      {{ t('settings.addAndScan') }}
-                    </BaseButton>
-                  </div>
-                </form>
-
-                <!-- 云端（WebDAV）来源的已知限制：常驻展示，避免「为什么云端新歌不出现 / 没有 MV / 缺时长」被当成 bug -->
-                <div
-                  v-if="showWebdavLimits"
-                  class="mt-2.5 rounded-xl border border-zinc-200 bg-zinc-50/70 p-4 dark:border-zinc-800 dark:bg-zinc-900/50"
-                >
-                  <p class="mb-2 flex items-center gap-1.5 text-xs font-medium text-zinc-600 dark:text-zinc-300">
-                    <InfoCircle class="h-3.5 w-3.5 shrink-0" />
-                    {{ t('settings.webdavLimitsTitle') }}
-                  </p>
-                  <ul class="space-y-1.5 text-xs leading-relaxed text-zinc-500">
-                    <li>{{ t('settings.webdavLimitNoWatch') }}</li>
-                    <li>{{ t('settings.webdavLimitNoMv') }}</li>
-                    <li>{{ t('settings.webdavLimitHeadOnly') }}</li>
-                    <li>{{ t('settings.webdavLimitPartial') }}</li>
-                    <li>{{ t('settings.webdavLimitRateLimit') }}</li>
-                  </ul>
                 </div>
-              </section>
+              </div>
+            </section>
+          </div>
+        </section>
 
-              <!-- 多艺人分隔符 -->
-              <section>
-                <h3 class="mb-2.5 text-sm font-semibold text-zinc-800 dark:text-zinc-100">{{ t('settings.artistSeparators') }}</h3>
-                <div class="rounded-xl border border-zinc-200 bg-white p-4 text-sm dark:border-zinc-800 dark:bg-zinc-900">
-                  <div class="flex flex-wrap items-center justify-between gap-3">
-                    <div class="flex w-full flex-wrap justify-end gap-2">
-                      <BaseButton
-                        v-for="sep in SEPARATOR_CANDIDATES"
-                        :key="sep"
-                        size="sm"
-                        :variant="artistSeparators.has(sep) ? 'primary' : 'secondary'"
-                        v-tooltip="sep === FIXED_SEPARATOR ? t('settings.separatorFixedTip') : t('settings.separatorToggleTip', { sep })"
-                        :disabled="sep === FIXED_SEPARATOR || splitApplying"
-                        @click="onSeparatorToggle(sep)"
-                      >
-                        {{ sep }}
-                      </BaseButton>
-                    </div>
-                  </div>
-                  <p class="mt-2 text-xs leading-relaxed text-zinc-400">{{ t('settings.artistSeparatorsDesc') }}</p>
+      <!-- ===== 播放 ===== -->
 
-                  <!-- 变更报告：保存后展示受影响歌曲的艺人变化 -->
-                  <template v-if="splitChanges !== null">
-                    <div class="mt-3 border-t border-zinc-100 pt-3 dark:border-zinc-800">
-                      <p class="text-xs font-medium" :class="splitChanges.length > 0 ? 'text-violet-500' : 'text-zinc-400'">
-                        {{
-                          splitChanges.length > 0
-                            ? t('settings.separatorApplied', { count: splitChanges.length })
-                            : t('settings.separatorNoAffected')
-                        }}
-                      </p>
-                      <ul v-if="splitChanges.length > 0" class="mt-2 max-h-56 space-y-1.5 overflow-y-auto pr-1">
-                        <li v-for="c in splitChanges.slice(0, 200)" :key="c.trackId" class="flex min-w-0 flex-wrap items-baseline gap-x-1 text-xs">
-                          <span class="font-medium text-zinc-700 dark:text-zinc-200">{{ c.title }}</span>
-                          <span class="text-zinc-400">：</span>
-                          <span class="text-zinc-400 line-through">{{ c.oldArtists.join(' / ') }}</span>
-                          <span class="text-violet-500">→</span>
-                          <span class="text-zinc-600 dark:text-zinc-300">{{ c.newArtists.join(' / ') }}</span>
-                        </li>
-                      </ul>
-                      <p v-if="splitChanges.length > 200" class="mt-1 text-xs text-zinc-400">
-                        {{ t('settings.separatorMore', { count: splitChanges.length - 200 }) }}
-                      </p>
-                    </div>
-                  </template>
-                </div>
-              <!-- 艺人名规整：合并同义艺人（如「陈奕迅（Eason Chan）」→「陈奕迅」）-->
-              <section>
-                <h3 class="mb-2.5 text-sm font-semibold text-zinc-800 dark:text-zinc-100">{{ t('settings.artistNormalize') }}</h3>
-                <div class="rounded-xl border border-zinc-200 bg-white p-4 text-sm dark:border-zinc-800 dark:bg-zinc-900">
-                  <div class="flex flex-wrap items-center justify-between gap-3">
-                    <p class="max-w-md text-xs leading-relaxed text-zinc-400">{{ t('settings.artistNormalizeDesc') }}</p>
-                    <BaseButton
-                      size="sm"
-                      variant="secondary"
-                      :loading="normalizeApplying"
-                      :disabled="normalizeApplying"
-                      :icon="normalizeApplying ? undefined : Check"
-                      @click="onNormalizeArtists"
-                    >
-                      {{ normalizeApplying ? t('settings.artistNormalizeApplying') : t('settings.artistNormalizeBtn') }}
-                    </BaseButton>
-                  </div>
-
-                  <!-- 变更报告：执行后展示被合并的艺人变化 -->
-                  <template v-if="normalizeChanges !== null">
-                    <div class="mt-3 border-t border-zinc-100 pt-3 dark:border-zinc-800">
-                      <p class="text-xs font-medium" :class="normalizeChanges.length > 0 ? 'text-violet-500' : 'text-zinc-400'">
-                        {{
-                          normalizeChanges.length > 0
-                            ? t('settings.artistNormalizeApplied', { count: normalizeChanges.length })
-                            : t('settings.artistNormalizeNone')
-                        }}
-                      </p>
-                      <ul v-if="normalizeChanges.length > 0" class="mt-2 max-h-56 space-y-1.5 overflow-y-auto pr-1">
-                        <li v-for="c in normalizeChanges.slice(0, 200)" :key="c.oldName" class="flex min-w-0 flex-wrap items-baseline gap-x-1 text-xs">
-                          <span class="text-zinc-400 line-through">{{ c.oldName }}</span>
-                          <span class="text-violet-500">→</span>
-                          <span class="font-medium text-zinc-700 dark:text-zinc-200">{{ c.newName }}</span>
-                          <span class="text-zinc-400">({{ c.trackCount }})</span>
-                        </li>
-                      </ul>
-                      <p v-if="normalizeChanges.length > 200" class="mt-1 text-xs text-zinc-400">
-                        {{ t('settings.artistNormalizeMore', { count: normalizeChanges.length - 200 }) }}
-                      </p>
-                    </div>
-                  </template>
-                </div>
-              </section>
-
-              </section>
-            </template>
-
-            <!-- ===== 外观 ===== -->
-            <template v-else-if="active === 'appearance'">
-              <section>
-                <div class="space-y-4 rounded-xl border border-zinc-200 bg-white p-4 text-sm dark:border-zinc-800 dark:bg-zinc-900">
+        <section :id="`settings-section-playback`" data-settings-section="playback" class="mt-8 scroll-mt-4 border-t border-zinc-100 pt-8 dark:border-zinc-800">
+          <header data-stagger class="mb-5">
+            <h2 class="text-lg font-semibold text-zinc-900 dark:text-zinc-50">{{ t('settings.playback') }}</h2>
+            <p class="mt-0.5 text-xs text-zinc-400">{{ t('settings.playbackDesc') }}</p>
+          </header>
+          <div class="space-y-6">
+            <section>
+              <div class="space-y-4 rounded-xl border border-zinc-200 bg-white p-4 text-sm dark:border-zinc-800 dark:bg-zinc-900">
+                <!-- 淡入淡出 -->
+                <div>
                   <div class="flex items-center justify-between gap-3">
-                    <span class="text-zinc-600 dark:text-zinc-300">{{ t('settings.theme') }}</span>
-                    <BaseButtonGroup :model-value="mode" :items="themeItems" size="sm" @update:model-value="onThemeChange" />
-                  </div>
-                  <!-- 全局字体：应用于整个软件（含桌面歌词），从系统读取 -->
-                  <div class="flex items-center justify-between gap-3 border-t border-zinc-100 pt-4 dark:border-zinc-800">
-                    <span class="text-zinc-600 dark:text-zinc-300">{{ t('settings.fontFamily') }}</span>
-                    <div class="max-w-[280px] flex-1">
-                      <BaseSelect :model-value="appFont" :options="fontSelectOptions" size="sm" @update:model-value="onFontChange" />
-                    </div>
-                  </div>
-                </div>
-              </section>
-            </template>
-
-            <!-- ===== 播放 ===== -->
-            <template v-else-if="active === 'playback'">
-              <section>
-                <div class="space-y-4 rounded-xl border border-zinc-200 bg-white p-4 text-sm dark:border-zinc-800 dark:bg-zinc-900">
-                  <!-- 淡入淡出 -->
-                  <div>
-                    <div class="flex items-center justify-between gap-3">
-                      <span class="text-zinc-600 dark:text-zinc-300">{{ t('settings.fadeInOut') }}</span>
-                      <BaseSwitch
-                        :model-value="fadeOn"
-                        size="sm"
-                        v-tooltip="t('settings.fadeInOutTip')"
-                        @update:model-value="onFadeToggle"
-                      />
-                    </div>
-                    <p class="mt-1.5 text-xs leading-relaxed text-zinc-400">{{ t('settings.fadeInOutDesc') }}</p>
-                  </div>
-
-                  <!-- 阻止系统休眠 -->
-                  <div class="border-t border-zinc-100 pt-4 dark:border-zinc-800">
-                    <div class="flex items-center justify-between gap-3">
-                      <span class="text-zinc-600 dark:text-zinc-300">{{ t('settings.preventSleep') }}</span>
-                      <BaseSwitch
-                        :model-value="preventSleepOn"
-                        size="sm"
-                        v-tooltip="t('settings.preventSleepTip')"
-                        @update:model-value="onPreventSleepToggle"
-                      />
-                    </div>
-                    <p class="mt-1.5 text-xs leading-relaxed text-zinc-400">{{ t('settings.preventSleepDesc') }}</p>
-                  </div>
-                </div>
-              </section>
-            </template>
-
-            <!-- ===== 搜索 ===== -->
-            <template v-else-if="active === 'search'">
-              <section>
-                <div class="space-y-4 rounded-xl border border-zinc-200 bg-white p-4 text-sm dark:border-zinc-800 dark:bg-zinc-900">
-                  <!-- 搜索范围 -->
-                  <div>
-                    <p class="mb-2 text-xs font-medium text-zinc-400">{{ t('settings.searchScope') }}</p>
-                    <div class="flex flex-wrap gap-x-5 gap-y-2">
-                      <BaseCheckbox
-                        v-for="opt in searchFieldOptions"
-                        :key="opt.value"
-                        :model-value="searchSettings.fields.includes(opt.value)"
-                        :label="opt.label"
-                        size="sm"
-                        :disabled="searchSettings.fields.length === 1 && searchSettings.fields.includes(opt.value)"
-                        @update:model-value="(v) => toggleSearchField(opt.value, v)"
-                      />
-                    </div>
-                    <p class="mt-1.5 text-xs leading-relaxed text-zinc-400">{{ t('settings.searchScopeHint') }}</p>
-                  </div>
-
-                  <!-- 拼音搜索 -->
-                  <div class="border-t border-zinc-100 pt-4 dark:border-zinc-800">
-                    <div class="flex items-center justify-between gap-3">
-                      <span class="text-zinc-600 dark:text-zinc-300">{{ t('settings.pinyinSearch') }}</span>
-                      <BaseSwitch
-                        :model-value="searchSettings.pinyin"
-                        size="sm"
-                        v-tooltip="t('settings.pinyinTip')"
-                        @update:model-value="togglePinyin"
-                      />
-                    </div>
-                    <p class="mt-1.5 text-xs leading-relaxed text-zinc-400">{{ t('settings.pinyinDesc') }}</p>
-                  </div>
-
-                  <!-- 排序偏好 -->
-                  <div class="border-t border-zinc-100 pt-4 dark:border-zinc-800">
-                    <div class="flex flex-wrap items-center justify-between gap-3">
-                      <span class="text-zinc-600 dark:text-zinc-300">{{ t('settings.sortPreference') }}</span>
-                      <BaseButtonGroup
-                        :model-value="searchSettings.sort"
-                        :items="searchSortItems"
-                        size="sm"
-                        @update:model-value="onSearchSortChange"
-                      />
-                    </div>
-                  </div>
-
-                  <!-- 输入防抖 -->
-                  <div class="border-t border-zinc-100 pt-4 dark:border-zinc-800">
-                    <div class="flex items-center justify-between gap-3">
-                      <span class="text-zinc-600 dark:text-zinc-300">{{ t('settings.inputDebounce') }}</span>
-                      <div class="w-28">
-                        <BaseSelect
-                          :model-value="searchSettings.debounceMs"
-                          :options="debounceSelectOptions"
-                          size="sm"
-                          @update:model-value="onDebounceChange"
-                        />
-                      </div>
-                    </div>
-                    <p class="mt-1.5 text-xs leading-relaxed text-zinc-400">{{ t('settings.inputDebounceDesc') }}</p>
-                  </div>
-                </div>
-              </section>
-            </template>
-
-            <!-- ===== 歌词 ===== -->
-            <template v-else-if="active === 'lyrics'">
-              <section>
-                <div class="rounded-xl border border-zinc-200 bg-white p-4 text-sm dark:border-zinc-800 dark:bg-zinc-900">
-                  <!-- 预览：与浮窗样式一致，随下方设置实时变化 -->
-                  <div
-                    class="flex min-h-[76px] flex-col justify-center gap-1 rounded-xl px-5 py-3"
-                    :style="previewBoxStyle"
-                  >
-                    <p class="truncate font-bold" :style="previewMainStyle">{{ t('settings.dlPreviewMain') }}</p>
-                    <p class="truncate" :style="previewPendingStyle">{{ t('settings.dlPreviewPending') }}</p>
-                  </div>
-
-                  <!-- 显示 -->
-                  <div class="mt-5 mb-3 flex items-center gap-2">
-                    <span class="text-xs font-medium text-zinc-400">{{ t('settings.dlDisplay') }}</span>
-                    <span class="h-px flex-1 bg-zinc-100 dark:bg-zinc-800"></span>
-                  </div>
-                  <div class="grid grid-cols-1 gap-x-8 gap-y-4 sm:grid-cols-2">
-                    <!-- 开关 -->
-                    <div class="flex items-center justify-between gap-3">
-                      <span class="text-zinc-600 dark:text-zinc-300">{{ t('settings.dlShow') }}</span>
-                      <BaseSwitch
-                        :model-value="dlEnabled"
-                        size="sm"
-                        :label="dlEnabled ? t('desktopLyrics.enabled') : t('desktopLyrics.disabled')"
-                        @update:model-value="() => dlToggle()"
-                      />
-                    </div>
-                    <!-- 显示行数 -->
-                    <div class="flex items-center justify-between gap-3">
-                      <span class="text-zinc-600 dark:text-zinc-300">{{ t('settings.dlLines') }}</span>
-                      <BaseButtonGroup
-                        :model-value="String(dlConfig.lines)"
-                        :items="dlLineItems"
-                        size="sm"
-                        @update:model-value="onDlLinesChange"
-                      />
-                    </div>
-                    <!-- 对齐方式（选项较多，独占一行） -->
-                    <div class="flex items-center justify-between gap-3 sm:col-span-2">
-                      <span class="shrink-0 text-zinc-600 dark:text-zinc-300">{{ t('settings.dlAlign') }}</span>
-                      <BaseButtonGroup
-                        :model-value="dlConfig.align"
-                        :items="filteredDlAlignItems"
-                        size="sm"
-                        @update:model-value="onDlAlignChange"
-                      />
-                    </div>
-                  </div>
-
-                  <!-- 样式 -->
-                  <div class="mt-5 mb-3 flex items-center gap-2">
-                    <span class="text-xs font-medium text-zinc-400">{{ t('settings.dlStyle') }}</span>
-                    <span class="h-px flex-1 bg-zinc-100 dark:bg-zinc-800"></span>
-                  </div>
-                  <div class="grid grid-cols-1 gap-x-8 gap-y-4 sm:grid-cols-2">
-                    <!-- 预设配色（独占一行）：点选后同时更新播放行 / 未播放行颜色 -->
-                    <div class="flex items-center justify-between gap-3 sm:col-span-2">
-                      <span class="shrink-0 text-zinc-600 dark:text-zinc-300">{{ t('settings.dlPreset') }}</span>
-                      <div class="w-28 shrink-0">
-                        <BaseSelect :model-value="dlPreset" :options="dlPresetOptions" size="sm" @update:model-value="onDlPresetChange" />
-                      </div>
-                    </div>
-                    <!-- 播放行颜色 -->
-                    <div class="flex items-center justify-between gap-3">
-                      <span class="text-zinc-600 dark:text-zinc-300">{{ t('settings.dlPlayColor') }}</span>
-                      <BaseColorPicker
-                        v-model="dlConfig.color"
-                        :presets="DL_PLAY_PRESETS"
-                        v-tooltip="t('settings.dlPlayColor')"
-                      />
-                    </div>
-                    <!-- 未播放行颜色 -->
-                    <div class="flex items-center justify-between gap-3">
-                      <span class="text-zinc-600 dark:text-zinc-300">{{ t('settings.dlPendingColor') }}</span>
-                      <BaseColorPicker
-                        v-model="dlConfig.pendingColor"
-                        :presets="DL_PENDING_PRESETS"
-                        v-tooltip="t('settings.dlPendingColor')"
-                      />
-                    </div>
-                    <!-- 描边 -->
-                    <div class="flex items-center justify-between gap-3">
-                      <span class="text-zinc-600 dark:text-zinc-300">{{ t('settings.dlOutline') }}</span>
-                      <div class="flex items-center gap-2">
-                        <BaseColorPicker
-                          v-model="dlConfig.outlineColor"
-                          :disabled="!dlConfig.outline"
-                          v-tooltip="t('settings.dlOutlineColor')"
-                        />
-                        <BaseCheckbox v-model="dlConfig.outline" size="sm" />
-                      </div>
-                    </div>
-                    <!-- 字体加粗 -->
-                    <div class="flex items-center justify-between gap-3">
-                      <span class="text-zinc-600 dark:text-zinc-300">{{ t('settings.dlBold') }}</span>
-                      <BaseCheckbox v-model="dlConfig.bold" size="sm" />
-                    </div>
-                    <!-- 字号（独占一行，滑杆拉满宽度） -->
-                    <div class="flex items-center gap-3 sm:col-span-2">
-                      <span class="shrink-0 text-zinc-600 dark:text-zinc-300">{{ t('settings.dlFontSize', { size: dlConfig.fontSize }) }}</span>
-                      <div class="w-full min-w-0 flex-1">
-                        <BaseSlider v-model="dlConfig.fontSize" :min="18" :max="56" :step="2" />
-                      </div>
-                    </div>
-                  </div>
-
-                  <!-- 背景 -->
-                  <div class="mt-5 mb-3 flex items-center gap-2">
-                    <span class="text-xs font-medium text-zinc-400">{{ t('settings.dlBackground') }}</span>
-                    <span class="h-px flex-1 bg-zinc-100 dark:bg-zinc-800"></span>
-                  </div>
-                  <div class="grid grid-cols-1 gap-x-8 gap-y-4 sm:grid-cols-2">
-                    <!-- 背景颜色 -->
-                    <div class="flex items-center justify-between gap-3">
-                      <span class="text-zinc-600 dark:text-zinc-300">{{ t('settings.dlBgColor') }}</span>
-                      <BaseColorPicker v-model="dlConfig.bgColor" :title="t('settings.dlBgColor')" />
-                    </div>
-                    <!-- 背景不透明度 -->
-                    <div class="flex items-center gap-3">
-                      <span class="shrink-0 text-zinc-600 dark:text-zinc-300">
-                        {{ t('settings.dlBgOpacity', { value: Math.round(dlConfig.bgOpacity * 100) }) }}
-                      </span>
-                      <div class="w-full min-w-0 flex-1">
-                        <BaseSlider v-model="dlConfig.bgOpacity" :min="0" :max="0.85" :step="0.05" />
-                      </div>
-                    </div>
-                  </div>
-                  <p class="mt-4 text-xs leading-relaxed text-zinc-400">{{ t('settings.dlHint') }}</p>
-                </div>
-              </section>
-            </template>
-
-            <!-- ===== 通用 ===== -->
-            <template v-else>
-              <!-- 语言 -->
-              <section>
-                <h3 class="mb-2.5 text-sm font-semibold text-zinc-800 dark:text-zinc-100">{{ t('settings.language') }}</h3>
-                <div class="rounded-xl border border-zinc-200 bg-white p-4 text-sm text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900">
-                  <div class="flex flex-wrap items-center justify-between gap-3">
-                    <span>{{ t('settings.languageSelect') }}</span>
-                    <div class="w-40 shrink-0">
-                      <BaseSelect :model-value="locale" :options="languageOptions" size="sm" @update:model-value="onLocaleChange" />
-                    </div>
-                  </div>
-                </div>
-              </section>
-
-              <!-- 关闭窗口时（原「播放」分类迁入） -->
-              <section>
-                <h3 class="mb-2.5 text-sm font-semibold text-zinc-800 dark:text-zinc-100">{{ t('settings.closeAction') }}</h3>
-                <div class="rounded-xl border border-zinc-200 bg-white p-4 text-sm text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900">
-                  <div class="flex flex-wrap items-center justify-between gap-3">
-                    <span>{{ t('settings.closeActionDesc') }}</span>
-                    <BaseButtonGroup
-                      :model-value="closeAction"
-                      :items="closeActionItems"
+                    <span class="text-zinc-600 dark:text-zinc-300">{{ t('settings.fadeInOut') }}</span>
+                    <BaseSwitch
+                      :model-value="fadeOn"
                       size="sm"
-                      @update:model-value="setCloseAction"
+                      v-tooltip="t('settings.fadeInOutTip')"
+                      @update:model-value="onFadeToggle"
+                    />
+                  </div>
+                  <p class="mt-1.5 text-xs leading-relaxed text-zinc-400">{{ t('settings.fadeInOutDesc') }}</p>
+                </div>
+
+                <!-- 阻止系统休眠 -->
+                <div class="border-t border-zinc-100 pt-4 dark:border-zinc-800">
+                  <div class="flex items-center justify-between gap-3">
+                    <span class="text-zinc-600 dark:text-zinc-300">{{ t('settings.preventSleep') }}</span>
+                    <BaseSwitch
+                      :model-value="preventSleepOn"
+                      size="sm"
+                      v-tooltip="t('settings.preventSleepTip')"
+                      @update:model-value="onPreventSleepToggle"
+                    />
+                  </div>
+                  <p class="mt-1.5 text-xs leading-relaxed text-zinc-400">{{ t('settings.preventSleepDesc') }}</p>
+                </div>
+              </div>
+            </section>
+          </div>
+        </section>
+
+      <!-- ===== 搜索 ===== -->
+
+        <section :id="`settings-section-search`" data-settings-section="search" class="mt-8 scroll-mt-4 border-t border-zinc-100 pt-8 dark:border-zinc-800">
+          <header data-stagger class="mb-5">
+            <h2 class="text-lg font-semibold text-zinc-900 dark:text-zinc-50">{{ t('settings.search') }}</h2>
+            <p class="mt-0.5 text-xs text-zinc-400">{{ t('settings.searchDesc') }}</p>
+          </header>
+          <div class="space-y-6">
+            <section>
+              <div class="space-y-4 rounded-xl border border-zinc-200 bg-white p-4 text-sm dark:border-zinc-800 dark:bg-zinc-900">
+                <!-- 搜索范围 -->
+                <div>
+                  <p class="mb-2 text-xs font-medium text-zinc-400">{{ t('settings.searchScope') }}</p>
+                  <div class="flex flex-wrap gap-x-5 gap-y-2">
+                    <BaseCheckbox
+                      v-for="opt in searchFieldOptions"
+                      :key="opt.value"
+                      :model-value="searchSettings.fields.includes(opt.value)"
+                      :label="opt.label"
+                      size="sm"
+                      :disabled="searchSettings.fields.length === 1 && searchSettings.fields.includes(opt.value)"
+                      @update:model-value="(v) => toggleSearchField(opt.value, v)"
+                    />
+                  </div>
+                  <p class="mt-1.5 text-xs leading-relaxed text-zinc-400">{{ t('settings.searchScopeHint') }}</p>
+                </div>
+
+                <!-- 拼音搜索 -->
+                <div class="border-t border-zinc-100 pt-4 dark:border-zinc-800">
+                  <div class="flex items-center justify-between gap-3">
+                    <span class="text-zinc-600 dark:text-zinc-300">{{ t('settings.pinyinSearch') }}</span>
+                    <BaseSwitch
+                      :model-value="searchSettings.pinyin"
+                      size="sm"
+                      v-tooltip="t('settings.pinyinTip')"
+                      @update:model-value="togglePinyin"
+                    />
+                  </div>
+                  <p class="mt-1.5 text-xs leading-relaxed text-zinc-400">{{ t('settings.pinyinDesc') }}</p>
+                </div>
+
+                <!-- 排序偏好 -->
+                <div class="border-t border-zinc-100 pt-4 dark:border-zinc-800">
+                  <div class="flex flex-wrap items-center justify-between gap-3">
+                    <span class="text-zinc-600 dark:text-zinc-300">{{ t('settings.sortPreference') }}</span>
+                    <BaseButtonGroup
+                      :model-value="searchSettings.sort"
+                      :items="searchSortItems"
+                      size="sm"
+                      @update:model-value="onSearchSortChange"
                     />
                   </div>
                 </div>
-              </section>
 
-              <!-- 关于 -->
-              <section>
-                <h3 class="mb-2.5 text-sm font-semibold text-zinc-800 dark:text-zinc-100">{{ t('settings.about') }}</h3>
-                <div class="rounded-xl border border-zinc-200 bg-white p-4 text-sm text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900">
-                  <div class="flex flex-wrap items-center justify-between gap-3">
-                    <span>{{ t('settings.versionLine', { version: appVersion }) }}</span>
-                    <!-- 更新操作区：按状态切换 -->
-                    <div class="flex items-center gap-2">
-                      <template v-if="updater.status.value === 'available' || updater.status.value === 'downloading'">
-                        <BaseButton
-                          size="sm"
-                          :loading="updater.status.value === 'downloading'"
-                          :icon="updater.status.value === 'downloading' ? undefined : RefreshCw"
-                          @click="updater.downloadAndInstall()"
-                        >
-                          {{
-                            updater.status.value === 'downloading'
-                              ? t('settings.downloadingUpdate')
-                              : t('settings.updateTo', { version: updater.newVersion.value })
-                          }}
-                        </BaseButton>
-                      </template>
-                      <BaseButton
-                        v-else-if="updater.status.value === 'ready'"
+                <!-- 输入防抖 -->
+                <div class="border-t border-zinc-100 pt-4 dark:border-zinc-800">
+                  <div class="flex items-center justify-between gap-3">
+                    <span class="text-zinc-600 dark:text-zinc-300">{{ t('settings.inputDebounce') }}</span>
+                    <div class="w-28">
+                      <BaseSelect
+                        :model-value="searchSettings.debounceMs"
+                        :options="debounceSelectOptions"
                         size="sm"
-                        @click="updater.restartToUpdate()"
-                      >
-                        {{ t('settings.restartToUpdate') }}
-                      </BaseButton>
-                      <span v-if="updater.status.value === 'uptodate'" class="text-xs text-zinc-400">{{ t('settings.upToDateShort') }}</span>
-                      <BaseButton
-                        size="sm"
-                        variant="outline"
-                        :loading="updater.status.value === 'checking'"
-                        :disabled="updater.status.value === 'checking'"
-                        :icon="updater.status.value === 'checking' ? undefined : RefreshCw"
-                        @click="updater.checkForUpdate(false)"
-                      >
-                        {{ t('settings.checkForUpdates') }}
-                      </BaseButton>
+                        @update:model-value="onDebounceChange"
+                      />
                     </div>
                   </div>
-                  <!-- 更新版说明 + 下载进度 -->
-                  <div v-if="updater.status.value === 'available' || updater.status.value === 'downloading' || updater.releaseNotes.value" class="mt-3 border-t border-zinc-100 pt-3 dark:border-zinc-800">
-                    <p v-if="updater.status.value === 'available' || updater.status.value === 'downloading'" class="text-xs font-medium text-violet-500">
-                      {{ t('settings.updateFound', { version: updater.newVersion.value }) }}
-                    </p>
-                    <p v-if="updater.releaseNotes.value" class="mt-1 line-clamp-4 whitespace-pre-wrap text-xs leading-relaxed">{{ updater.releaseNotes.value }}</p>
-                    <!-- 下载进度条（total 未知时显示不定进度动画） -->
-                    <div v-if="updater.status.value === 'downloading'" class="mt-2 flex items-center gap-2">
-                      <div class="h-1.5 flex-1 overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-800">
-                        <div
-                          v-if="progressPct >= 0"
-                          class="h-full rounded-full bg-violet-500 transition-all"
-                          :style="{ width: `${progressPct}%` }"
-                        ></div>
-                        <div v-else class="h-full w-1/3 animate-pulse rounded-full bg-violet-400"></div>
-                      </div>
-                      <span class="shrink-0 text-xs tabular-nums text-zinc-400">
-                        {{ progressPct >= 0 ? `${progressPct}%` : `${updater.downloadedMb.value.toFixed(1)}MB` }}
-                      </span>
-                    </div>
-                    <p v-if="updater.status.value === 'ready'" class="text-xs font-medium text-violet-500">{{ t('settings.updateReadyHint') }}</p>
+                  <p class="mt-1.5 text-xs leading-relaxed text-zinc-400">{{ t('settings.inputDebounceDesc') }}</p>
+                </div>
+              </div>
+            </section>
+          </div>
+        </section>
+
+      <!-- ===== 歌词 ===== -->
+
+        <section :id="`settings-section-lyrics`" data-settings-section="lyrics" class="mt-8 scroll-mt-4 border-t border-zinc-100 pt-8 dark:border-zinc-800">
+          <header data-stagger class="mb-5">
+            <h2 class="text-lg font-semibold text-zinc-900 dark:text-zinc-50">{{ t('settings.lyrics') }}</h2>
+            <p class="mt-0.5 text-xs text-zinc-400">{{ t('settings.lyricsDesc') }}</p>
+          </header>
+          <div class="space-y-6">
+            <section>
+              <div class="rounded-xl border border-zinc-200 bg-white p-4 text-sm dark:border-zinc-800 dark:bg-zinc-900">
+                <!-- 预览：与浮窗样式一致，随下方设置实时变化 -->
+                <div
+                  class="flex min-h-[76px] flex-col justify-center gap-1 rounded-xl px-5 py-3"
+                  :style="previewBoxStyle"
+                >
+                  <p class="truncate font-bold" :style="previewMainStyle">{{ t('settings.dlPreviewMain') }}</p>
+                  <p class="truncate" :style="previewPendingStyle">{{ t('settings.dlPreviewPending') }}</p>
+                </div>
+
+                <!-- 显示 -->
+                <div class="mt-5 mb-3 flex items-center gap-2">
+                  <span class="text-xs font-medium text-zinc-400">{{ t('settings.dlDisplay') }}</span>
+                  <span class="h-px flex-1 bg-zinc-100 dark:bg-zinc-800"></span>
+                </div>
+                <div class="grid grid-cols-1 gap-x-8 gap-y-4 sm:grid-cols-2">
+                  <!-- 开关 -->
+                  <div class="flex items-center justify-between gap-3">
+                    <span class="text-zinc-600 dark:text-zinc-300">{{ t('settings.dlShow') }}</span>
+                    <BaseSwitch
+                      :model-value="dlEnabled"
+                      size="sm"
+                      :label="dlEnabled ? t('desktopLyrics.enabled') : t('desktopLyrics.disabled')"
+                      @update:model-value="() => dlToggle()"
+                    />
+                  </div>
+                  <!-- 显示行数 -->
+                  <div class="flex items-center justify-between gap-3">
+                    <span class="text-zinc-600 dark:text-zinc-300">{{ t('settings.dlLines') }}</span>
+                    <BaseButtonGroup
+                      :model-value="String(dlConfig.lines)"
+                      :items="dlLineItems"
+                      size="sm"
+                      @update:model-value="onDlLinesChange"
+                    />
+                  </div>
+                  <!-- 对齐方式（选项较多，独占一行） -->
+                  <div class="flex items-center justify-between gap-3 sm:col-span-2">
+                    <span class="shrink-0 text-zinc-600 dark:text-zinc-300">{{ t('settings.dlAlign') }}</span>
+                    <BaseButtonGroup
+                      :model-value="dlConfig.align"
+                      :items="filteredDlAlignItems"
+                      size="sm"
+                      @update:model-value="onDlAlignChange"
+                    />
                   </div>
                 </div>
-              </section>
-            </template>
+
+                <!-- 样式 -->
+                <div class="mt-5 mb-3 flex items-center gap-2">
+                  <span class="text-xs font-medium text-zinc-400">{{ t('settings.dlStyle') }}</span>
+                  <span class="h-px flex-1 bg-zinc-100 dark:bg-zinc-800"></span>
+                </div>
+                <div class="grid grid-cols-1 gap-x-8 gap-y-4 sm:grid-cols-2">
+                  <!-- 预设配色（独占一行）：点选后同时更新播放行 / 未播放行颜色 -->
+                  <div class="flex items-center justify-between gap-3 sm:col-span-2">
+                    <span class="shrink-0 text-zinc-600 dark:text-zinc-300">{{ t('settings.dlPreset') }}</span>
+                    <div class="w-28 shrink-0">
+                      <BaseSelect :model-value="dlPreset" :options="dlPresetOptions" size="sm" @update:model-value="onDlPresetChange" />
+                    </div>
+                  </div>
+                  <!-- 播放行颜色 -->
+                  <div class="flex items-center justify-between gap-3">
+                    <span class="text-zinc-600 dark:text-zinc-300">{{ t('settings.dlPlayColor') }}</span>
+                    <BaseColorPicker
+                      v-model="dlConfig.color"
+                      :presets="DL_PLAY_PRESETS"
+                      v-tooltip="t('settings.dlPlayColor')"
+                    />
+                  </div>
+                  <!-- 未播放行颜色 -->
+                  <div class="flex items-center justify-between gap-3">
+                    <span class="text-zinc-600 dark:text-zinc-300">{{ t('settings.dlPendingColor') }}</span>
+                    <BaseColorPicker
+                      v-model="dlConfig.pendingColor"
+                      :presets="DL_PENDING_PRESETS"
+                      v-tooltip="t('settings.dlPendingColor')"
+                    />
+                  </div>
+                  <!-- 描边 -->
+                  <div class="flex items-center justify-between gap-3">
+                    <span class="text-zinc-600 dark:text-zinc-300">{{ t('settings.dlOutline') }}</span>
+                    <div class="flex items-center gap-2">
+                      <BaseColorPicker
+                        v-model="dlConfig.outlineColor"
+                        :disabled="!dlConfig.outline"
+                        v-tooltip="t('settings.dlOutlineColor')"
+                      />
+                      <BaseCheckbox v-model="dlConfig.outline" size="sm" />
+                    </div>
+                  </div>
+                  <!-- 字体加粗 -->
+                  <div class="flex items-center justify-between gap-3">
+                    <span class="text-zinc-600 dark:text-zinc-300">{{ t('settings.dlBold') }}</span>
+                    <BaseCheckbox v-model="dlConfig.bold" size="sm" />
+                  </div>
+                  <!-- 字号（独占一行，滑杆拉满宽度） -->
+                  <div class="flex items-center gap-3 sm:col-span-2">
+                    <span class="shrink-0 text-zinc-600 dark:text-zinc-300">{{ t('settings.dlFontSize', { size: dlConfig.fontSize }) }}</span>
+                    <div class="w-full min-w-0 flex-1">
+                      <BaseSlider v-model="dlConfig.fontSize" :min="18" :max="56" :step="2" />
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 背景 -->
+                <div class="mt-5 mb-3 flex items-center gap-2">
+                  <span class="text-xs font-medium text-zinc-400">{{ t('settings.dlBackground') }}</span>
+                  <span class="h-px flex-1 bg-zinc-100 dark:bg-zinc-800"></span>
+                </div>
+                <div class="grid grid-cols-1 gap-x-8 gap-y-4 sm:grid-cols-2">
+                  <!-- 背景颜色 -->
+                  <div class="flex items-center justify-between gap-3">
+                    <span class="text-zinc-600 dark:text-zinc-300">{{ t('settings.dlBgColor') }}</span>
+                    <BaseColorPicker v-model="dlConfig.bgColor" :title="t('settings.dlBgColor')" />
+                  </div>
+                  <!-- 背景不透明度 -->
+                  <div class="flex items-center gap-3">
+                    <span class="shrink-0 text-zinc-600 dark:text-zinc-300">
+                      {{ t('settings.dlBgOpacity', { value: Math.round(dlConfig.bgOpacity * 100) }) }}
+                    </span>
+                    <div class="w-full min-w-0 flex-1">
+                      <BaseSlider v-model="dlConfig.bgOpacity" :min="0" :max="0.85" :step="0.05" />
+                    </div>
+                  </div>
+                </div>
+                <p class="mt-4 text-xs leading-relaxed text-zinc-400">{{ t('settings.dlHint') }}</p>
+              </div>
+            </section>
           </div>
-        </Transition>
+        </section>
+
+      <!-- ===== 通用 ===== -->
+
+        <section :id="`settings-section-general`" data-settings-section="general" class="mt-8 scroll-mt-4 border-t border-zinc-100 pt-8 dark:border-zinc-800">
+          <header data-stagger class="mb-5">
+            <h2 class="text-lg font-semibold text-zinc-900 dark:text-zinc-50">{{ t('settings.general') }}</h2>
+            <p class="mt-0.5 text-xs text-zinc-400">{{ t('settings.generalDesc') }}</p>
+          </header>
+          <div class="space-y-6">
+            <!-- 语言 -->
+            <section>
+              <h3 class="mb-2.5 text-sm font-semibold text-zinc-800 dark:text-zinc-100">{{ t('settings.language') }}</h3>
+              <div class="rounded-xl border border-zinc-200 bg-white p-4 text-sm text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900">
+                <div class="flex flex-wrap items-center justify-between gap-3">
+                  <span>{{ t('settings.languageSelect') }}</span>
+                  <div class="w-40 shrink-0">
+                    <BaseSelect :model-value="locale" :options="languageOptions" size="sm" @update:model-value="onLocaleChange" />
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <!-- 关闭窗口时（原「播放」分类迁入） -->
+            <section>
+              <h3 class="mb-2.5 text-sm font-semibold text-zinc-800 dark:text-zinc-100">{{ t('settings.closeAction') }}</h3>
+              <div class="rounded-xl border border-zinc-200 bg-white p-4 text-sm text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900">
+                <div class="flex flex-wrap items-center justify-between gap-3">
+                  <span>{{ t('settings.closeActionDesc') }}</span>
+                  <BaseButtonGroup
+                    :model-value="closeAction"
+                    :items="closeActionItems"
+                    size="sm"
+                    @update:model-value="setCloseAction"
+                  />
+                </div>
+              </div>
+            </section>
+
+            <!-- 关于 -->
+            <section>
+              <h3 class="mb-2.5 text-sm font-semibold text-zinc-800 dark:text-zinc-100">{{ t('settings.about') }}</h3>
+              <div class="rounded-xl border border-zinc-200 bg-white p-4 text-sm text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900">
+                <div class="flex flex-wrap items-center justify-between gap-3">
+                  <span>{{ t('settings.versionLine', { version: appVersion }) }}</span>
+                  <!-- 更新操作区：按状态切换 -->
+                  <div class="flex items-center gap-2">
+                    <template v-if="updater.status.value === 'available' || updater.status.value === 'downloading'">
+                      <BaseButton
+                        size="sm"
+                        :loading="updater.status.value === 'downloading'"
+                        :icon="updater.status.value === 'downloading' ? undefined : RefreshCw"
+                        @click="updater.downloadAndInstall()"
+                      >
+                        {{
+                          updater.status.value === 'downloading'
+                            ? t('settings.downloadingUpdate')
+                            : t('settings.updateTo', { version: updater.newVersion.value })
+                        }}
+                      </BaseButton>
+                    </template>
+                    <BaseButton
+                      v-else-if="updater.status.value === 'ready'"
+                      size="sm"
+                      @click="updater.restartToUpdate()"
+                    >
+                      {{ t('settings.restartToUpdate') }}
+                    </BaseButton>
+                    <span v-if="updater.status.value === 'uptodate'" class="text-xs text-zinc-400">{{ t('settings.upToDateShort') }}</span>
+                    <BaseButton
+                      size="sm"
+                      variant="outline"
+                      :loading="updater.status.value === 'checking'"
+                      :disabled="updater.status.value === 'checking'"
+                      :icon="updater.status.value === 'checking' ? undefined : RefreshCw"
+                      @click="updater.checkForUpdate(false)"
+                    >
+                      {{ t('settings.checkForUpdates') }}
+                    </BaseButton>
+                  </div>
+                </div>
+                <!-- 更新版说明 + 下载进度 -->
+                <div v-if="updater.status.value === 'available' || updater.status.value === 'downloading' || updater.releaseNotes.value" class="mt-3 border-t border-zinc-100 pt-3 dark:border-zinc-800">
+                  <p v-if="updater.status.value === 'available' || updater.status.value === 'downloading'" class="text-xs font-medium text-violet-500">
+                    {{ t('settings.updateFound', { version: updater.newVersion.value }) }}
+                  </p>
+                  <p v-if="updater.releaseNotes.value" class="mt-1 line-clamp-4 whitespace-pre-wrap text-xs leading-relaxed">{{ updater.releaseNotes.value }}</p>
+                  <!-- 下载进度条（total 未知时显示不定进度动画） -->
+                  <div v-if="updater.status.value === 'downloading'" class="mt-2 flex items-center gap-2">
+                    <div class="h-1.5 flex-1 overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-800">
+                      <div
+                        v-if="progressPct >= 0"
+                        class="h-full rounded-full bg-violet-500 transition-all"
+                        :style="{ width: `${progressPct}%` }"
+                      ></div>
+                      <div v-else class="h-full w-1/3 animate-pulse rounded-full bg-violet-400"></div>
+                    </div>
+                    <span class="shrink-0 text-xs tabular-nums text-zinc-400">
+                      {{ progressPct >= 0 ? `${progressPct}%` : `${updater.downloadedMb.value.toFixed(1)}MB` }}
+                    </span>
+                  </div>
+                  <p v-if="updater.status.value === 'ready'" class="text-xs font-medium text-violet-500">{{ t('settings.updateReadyHint') }}</p>
+                </div>
+              </div>
+            </section>
+          </div>
+        </section>
       </div>
     </div>
   </div>
