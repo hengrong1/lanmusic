@@ -348,12 +348,16 @@ defineExpose({ focusSearch })
     </button>
 
     <button
-      class="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg transition hover:bg-zinc-200/70 hover:text-violet-500 dark:hover:bg-zinc-800 dark:hover:text-violet-400"
-      :class="current.view === 'settings' ? 'text-violet-500' : 'text-zinc-500 dark:text-zinc-400'"
+      class="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg transition"
+      :class="
+        current.view === 'settings'
+          ? 'bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300'
+          : 'text-zinc-500 hover:bg-zinc-200/70 hover:text-violet-500 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-violet-400'
+      "
       v-tooltip="$t('nav.settings')"
       @click="go({ view: 'settings' })"
     >
-      <!-- 设置入口：当前在设置页时图标用 bold 变体（与侧栏选中态一致） -->
+      <!-- 设置入口：当前在设置页时图标用 bold 变体 + 选中背景（与侧栏选中态一致） -->
       <SettingsBold v-if="current.view === 'settings'" class="h-4 w-4" />
       <Settings v-else class="h-4 w-4" />
     </button>
