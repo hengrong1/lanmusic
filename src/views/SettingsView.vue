@@ -11,6 +11,7 @@ import { SubtitlesIcon as SubtitlesBold } from '@solar-icons/vue/bold/subtitles'
 import { VerifiedCheckIcon as Check } from '@solar-icons/vue/linear/verified-check'
 import { FolderOpenIcon as FolderOpen } from '@solar-icons/vue/linear/folder-open'
 import { GlobeIcon as Globe } from '@solar-icons/vue/linear/globe'
+import { InfoCircleIcon as InfoCircle } from '@solar-icons/vue/linear/info-circle'
 import { DatabaseIcon as HardDrive } from '@solar-icons/vue/linear/database'
 import { MagnifierIcon as Search } from '@solar-icons/vue/linear/magnifier'
 import { PaletteIcon as Palette } from '@solar-icons/vue/linear/palette'
@@ -455,6 +456,9 @@ function fmtTime(t2: number | null) {
 }
 
 const scannedSourceIds = computed(() => new Set(Object.keys(library.scanProgress).map(Number)))
+
+/** 已添加过 WebDAV 来源时始终展示云端限制说明；展开添加表单时也展示（便于添加前先了解） */
+const showWebdavLimits = computed(() => showWebdav.value || library.sources.some((s) => s.kind === 'webdav'))
 </script>
 
 <template>
@@ -532,14 +536,14 @@ const scannedSourceIds = computed(() => new Set(Object.keys(library.scanProgress
                       </div>
                       <div class="min-w-0 flex-1">
                         <p class="truncate text-sm font-medium text-zinc-800 dark:text-zinc-100">{{ s.name }}</p>
-                        <p class="truncate text-xs text-zinc-500" :title="s.basePath ?? s.baseUrl ?? ''">{{ s.basePath ?? s.baseUrl }}</p>
+                        <p class="truncate text-xs text-zinc-500" v-tooltip="s.basePath ?? s.baseUrl ?? ''">{{ s.basePath ?? s.baseUrl }}</p>
                       </div>
                       <span class="shrink-0 text-xs text-zinc-400">
                         {{ t('settings.sourceTrackCount', { count: s.trackCount }) }} · {{ fmtTime(s.lastScanAt) }}
                       </span>
                       <div
                         class="flex shrink-0 items-center gap-1.5 text-xs text-zinc-500"
-                        :title="t('settings.quickImportTip')"
+                        v-tooltip="t('settings.quickImportTip')"
                       >
                         {{ t('settings.quickImport') }}
                         <BaseSwitch
@@ -553,7 +557,7 @@ const scannedSourceIds = computed(() => new Set(Object.keys(library.scanProgress
                           variant="ghost"
                           size="xs"
                           :disabled="scannedSourceIds.has(s.id)"
-                          :title="t('settings.fullParseTip')"
+                          v-tooltip="t('settings.fullParseTip')"
                           @click="rescanFull(s)"
                         >
                           {{ t('settings.fullParse') }}
@@ -564,7 +568,7 @@ const scannedSourceIds = computed(() => new Set(Object.keys(library.scanProgress
                           :icon="RefreshCw"
                           :loading="scannedSourceIds.has(s.id)"
                           :disabled="scannedSourceIds.has(s.id)"
-                          :title="t('settings.incrementalScan')"
+                          v-tooltip="t('settings.incrementalScan')"
                           :aria-label="t('settings.incrementalScan')"
                           @click="rescan(s.id)"
                         />
@@ -573,12 +577,20 @@ const scannedSourceIds = computed(() => new Set(Object.keys(library.scanProgress
                           tone="danger"
                           size="xs"
                           :icon="Trash2"
-                          :title="t('common.remove')"
+                          v-tooltip="t('common.remove')"
                           :aria-label="t('common.remove')"
                           @click="remove(s)"
                         />
                       </div>
                     </div>
+                    <!-- WebDAV 来源的固有限制，直接写在卡片里（不藏在 tooltip） -->
+                    <p
+                      v-if="s.kind === 'webdav'"
+                      class="mt-2.5 flex items-start gap-1.5 border-t border-zinc-100 pt-2.5 text-xs leading-relaxed text-zinc-400 dark:border-zinc-800"
+                    >
+                      <InfoCircle class="mt-px h-3.5 w-3.5 shrink-0" />
+                      <span>{{ t('settings.webdavCardHint') }}</span>
+                    </p>
                     <div v-if="library.scanProgress[s.id]" class="mt-3">
                       <template v-if="library.scanProgress[s.id].phase === 'enumerate'">
                         <div class="mb-1 flex justify-between text-xs text-zinc-500">
@@ -645,6 +657,24 @@ const scannedSourceIds = computed(() => new Set(Object.keys(library.scanProgress
                     </BaseButton>
                   </div>
                 </form>
+
+                <!-- 云端（WebDAV）来源的已知限制：常驻展示，避免「为什么云端新歌不出现 / 没有 MV / 缺时长」被当成 bug -->
+                <div
+                  v-if="showWebdavLimits"
+                  class="mt-2.5 rounded-xl border border-zinc-200 bg-zinc-50/70 p-4 dark:border-zinc-800 dark:bg-zinc-900/50"
+                >
+                  <p class="mb-2 flex items-center gap-1.5 text-xs font-medium text-zinc-600 dark:text-zinc-300">
+                    <InfoCircle class="h-3.5 w-3.5 shrink-0" />
+                    {{ t('settings.webdavLimitsTitle') }}
+                  </p>
+                  <ul class="space-y-1.5 text-xs leading-relaxed text-zinc-500">
+                    <li>{{ t('settings.webdavLimitNoWatch') }}</li>
+                    <li>{{ t('settings.webdavLimitNoMv') }}</li>
+                    <li>{{ t('settings.webdavLimitHeadOnly') }}</li>
+                    <li>{{ t('settings.webdavLimitPartial') }}</li>
+                    <li>{{ t('settings.webdavLimitRateLimit') }}</li>
+                  </ul>
+                </div>
               </section>
 
               <!-- 多艺人分隔符 -->
@@ -658,7 +688,7 @@ const scannedSourceIds = computed(() => new Set(Object.keys(library.scanProgress
                         :key="sep"
                         size="sm"
                         :variant="artistSeparators.has(sep) ? 'primary' : 'secondary'"
-                        :title="sep === FIXED_SEPARATOR ? t('settings.separatorFixedTip') : t('settings.separatorToggleTip', { sep })"
+                        v-tooltip="sep === FIXED_SEPARATOR ? t('settings.separatorFixedTip') : t('settings.separatorToggleTip', { sep })"
                         :disabled="sep === FIXED_SEPARATOR || splitApplying"
                         @click="onSeparatorToggle(sep)"
                       >
@@ -770,7 +800,7 @@ const scannedSourceIds = computed(() => new Set(Object.keys(library.scanProgress
                       <BaseSwitch
                         :model-value="fadeOn"
                         size="sm"
-                        :title="t('settings.fadeInOutTip')"
+                        v-tooltip="t('settings.fadeInOutTip')"
                         @update:model-value="onFadeToggle"
                       />
                     </div>
@@ -784,7 +814,7 @@ const scannedSourceIds = computed(() => new Set(Object.keys(library.scanProgress
                       <BaseSwitch
                         :model-value="preventSleepOn"
                         size="sm"
-                        :title="t('settings.preventSleepTip')"
+                        v-tooltip="t('settings.preventSleepTip')"
                         @update:model-value="onPreventSleepToggle"
                       />
                     </div>
@@ -822,7 +852,7 @@ const scannedSourceIds = computed(() => new Set(Object.keys(library.scanProgress
                       <BaseSwitch
                         :model-value="searchSettings.pinyin"
                         size="sm"
-                        :title="t('settings.pinyinTip')"
+                        v-tooltip="t('settings.pinyinTip')"
                         @update:model-value="togglePinyin"
                       />
                     </div>
@@ -931,7 +961,7 @@ const scannedSourceIds = computed(() => new Set(Object.keys(library.scanProgress
                       <BaseColorPicker
                         v-model="dlConfig.color"
                         :presets="DL_PLAY_PRESETS"
-                        :title="t('settings.dlPlayColor')"
+                        v-tooltip="t('settings.dlPlayColor')"
                       />
                     </div>
                     <!-- 未播放行颜色 -->
@@ -940,7 +970,7 @@ const scannedSourceIds = computed(() => new Set(Object.keys(library.scanProgress
                       <BaseColorPicker
                         v-model="dlConfig.pendingColor"
                         :presets="DL_PENDING_PRESETS"
-                        :title="t('settings.dlPendingColor')"
+                        v-tooltip="t('settings.dlPendingColor')"
                       />
                     </div>
                     <!-- 描边 -->
@@ -950,7 +980,7 @@ const scannedSourceIds = computed(() => new Set(Object.keys(library.scanProgress
                         <BaseColorPicker
                           v-model="dlConfig.outlineColor"
                           :disabled="!dlConfig.outline"
-                          :title="t('settings.dlOutlineColor')"
+                          v-tooltip="t('settings.dlOutlineColor')"
                         />
                         <BaseCheckbox v-model="dlConfig.outline" size="sm" />
                       </div>

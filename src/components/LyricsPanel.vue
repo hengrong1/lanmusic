@@ -110,7 +110,7 @@ onMounted(() => void nextTick(scrollToActive))
              绝对定位不占布局空间：歌词行真正居中，与上方歌曲名对齐 -->
         <button
           class="lyric-jump pointer-events-none absolute top-1/2 left-0 z-10 flex h-7 w-16 -translate-y-1/2 translate-x-2 cursor-pointer items-center justify-center gap-1 rounded-lg border px-1 font-mono text-[11px] leading-none text-[var(--np-accent,#fff)] opacity-0 transition-[opacity,transform,background-color,border-color] duration-200 ease-out group-hover:pointer-events-auto group-hover:translate-x-0 group-hover:opacity-100"
-          :title="jumpTip(line.time + player.lyricOffset, line.text)"
+          v-tooltip="jumpTip(line.time + player.lyricOffset, line.text)"
           @click="player.seek(line.time + player.lyricOffset)"
         >
           <Play class="h-3 w-3 shrink-0" />

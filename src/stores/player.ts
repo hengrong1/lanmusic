@@ -153,7 +153,10 @@ export const usePlayerStore = defineStore('player', () => {
   audio.playbackRate = rate.value
   audio.defaultPlaybackRate = rate.value
 
-  // 连续播放失败计数：整轮队列都失败则停止跳歌（见 error 监听器），成功播放即归零
+  // 连续播放失败计数：连续失败达到上限就停止跳歌（见 error 监听器），成功播放即归零。
+  // 上限固定而非「整轮队列长度」：远端限流（如 OpenList 的 WebDAV 登录锁定）期间，
+  // 顺着队列一路跳会持续发请求，反而把封锁窗口不断续期，越跳越恢复不了。
+  const MAX_AUTO_SKIP = 5
   let errorStreak = 0
 
   // ---------- 淡入淡出 ----------
@@ -270,11 +273,13 @@ export const usePlayerStore = defineStore('player', () => {
     if (!current.value) return
     resetPlaybackState()
     toast(tr('toast.playFailed', { title: current.value.title }), 'error')
-    // 连续失败保护：整轮队列都失败则停止，避免死循环
+    // 连续失败保护：连续失败达上限就停下，不再顺着队列一路请求
+    // （远端限流期间那样做会把封锁窗口不断续期，越跳越恢复不了）
     errorStreak++
-    if (errorStreak < queue.value.length) {
+    if (errorStreak < MAX_AUTO_SKIP) {
       setTimeout(() => next(true), 400)
     } else {
+      toast(tr('toast.playFailedTooMany', { count: errorStreak }), 'error')
       errorStreak = 0
     }
   })

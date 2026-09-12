@@ -138,32 +138,32 @@ const rows = computed(() => {
   <div class="dl-root" data-tauri-drag-region :style="rootStyle">
     <!-- 控制条：悬停浮现，背景与面板同色系（略微加深） -->
     <div class="dl-controls" :style="controlsStyle">
-      <button class="dl-btn" :title="$t('player.prev')" @click="control('prev')"><SkipBack class="h-4 w-4" /></button>
-      <button class="dl-btn" :title="playing ? $t('player.pause') : $t('player.play')" @click="control('toggle')">
+      <button class="dl-btn" v-tooltip="$t('player.prev')" @click="control('prev')"><SkipBack class="h-4 w-4" /></button>
+      <button class="dl-btn" v-tooltip="playing ? $t('player.pause') : $t('player.play')" @click="control('toggle')">
         <Pause v-if="playing" class="h-4.5 w-4.5" />
         <Play v-else class="h-4.5 w-4.5" />
       </button>
-      <button class="dl-btn" :title="$t('player.next')" @click="control('next')"><SkipForward class="h-4 w-4" /></button>
+      <button class="dl-btn" v-tooltip="$t('player.next')" @click="control('next')"><SkipForward class="h-4 w-4" /></button>
       <span class="dl-divider"></span>
       <button
         class="dl-btn"
-        :title="$t('desktopLyrics.backHint')"
+        v-tooltip="$t('desktopLyrics.backHint')"
         @click="control('calib-back')"
       >
         <RewindBack class="h-4 w-4" />
       </button>
-      <button class="dl-btn" :title="$t('player.lyricResetHint')" @click="control('calib-reset')">
+      <button class="dl-btn" v-tooltip="$t('player.lyricResetHint')" @click="control('calib-reset')">
         <RotateCcw class="h-3.5 w-3.5" />
       </button>
       <button
         class="dl-btn"
-        :title="$t('desktopLyrics.forwardHint')"
+        v-tooltip="$t('desktopLyrics.forwardHint')"
         @click="control('calib-forward')"
       >
         <RewindForward class="h-4 w-4" />
       </button>
       <span class="dl-divider"></span>
-      <button class="dl-btn dl-close" :title="$t('tray.disableDesktopLyrics')" @click="control('close')">
+      <button class="dl-btn dl-close" v-tooltip="$t('tray.disableDesktopLyrics')" @click="control('close')">
         <X class="h-4 w-4" />
       </button>
     </div>

@@ -1,7 +1,9 @@
 //! 专辑封面的惰性提取与缓存。
 //!
-//! 提取优先级：本地缓存 → WebDAV 目录约定文件（cover_url）→ 本地文件内嵌/同级封面。
-//! 失败的专辑写入 `{id}.none` 哨兵，避免重复网络 I/O。
+//! 提取优先级：本地缓存 → WebDAV 目录约定文件（cover_url）→ WebDAV 曲目内嵌封面
+//! → 本地文件内嵌/同级封面。
+//! 确认无封面的专辑写入 `{id}.none` 哨兵，避免重复网络 I/O；但「一个字节都没拿到」
+//! 的情况（网络不通/文件暂不可读）不写哨兵，否则一次瞬时故障会让封面永久缺失。
 
 use std::path::{Path, PathBuf};
 
@@ -13,6 +15,10 @@ pub(crate) const COVER_NAMES: &[&str] = &[
     "cover.jpg", "cover.jpeg", "cover.png", "folder.jpg", "folder.png", "front.jpg", "front.png",
 ];
 const MAX_DIM: u32 = 512;
+
+/// WebDAV 内嵌封面的头部字节试探量：先用小探针命中大多数封面，不中再退到上限
+const REMOTE_COVER_PROBE: u64 = 512 * 1024;
+const REMOTE_COVER_MAX: u64 = 2 * 1024 * 1024;
 
 /// 确保专辑封面已缓存。返回 Some(缓存文件路径) / None（确认无封面或暂不可得）。
 pub fn ensure_cover<R: Runtime>(app: &AppHandle<R>, album_id: i64) -> Result<Option<PathBuf>, String> {
@@ -37,7 +43,7 @@ pub fn ensure_cover<R: Runtime>(app: &AppHandle<R>, album_id: i64) -> Result<Opt
     }
 
     // 专辑信息与候选来源
-    let (cover_url, local_candidates) = {
+    let (cover_url, local_candidates, remote_candidates) = {
         let conn = state.db.lock().map_err(|e| e.to_string())?;
         let cover_url = conn
             .query_row("SELECT cover_url FROM albums WHERE id = ?1", [album_id], |r| {
@@ -63,11 +69,38 @@ pub fn ensure_cover<R: Runtime>(app: &AppHandle<R>, album_id: i64) -> Result<Opt
             }
         }
 
-        (cover_url, locals)
+        // WebDAV 曲目：（来源内相对路径, source_id, base_url, config）
+        let mut remotes = Vec::new();
+        {
+            let mut stmt = conn
+                .prepare(
+                    "SELECT t.path, s.id, s.base_url, s.config FROM tracks t
+                     JOIN sources s ON s.id = t.source_id
+                     WHERE t.album_id = ?1 AND s.kind = 'webdav' AND s.base_url IS NOT NULL
+                     ORDER BY t.disc_no, t.track_no, t.path LIMIT 4",
+                )
+                .map_err(|e| e.to_string())?;
+            let rows = stmt
+                .query_map([album_id], |r| {
+                    Ok((
+                        r.get::<_, String>(0)?,
+                        r.get::<_, i64>(1)?,
+                        r.get::<_, String>(2)?,
+                        r.get::<_, Option<String>>(3)?,
+                    ))
+                })
+                .map_err(|e| e.to_string())?;
+            for row in rows {
+                remotes.push(row.map_err(|e| e.to_string())?);
+            }
+        }
+
+        (cover_url, locals, remotes)
     };
 
     let save = |bytes: &[u8]| -> Result<(), String> { save_cover(&state.covers_dir, album_id, bytes) };
-    let mut attempted = false;
+    let mut attempted = false; // 是否真的向某个来源发起过尝试
+    let mut got_bytes = false; // 是否至少从某个来源拿到了数据
 
     // 1) WebDAV 目录约定封面（扫描时已记录 URL）
     if let Some(url) = cover_url {
@@ -75,6 +108,7 @@ pub fn ensure_cover<R: Runtime>(app: &AppHandle<R>, album_id: i64) -> Result<Opt
         if let Ok(parsed) = url::Url::parse(&url) {
             let auth = webdav_auth_for_album(app, album_id);
             if let Ok(bytes) = crate::network::webdav::download(&parsed, auth.as_ref(), None) {
+                got_bytes = true;
                 if save(&bytes).is_ok() {
                     mark_cover(app, album_id)?;
                     return Ok(Some(jpg));
@@ -83,7 +117,34 @@ pub fn ensure_cover<R: Runtime>(app: &AppHandle<R>, album_id: i64) -> Result<Opt
         }
     }
 
-    // 2) 本地文件：内嵌封面 / 同级约定文件
+    // 2) WebDAV 曲目内嵌封面。云端曲库一般不放同级 cover.jpg（cover_url 因此为 NULL），
+    //    封面在内嵌标签里，只能拉文件头部字节交给 lofty 解析——与扫描读标签同一套路。
+    for (rel, source_id, base_url, config) in &remote_candidates {
+        let Ok(base) = crate::network::webdav::normalize_base(base_url) else { continue };
+        let url = crate::network::webdav::file_url(&base, rel);
+        let auth = crate::network::webdav::Auth::from_source(config.as_deref(), *source_id);
+        // 先用 512KB 试探（覆盖绝大多数 ID3v2/FLAC 封面），不中再退到 2MB
+        for size in [REMOTE_COVER_PROBE, REMOTE_COVER_MAX] {
+            attempted = true;
+            let fetched = crate::network::webdav::download(&url, auth.as_ref(), Some((0, size - 1)));
+            let Ok(bytes) = fetched else { break };
+            got_bytes = true;
+            let short = (bytes.len() as u64) < size; // 响应体小于请求量 ⇒ 文件已全部拿到
+            if let Ok(meta) = crate::metadata::read_bytes(&bytes, true) {
+                if let Some(cover) = meta.cover {
+                    if save(&cover).is_ok() {
+                        mark_cover(app, album_id)?;
+                        return Ok(Some(jpg));
+                    }
+                }
+            }
+            if short {
+                break;
+            }
+        }
+    }
+
+    // 3) 本地文件：内嵌封面 / 同级约定文件
     for (rel, base) in &local_candidates {
         let full = PathBuf::from(base).join(rel);
         if !full.is_file() {
@@ -91,6 +152,7 @@ pub fn ensure_cover<R: Runtime>(app: &AppHandle<R>, album_id: i64) -> Result<Opt
         }
         attempted = true;
         if let Ok(meta) = crate::metadata::read(&full, true) {
+            got_bytes = true;
             if let Some(bytes) = meta.cover {
                 if save(&bytes).is_ok() {
                     mark_cover(app, album_id)?;
@@ -99,6 +161,7 @@ pub fn ensure_cover<R: Runtime>(app: &AppHandle<R>, album_id: i64) -> Result<Opt
             }
         }
         if let Some(bytes) = find_sibling_cover(&full) {
+            got_bytes = true;
             if save(&bytes).is_ok() {
                 mark_cover(app, album_id)?;
                 return Ok(Some(jpg));
@@ -108,6 +171,11 @@ pub fn ensure_cover<R: Runtime>(app: &AppHandle<R>, album_id: i64) -> Result<Opt
 
     if !attempted {
         // 专辑下没有任何可尝试的来源：不写哨兵（可能后续扫描会补充曲目）
+        return Ok(None);
+    }
+    if !got_bytes {
+        // 所有尝试都停在「没拿到数据」（网络不通 / 文件暂不可读）：不写哨兵，留待下次重试。
+        // 否则一次瞬时故障就会让该专辑永久不再提取封面。
         return Ok(None);
     }
 

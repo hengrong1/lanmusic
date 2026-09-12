@@ -46,7 +46,7 @@ const coverStyle = computed(() =>
   palette.value ? { boxShadow: `0 25px 80px -20px ${palette.value.glow}` } : undefined,
 )
 
-// ---- 音质信息：格式 / 采样率 / 位深 / 码率；≥88.2kHz 或 ≥24bit 标记 Hi-Res ----
+// ---- 音质信息：格式 / 采样率 / 位深；≥88.2kHz 或 ≥24bit 标记 Hi-Res ----
 const quality = computed(() => {
   const t = player.current
   if (!t) return null
@@ -54,7 +54,6 @@ const quality = computed(() => {
     t.format?.toUpperCase(),
     t.sampleRate ? `${(t.sampleRate / 1000).toFixed(1).replace(/\.0$/, '')}kHz` : '',
     t.bitDepth ? `${t.bitDepth}bit` : '',
-    t.bitrate ? `${Math.round(t.bitrate / 1000)}kbps` : '',
   ].filter(Boolean)
   if (!parts.length) return null
   return { text: parts.join(' · '), hires: (t.sampleRate ?? 0) >= 88200 || (t.bitDepth ?? 0) >= 24 }
@@ -225,7 +224,7 @@ const lyricResetTip = computed(() =>
       <!-- 左：关闭播放页（其余空白仍为拖拽区） -->
       <button
         class="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg text-white/70 transition hover:bg-white/10 hover:text-white"
-        :title="collapseTip"
+        v-tooltip="collapseTip"
         @click="emit('close')"
       >
         <ChevronDown class="h-5 w-5" />
@@ -264,7 +263,7 @@ const lyricResetTip = computed(() =>
               <button
                 v-if="a.id != null"
                 class="cursor-pointer transition hover:text-white hover:underline"
-                :title="artistTip(a.name)"
+                v-tooltip="artistTip(a.name)"
                 @click="openArtist(a)"
               >{{ a.name }}</button>
               <span v-else>{{ a.name }}</span>
@@ -274,18 +273,18 @@ const lyricResetTip = computed(() =>
           <button
             v-if="player.current?.albumId != null"
             class="mt-0.5 max-w-full cursor-pointer truncate text-xs text-white/40 transition hover:text-white/80"
-            :title="$t('album.goToAlbum')"
+            v-tooltip="$t('album.goToAlbum')"
             @click="openAlbum"
           >
             {{ player.current?.album }}
           </button>
-          <!-- 音质徽标：格式/采样率/位深/码率，Hi-Res（高解析度）金色标识 -->
+          <!-- 音质徽标：格式/采样率/位深，Hi-Res（高解析度）金色标识 -->
           <p v-if="quality" class="mt-2 flex items-center justify-center gap-1.5 text-[11px] text-white/40">
             <span class="font-mono">{{ quality.text }}</span>
             <span
               v-if="quality.hires"
               class="rounded border border-amber-300/50 bg-amber-300/10 px-1.5 py-px font-bold text-amber-200"
-              :title="$t('player.hiResHint')"
+              v-tooltip="$t('player.hiResHint')"
             >Hi-Res</span>
           </p>
         </div>
@@ -297,7 +296,7 @@ const lyricResetTip = computed(() =>
         >
           <button
             class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-white/60 transition hover:bg-white/10 hover:text-white"
-            :title="lyricBackTip"
+            v-tooltip="lyricBackTip"
             @click="player.setLyricOffset(0.5)"
           >
             <RewindBack class="h-5 w-5" />
@@ -305,14 +304,14 @@ const lyricResetTip = computed(() =>
           <button
             class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg transition"
             :class="player.lyricOffset ? 'text-white/60 hover:bg-white/10 hover:text-white' : 'text-white/25'"
-            :title="lyricResetTip"
+            v-tooltip="lyricResetTip"
             @click="player.setLyricOffset(-player.lyricOffset)"
           >
             <RotateCcw class="h-4.5 w-4.5" />
           </button>
           <button
             class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-white/60 transition hover:bg-white/10 hover:text-white"
-            :title="lyricForwardTip"
+            v-tooltip="lyricForwardTip"
             @click="player.setLyricOffset(-0.5)"
           >
             <RewindForward class="h-5 w-5" />

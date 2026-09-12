@@ -101,7 +101,7 @@ onBeforeUnmount(() => {
           </div>
           <button
             class="shrink-0 cursor-pointer rounded-lg p-1.5 text-zinc-400 transition hover:bg-white/10 hover:text-white"
-            :title="t('common.close')"
+            v-tooltip="t('common.close')"
             @click="close"
           >
             <X class="h-4 w-4" />

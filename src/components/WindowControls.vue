@@ -27,7 +27,7 @@ onUnmounted(() => unlisten?.())
   <div class="flex h-full items-stretch">
     <button
       class="group flex w-11 cursor-pointer items-center justify-center transition"
-      :title="$t('common.minimize')"
+      v-tooltip="$t('common.minimize')"
       @click="appWindow.minimize()"
     >
       <span
@@ -43,7 +43,7 @@ onUnmounted(() => unlisten?.())
     </button>
     <button
       class="group flex w-11 cursor-pointer items-center justify-center transition"
-      :title="maximized ? $t('common.restore') : $t('common.maximize')"
+      v-tooltip="maximized ? $t('common.restore') : $t('common.maximize')"
       @click="appWindow.toggleMaximize()"
     >
       <span
@@ -60,7 +60,7 @@ onUnmounted(() => unlisten?.())
     </button>
     <button
       class="group flex w-11 cursor-pointer items-center justify-center transition"
-      :title="$t('common.close')"
+      v-tooltip="$t('common.close')"
       @click="appWindow.close()"
     >
       <span

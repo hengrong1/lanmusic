@@ -175,7 +175,7 @@ async function onPickerAdded() {
           variant="outline"
           size="sm"
           :icon="Pencil"
-          :title="$t('playlist.editInfoHint')"
+          v-tooltip="$t('playlist.editInfoHint')"
           @click="openEdit"
         >
           {{ $t('common.edit') }}

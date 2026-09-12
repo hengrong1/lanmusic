@@ -413,7 +413,7 @@ const theme = computed(() =>
         class="group relative cursor-pointer rounded-lg transition"
         :class="props.nowPlayingOpen ? '' : 'hover:opacity-90'"
         :style="coverRingStyle"
-        :title="props.nowPlayingOpen ? $t('player.collapseNowPlaying') : $t('player.expandNowPlaying')"
+        v-tooltip="props.nowPlayingOpen ? $t('player.collapseNowPlaying') : $t('player.expandNowPlaying')"
         @click="$emit('toggleNowPlaying')"
       >
         <CoverImg :album-id="player.current?.albumId ?? null" class="h-12 w-12 shrink-0" rounded="rounded-lg" />
@@ -441,7 +441,7 @@ const theme = computed(() =>
               v-if="a.id != null"
               class="min-w-0 cursor-pointer truncate transition hover:text-violet-500 hover:underline"
               :class="theme.artist"
-              :title="artistTip(a.name)"
+              v-tooltip="artistTip(a.name)"
               @click.stop="goArtist(a)"
             >{{ a.name }}</button>
             <span v-else class="min-w-0 truncate" :class="theme.artist">{{ a.name }}</span>
@@ -468,7 +468,7 @@ const theme = computed(() =>
           class="relative flex h-8 w-8 cursor-pointer items-center justify-center rounded-full transition-colors duration-500 hover:duration-200"
           :class="[theme.iconBtn, player.mode !== 'order' && !props.nowPlayingOpen ? '!text-violet-500 dark:!text-violet-400' : '']"
           :style="accent && player.mode !== 'order' ? { color: accent } : undefined"
-          :title="modeMeta[player.mode].label"
+          v-tooltip="modeMeta[player.mode].label"
           @click="cycleMode"
         >
           <component :is="modeMeta[player.mode].icon" class="h-4 w-4" />
@@ -476,7 +476,7 @@ const theme = computed(() =>
         <button
           class="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full transition-colors duration-500 hover:duration-200"
           :class="theme.plainBtn"
-          :title="$t('player.prev') + ' (P)'"
+          v-tooltip="$t('player.prev') + ' (P)'"
           @click="player.prev()"
         >
           <SkipBack class="h-4.5 w-4.5" />
@@ -485,7 +485,7 @@ const theme = computed(() =>
           class="relative flex h-10 w-10 cursor-pointer items-center justify-center rounded-full shadow-lg shadow-violet-500/30 transition duration-200 hover:scale-110 active:scale-90"
           :class="theme.playBtn"
           :style="playBtnStyle"
-          :title="player.buffering ? $t('player.buffering') : $t('player.playPauseHint')"
+          v-tooltip="player.buffering ? $t('player.buffering') : $t('player.playPauseHint')"
           @click="player.toggle()"
         >
           <!-- 播放中的脉冲光环（专注模式隐藏，避免光环从屏幕底部边缘露出） -->
@@ -521,7 +521,7 @@ const theme = computed(() =>
         <button
           class="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full transition-colors duration-500 hover:duration-200"
           :class="theme.plainBtn"
-          :title="$t('player.next') + ' (N)'"
+          v-tooltip="$t('player.next') + ' (N)'"
           @click="player.next()"
         >
           <SkipForward class="h-4.5 w-4.5" />
@@ -529,7 +529,7 @@ const theme = computed(() =>
         <button
           class="relative flex h-9 w-9 cursor-pointer items-center justify-center rounded-full transition-colors duration-500 hover:duration-200 disabled:cursor-not-allowed"
           :class="player.current?.fav ? 'text-red-500 hover:bg-red-500/10' : theme.plainBtn"
-          :title="player.current?.fav ? $t('library.unlike') : $t('library.like')"
+          v-tooltip="player.current?.fav ? $t('library.unlike') : $t('library.like')"
           :disabled="!player.current"
           @click="player.toggleFav()"
         >
@@ -549,7 +549,7 @@ const theme = computed(() =>
             :style="bubblePosStyle"
           >
             <span class="shrink-0 font-mono text-[11px] leading-none text-white tabular-nums">{{ fmt(hoverTime) }}</span>
-            <span class="max-w-[240px] truncate text-[11px] leading-none text-white/70" :title="hoverLyric">{{ hoverLyric }}</span>
+            <span class="max-w-[240px] truncate text-[11px] leading-none text-white/70" v-tooltip="hoverLyric">{{ hoverLyric }}</span>
           </div>
           <input
             type="range"
@@ -576,7 +576,7 @@ const theme = computed(() =>
       <button
         class="flex h-8 w-9 shrink-0 cursor-pointer items-center justify-center rounded-full text-xs font-semibold tabular-nums transition-colors duration-500 hover:duration-200"
         :class="player.rate === 1 ? theme.iconBtn : 'text-violet-500 hover:bg-violet-500/10'"
-        :title="rateTip"
+        v-tooltip="rateTip"
         @click="cycleRate"
       >
         {{ player.rate }}x
@@ -586,7 +586,7 @@ const theme = computed(() =>
         <button
           class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full transition-colors duration-500 hover:duration-200"
           :class="theme.iconBtn"
-          :title="$t('nowPlaying.skin')"
+          v-tooltip="$t('nowPlaying.skin')"
           @click="skinOpen = !skinOpen"
         >
           <TShirt class="h-4 w-4" />
@@ -648,7 +648,7 @@ const theme = computed(() =>
       <button
         class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full transition-colors duration-500 hover:duration-200"
         :class="theme.iconBtn"
-        :title="volTip"
+        v-tooltip="volTip"
         @click="player.toggleMute()"
         @wheel.prevent="onVolumeWheel"
       >
@@ -683,7 +683,7 @@ const theme = computed(() =>
       <button
         class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full transition-colors duration-500 hover:duration-200"
         :class="dlEnabled ? 'text-violet-500 hover:bg-violet-500/10' : theme.iconBtn"
-        :title="dlEnabled ? $t('tray.disableDesktopLyrics') : $t('tray.enableDesktopLyrics')"
+        v-tooltip="dlEnabled ? $t('tray.disableDesktopLyrics') : $t('tray.enableDesktopLyrics')"
         @click="dlToggle()"
       >
         <Subtitles class="h-4 w-4" />
@@ -692,7 +692,7 @@ const theme = computed(() =>
         data-queue-toggle
         class="ml-2 flex h-8 w-8 cursor-pointer items-center justify-center rounded-full transition-colors duration-500 hover:duration-200"
         :class="theme.iconBtn"
-        :title="$t('queue.title')"
+        v-tooltip="$t('queue.title')"
         @click="$emit('toggleQueue')"
       >
         <ListMusic class="h-4 w-4" />

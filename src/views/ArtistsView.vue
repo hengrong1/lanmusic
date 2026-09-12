@@ -78,7 +78,7 @@ function initial(name: string) {
         <div class="flex h-24 w-24 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-violet-400 to-indigo-500 text-white shadow-sm transition group-hover:shadow-md">
           <span class="text-2xl font-bold">{{ initial(a.name) }}</span>
         </div>
-        <p class="max-w-full truncate text-sm font-medium text-zinc-800 dark:text-zinc-100" :title="a.name">
+        <p class="max-w-full truncate text-sm font-medium text-zinc-800 dark:text-zinc-100" v-tooltip="a.name">
           {{ a.name }}
         </p>
         <p class="text-xs text-zinc-500">{{ songCount(a.trackCount) }}</p>

@@ -347,6 +347,12 @@ pub(crate) fn proxy_response(
     };
     let status = resp.status();
     if !(status.is_success() || status == reqwest::StatusCode::PARTIAL_CONTENT) {
+        // 429 = OpenList 的 WebDAV 认证失败锁定（按 IP 计次，锁 5 分钟）；
+        // 5xx = 上游暂时故障。两者都属于「稍后再试」，回 503 而不是 404，
+        // 否则播放器会把限流误判成「文件不存在」。
+        if status == reqwest::StatusCode::TOO_MANY_REQUESTS || status.is_server_error() {
+            return service_unavailable();
+        }
         return not_found();
     }
     let content_range: Option<String> = resp
@@ -541,6 +547,15 @@ fn not_found() -> Response<Vec<u8>> {
 fn bad_gateway() -> Response<Vec<u8>> {
     Response::builder()
         .status(StatusCode::BAD_GATEWAY)
+        .body(Vec::new())
+        .unwrap()
+}
+
+/// 远端暂时不可用（限流/上游故障）：与 404 区分开，播放器才知道是「稍后再试」
+/// 而不是「这个文件不存在」。
+fn service_unavailable() -> Response<Vec<u8>> {
+    Response::builder()
+        .status(StatusCode::SERVICE_UNAVAILABLE)
         .body(Vec::new())
         .unwrap()
 }

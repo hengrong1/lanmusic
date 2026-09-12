@@ -38,6 +38,11 @@ const VIDEO_EXTS: &[&str] = &[
 const BATCH: usize = 100;
 /// 并发解析线程上限（I/O 密集，8 线程已能掩盖网络延迟且不至于压垮网络）
 const MAX_WORKERS: usize = 8;
+/// WebDAV 扫描并发度。远端（尤其经 OpenList/中转网盘）对并发 Range 请求敏感，
+/// 首轮 8 路突发容易整批失败，降到 4 更稳。
+const WEBDAV_WORKERS: usize = 4;
+/// WebDAV 单文件头部拉取的总尝试次数（首次 + 重试）
+const WEBDAV_FETCH_ATTEMPTS: usize = 2;
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -238,15 +243,19 @@ fn run_local_scan(
     // ---- 3. 并发解析 ----
     let base_c = base.clone();
     let video_stems_c = video_stems.clone();
-    let rx = run_concurrent(to_parse, move |(rel, mtime, size)| {
+    // 「完整解析」要无视快速导入（见设置页 fullParseTip：含快速导入的歌曲也要重新解析），
+    // 否则开了快速导入后点「完整解析」会被这里的 early-return 吃掉、什么都不做。
+    let use_fast = fast_import && !full_rescan;
+    let rx = run_concurrent(to_parse, MAX_WORKERS, move |(rel, mtime, size)| {
         let has_mv = video_stems_c.contains(&stem_key(&rel));
-        if fast_import {
+        if use_fast {
             return Some(fast_track(&rel, mtime, size, has_mv));
         }
         let full = base_c.join(&rel);
         match metadata::read(&full, false) {
             Ok(m) => Some(parsed_from_meta(&rel, m, mtime, size, has_mv)),
-            Err(_) => Some(fallback_track(&rel, mtime, size, has_mv)),
+            // 本地文件读不到标签属于文件本身的问题，标 1 不再重试
+            Err(_) => Some(fallback_track(&rel, mtime, size, has_mv, 1)),
         }
     });
 
@@ -364,28 +373,65 @@ fn run_webdav_scan(
     emit_parse(app, source_id, 0, total);
 
     // ---- 2. diff（mtime 不可靠，仅按 size + meta_state）----
-    let existing = {
+    // 快速导入与本地扫描共用同一个来源开关：开启后只按文件名/目录结构入库，
+    // 完全不发网络请求（对经 OpenList 中转的云端库，能省掉「每文件拉 1MB」的开销）。
+    let (existing, fast_import) = {
         let state = app.state::<AppState>();
         let conn = db::open_conn(&state.db_path, false).map_err(|e| e.to_string())?;
-        load_existing(&conn, source_id)?
+        let fast: bool = conn
+            .query_row("SELECT fast_import FROM sources WHERE id = ?1", [source_id], |r| r.get(0))
+            .map_err(|e| e.to_string())?;
+        (load_existing(&conn, source_id)?, fast)
     };
     let to_parse: Vec<(String, i64)> = files
         .iter()
-        .filter(|(p, size)| needs_parse(&existing, p, 0, *size, full_rescan, false))
+        .filter(|(p, size)| needs_parse(&existing, p, 0, *size, full_rescan, fast_import))
         .cloned()
         .collect();
 
     // ---- 3. 并发拉取头部字节并解析标签 ----
     let base_c = base.clone();
     let auth_c = auth.clone();
-    let rx = run_concurrent(to_parse, move |(rel, size)| {
+    // 同本地扫描：「完整解析」无视快速导入，否则点了也不会真的解析
+    let use_fast = fast_import && !full_rescan;
+    let rx = run_concurrent(to_parse, WEBDAV_WORKERS, move |(rel, size)| {
+        // 快速导入：只按文件名/目录结构入库（meta_state=0，待补全），一次网络请求都不发。
+        // 云端曲库开这个能直接跳过「每文件拉 1MB」，也顺带避开远端限流。
+        if use_fast {
+            return Some(fast_track(&rel, 0, size, false));
+        }
         let url = webdav::file_url(&base_c, &rel);
-        match webdav::download(&url, auth_c.as_ref(), Some((0, HEAD_FETCH_SIZE - 1))) {
-            Ok(bytes) => match metadata::read_bytes(&bytes, false) {
-                Ok(m) => Some(parsed_from_meta(&rel, m, 0, size, false)),
-                Err(_) => Some(fallback_track(&rel, 0, size, false)),
-            },
-            Err(_) => Some(fallback_track(&rel, 0, size, false)),
+        // 远端失败多是瞬时的（上游限流、连接复用被掐、冷启动超时）：重试一次再放弃。
+        // 不重试的话，首轮并发突发失败的那批会直接落成「未知艺人/未知专辑」，
+        // 而它们 meta_state 已是 1，增量扫描不会再碰，等于永久损坏。
+        let mut bytes = None;
+        let mut last_err = String::new();
+        for _ in 0..WEBDAV_FETCH_ATTEMPTS {
+            match webdav::download(&url, auth_c.as_ref(), Some((0, HEAD_FETCH_SIZE - 1))) {
+                Ok(b) => {
+                    bytes = Some(b);
+                    break;
+                }
+                Err(e) => {
+                    // 429/401/403 不重试：OpenList 对 WebDAV 认证失败按 IP 计次封锁，
+                    // 且每个被挡的请求都会续期封锁窗口，重试只会让锁定持续更久。
+                    let retryable = crate::network::is_retryable(&e);
+                    last_err = e;
+                    if !retryable {
+                        break;
+                    }
+                }
+            }
+        }
+        let Some(bytes) = bytes else {
+            eprintln!("[webdav] 头部拉取失败 {rel}: {last_err}");
+            // 一个字节都没拿到：标 0 待补全，下次扫描或「完整解析」会重试
+            return Some(fallback_track(&rel, 0, size, false, 0));
+        };
+        match metadata::read_bytes(&bytes, false) {
+            Ok(m) => Some(parsed_from_meta(&rel, m, 0, size, false)),
+            // 拿到字节却解析失败：文件本身的问题，标 1 不再重试
+            Err(_) => Some(fallback_track(&rel, 0, size, false, 1)),
         }
     });
 
@@ -793,6 +839,7 @@ fn delete_missing(
 /// 单个分片时拖尾），结果经 channel 返回主线程
 fn run_concurrent<TIn, TOut>(
     items: Vec<TIn>,
+    max_workers: usize,
     f: impl Fn(TIn) -> Option<TOut> + Send + Sync + Clone + 'static,
 ) -> mpsc::Receiver<TOut>
 where
@@ -805,7 +852,7 @@ where
     let workers = thread::available_parallelism()
         .map(|n| n.get())
         .unwrap_or(4)
-        .clamp(2, MAX_WORKERS);
+        .clamp(2, max_workers.max(2));
     let queue = Arc::new(Mutex::new(items.into_iter()));
     for _ in 0..workers {
         let tx = tx.clone();
@@ -1127,8 +1174,10 @@ fn fast_track(rel: &str, mtime: i64, size: i64, has_mv: bool) -> ParsedTrack {
     }
 }
 
-/// 标签解析失败时的降级行（meta_state=1：标记已尝试，避免每次重扫重试；「完整解析」可再试）
-fn fallback_track(rel: &str, mtime: i64, size: i64, has_mv: bool) -> ParsedTrack {
+/// 降级行：按文件名入库（艺人/专辑落成「未知」）。`meta_state` 由调用方决定：
+/// - 1 = 文件本身读不出标签（本地解析失败、远端拿到字节但解析失败）→ 不再重试
+/// - 0 = 远端一个字节都没拿到（限流/超时等瞬时故障）→ 留给后续扫描或「完整解析」重试
+fn fallback_track(rel: &str, mtime: i64, size: i64, has_mv: bool, meta_state: i64) -> ParsedTrack {
     ParsedTrack {
         rel: rel.to_string(),
         title: stem_of(rel),
@@ -1149,7 +1198,7 @@ fn fallback_track(rel: &str, mtime: i64, size: i64, has_mv: bool) -> ParsedTrack
         format: ext_of(rel),
         mtime,
         size,
-        meta_state: 1,
+        meta_state,
         lyrics_text: None,
     }
 }

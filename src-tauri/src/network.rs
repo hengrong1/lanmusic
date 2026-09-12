@@ -23,6 +23,26 @@ pub fn config_field(config: Option<&str>, key: &str) -> Option<String> {
     cfg.get(key)?.as_str().map(str::to_string)
 }
 
+/// 从 `err1(codes::DOWNLOAD_STATUS, "status", …)` 产出的信封里取出状态码。
+fn download_status(err: &str) -> Option<u16> {
+    let v: serde_json::Value =
+        serde_json::from_str(err.strip_prefix(crate::error::PREFIX)?).ok()?;
+    if v.get("code")?.as_str()? != crate::error::codes::DOWNLOAD_STATUS {
+        return None;
+    }
+    v.get("params")?.get("status")?.as_str()?.split_whitespace().next()?.parse().ok()
+}
+
+/// 该失败是否值得重试。
+///
+/// 429 / 401 / 403 一律不重试：OpenList 的 WebDAV 认证失败按 IP 计次
+/// （`DefaultMaxAuthRetries = 5` → 锁 5 分钟），而且**每个被挡住的请求都会把封锁窗口
+/// 重新续期**（见其 `server/webdav.go::WebDAVAuth`）。对 429 重试等于把锁定永久保持下去，
+/// 所以这类失败必须立刻放弃。
+pub fn is_retryable(err: &str) -> bool {
+    !matches!(download_status(err), Some(429) | Some(401) | Some(403))
+}
+
 // ---------------------------------------------------------------- WebDAV 客户端
 
 pub mod webdav {
@@ -93,7 +113,8 @@ pub mod webdav {
         reader.config_mut().trim_text(true);
 
         let mut out = Vec::new();
-        let mut cur: Option<(String, Option<i64>, bool)> = None; // (href, size, is_dir)
+        // (href, 长度的原始文本, is_dir)。文本逐事件累加，见下方 Text / GeneralRef 分支。
+        let mut cur: Option<(String, String, bool)> = None;
         #[derive(PartialEq)]
         enum Cap {
             None,
@@ -105,7 +126,7 @@ pub mod webdav {
         loop {
             match reader.read_event().map_err(|e| e.to_string())? {
                 Event::Start(e) => match local_name(e.name().as_ref()) {
-                    "response" => cur = Some((String::new(), None, false)),
+                    "response" => cur = Some((String::new(), String::new(), false)),
                     "href" if cur.is_some() => cap = Cap::Href,
                     "getcontentlength" if cur.is_some() => cap = Cap::Len,
                     _ => {}
@@ -117,21 +138,53 @@ pub mod webdav {
                         }
                     }
                 }
+                // 文本必须**累加**：quick-xml 会把实体引用（`&amp;` 等）切成独立事件，
+                // 一个 href 可能对应多个 Text / GeneralRef。原先是赋值，导致含 `&` 的
+                // 文件名只剩最后一段（「张碧晨&amp;王赫野 - 曲名」变成「王赫野 - 曲名」），
+                // 之后按这个名字去 GET 必然 404。
                 Event::Text(t) => {
                     let text = quick_xml::escape::unescape(&t)
                         .map_err(|e| e.to_string())?
                         .to_string();
                     if let Some(c) = cur.as_mut() {
                         match cap {
-                            Cap::Href => c.0 = text,
-                            Cap::Len => c.1 = text.parse::<i64>().ok(),
+                            Cap::Href => c.0.push_str(&text),
+                            Cap::Len => c.1.push_str(&text),
                             Cap::None => {}
+                        }
+                    }
+                }
+                Event::GeneralRef(r) => {
+                    if let Some(c) = cur.as_mut() {
+                        // 数字字符引用（&#38;）由 resolve_char_ref 解析；
+                        // 预定义实体的 payload 是**实体名本身**（如 `amp`），
+                        // 注意 BytesRef::xml10_content() 只做 EOL 归一化、并不还原实体，
+                        // 必须自己映射回字符，否则 `&` 会变成 `amp` 的首字母 `a`。
+                        let ch = if r.is_char_ref() {
+                            r.resolve_char_ref().ok().flatten()
+                        } else {
+                            match r.into_inner().trim_matches(|ch| ch == '&' || ch == ';') {
+                                "amp" => Some('&'),
+                                "lt" => Some('<'),
+                                "gt" => Some('>'),
+                                "quot" => Some('"'),
+                                "apos" => Some('\''),
+                                _ => None,
+                            }
+                        };
+                        if let Some(ch) = ch {
+                            match cap {
+                                Cap::Href => c.0.push(ch),
+                                Cap::Len => c.1.push(ch),
+                                Cap::None => {}
+                            }
                         }
                     }
                 }
                 Event::End(e) => match local_name(e.name().as_ref()) {
                     "response" => {
-                        if let Some((href, size, is_dir)) = cur.take() {
+                        if let Some((href, size_text, is_dir)) = cur.take() {
+                            let size = size_text.trim().parse::<i64>().ok();
                             // href 可能是完整 URL 或绝对路径；统一解码为绝对路径
                             let abs = if href.starts_with("http") {
                                 Url::parse(&href).map(|u| decoded_path(&u)).unwrap_or(href)
@@ -220,5 +273,66 @@ pub mod webdav {
         }
         let bytes = resp.bytes().map_err(|e| e.to_string())?;
         Ok(Some(String::from_utf8_lossy(&bytes).into_owned()))
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        fn base() -> Url {
+            Url::parse("http://localhost:5244/dav/quark/").unwrap()
+        }
+
+        /// 文件名里的 `&` 在 XML 中是 `&amp;`，而 quick-xml 会把实体引用切成独立事件。
+        /// href 必须按事件顺序**拼接**，否则只剩最后一段，得到「砍掉 & 前半截」的错名字，
+        /// 进而 GET 变 404（扫描降级成「未知艺人」，播放失败）。
+        #[test]
+        fn propfind_keeps_ampersand_in_file_name() {
+            let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<D:multistatus xmlns:D="DAV:">
+<D:response><D:href>/dav/quark/</D:href><D:propstat><D:prop><D:resourcetype><D:collection/></D:resourcetype></D:prop></D:propstat></D:response>
+<D:response><D:href>/dav/quark/%E5%BC%A0%E7%A2%A7%E6%99%A8&amp;%E7%8E%8B%E8%B5%AB%E9%87%8E%20-%20%E5%AD%97%E5%AD%97%E5%8F%A5%E5%8F%A5%20(Live).flac</D:href><D:propstat><D:prop><D:resourcetype/><D:getcontentlength>58794518</D:getcontentlength></D:prop></D:propstat></D:response>
+</D:multistatus>"#;
+            let items = parse_propfind(xml, &base()).unwrap();
+            assert_eq!(items.len(), 1);
+            assert_eq!(items[0].abs, "/dav/quark/张碧晨&王赫野 - 字字句句 (Live).flac");
+            assert_eq!(items[0].size, 58794518);
+            assert!(!items[0].is_dir);
+        }
+
+        /// 多个实体（`杨丞琳&胡宇桐&李润祺`）同样要完整保留。
+        #[test]
+        fn propfind_keeps_multiple_ampersands() {
+            let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<D:multistatus xmlns:D="DAV:">
+<D:response><D:href>/dav/quark/a&amp;b&amp;c.flac</D:href><D:propstat><D:prop><D:resourcetype/><D:getcontentlength>123</D:getcontentlength></D:prop></D:propstat></D:response>
+</D:multistatus>"#;
+            let items = parse_propfind(xml, &base()).unwrap();
+            assert_eq!(items.len(), 1);
+            assert_eq!(items[0].abs, "/dav/quark/a&b&c.flac");
+            assert_eq!(items[0].size, 123);
+        }
+
+        /// 其他预定义实体与数字字符引用也应还原。
+        #[test]
+        fn propfind_resolves_other_entities() {
+            let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<D:multistatus xmlns:D="DAV:">
+<D:response><D:href>/dav/quark/a&lt;b&gt;&#38;c&quot;d.flac</D:href><D:propstat><D:prop><D:resourcetype/><D:getcontentlength>9</D:getcontentlength></D:prop></D:propstat></D:response>
+</D:multistatus>"#;
+            let items = parse_propfind(xml, &base()).unwrap();
+            assert_eq!(items[0].abs, "/dav/quark/a<b>&c\"d.flac");
+        }
+
+        /// href 为绝对 URL 时同样保留完整路径。
+        #[test]
+        fn propfind_absolute_href_keeps_ampersand() {
+            let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<D:multistatus xmlns:D="DAV:">
+<D:response><D:href>http://localhost:5244/dav/quark/x&amp;y.flac</D:href><D:propstat><D:prop><D:resourcetype/><D:getcontentlength>7</D:getcontentlength></D:prop></D:propstat></D:response>
+</D:multistatus>"#;
+            let items = parse_propfind(xml, &base()).unwrap();
+            assert_eq!(items[0].abs, "/dav/quark/x&y.flac");
+        }
     }
 }

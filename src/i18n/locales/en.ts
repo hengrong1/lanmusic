@@ -32,8 +32,8 @@ export default {
     buffering: 'Buffering…', playPauseHint: 'Play/Pause (Space)', rateHint: 'Playback speed {rate}x (click to switch)',
     mutedHint: 'Muted (volume {vol}%)', volumeHint: 'Volume {vol}%, scroll to adjust',
     nowPlayingPrefix: 'Now playing: ', hiResHint: 'High-resolution audio (≥88.2kHz or ≥24bit)',
-    lyricBackHint: 'Lyrics back 0.5s (display later — use when lyrics run ahead; shortcut ] )',
-    lyricForwardHint: 'Lyrics forward 0.5s (display earlier — use when lyrics lag; shortcut [ )',
+    lyricBackHint: 'Lyrics back 0.5s (shortcut ])',
+    lyricForwardHint: 'Lyrics forward 0.5s (shortcut [)',
     lyricResetHint: 'Reset to default timeline', lyricCurrentHint: 'Already on the default timeline',
     lyricOffsetLate: ', {value}s later in total', lyricOffsetEarly: ', {value}s earlier in total',
   },
@@ -149,7 +149,7 @@ export default {
     scanInProgress: 'Scanning...', quickImport: 'Quick Import',
     quickImportDesc: 'Import by filename/directory structure only, full parsing available anytime',
     quickImportTip:
-      'Quick import: skip reading file contents and index by filename/directory structure — ideal for slow network folders (NAS/SMB mounts)',
+      'Quick import: skip reading file contents and index by filename/directory structure — ideal for slow network folders (NAS/SMB mounts, WebDAV). For cloud sources it also stops fetching each file header, so scans are faster and less likely to hit remote rate limits',
     quickImportOn: 'Quick import enabled: takes effect after rescan; indexes by filename/directory structure only',
     quickImportOff: 'Quick import disabled: the next incremental scan will parse tags for these tracks',
     fullParse: 'Full Parse', fullParseTip: 'Re-parse all tags (including quick-imported and previously failed tracks)',
@@ -163,6 +163,14 @@ export default {
     addWebdav: 'Add WebDAV', collapse: 'Collapse',
     webdavHint: 'Supports https://nas.local:5006 or http://192.168.1.2:5005',
     webdavNamePlaceholder: 'Label (optional)', addAndScan: 'Add and Scan',
+    // Inherent cloud-source limits (always shown in settings so they are not mistaken for bugs)
+    webdavCardHint: 'Cloud source: no directory watching, no MV; tags and covers are read from the file header only',
+    webdavLimitsTitle: 'Known limits of cloud (WebDAV) sources',
+    webdavLimitNoWatch: 'No directory watching — changes made in the cloud are not synced automatically; run "Rescan" manually',
+    webdavLimitNoMv: 'No MV — a same-named video file in the same folder is not detected, and the player has no MV entry (local sources only)',
+    webdavLimitHeadOnly: 'Tags and covers are read from the file header only (tags 1MB; covers probe 512KB then fall back to 2MB) — M4A files with the moov box at the end lose their duration, and files with very large artwork may show no cover',
+    webdavLimitPartial: 'Files that fail to fetch are indexed by filename and marked "pending" — they are retried on the next rescan or via "Full parse"',
+    webdavLimitRateLimit: 'Playback fails while the remote is rate-limiting (e.g. OpenList returning 429) — just retry later; retrying repeatedly only extends the block',
     // Library: multiple-artist separators
     artistSeparators: 'Multiple Artist Separators',
     artistSeparatorsDesc:
@@ -286,8 +294,8 @@ export default {
   desktopLyrics: {
     title: 'Desktop Lyrics', enabled: 'Enabled', disabled: 'Disabled', lock: 'Lock', unlock: 'Unlock',
     onTop: 'Always on Top', settings: 'Settings', noLyrics: 'No lyrics',
-    backHint: 'Lyrics back 0.5s (display later — use when lyrics run ahead)',
-    forwardHint: 'Lyrics forward 0.5s (display earlier — use when lyrics lag)',
+    backHint: 'Lyrics back 0.5s',
+    forwardHint: 'Lyrics forward 0.5s',
   },
   dialog: {
     confirm: 'Confirm', cancel: 'Cancel', delete: 'Delete', warning: 'Warning', error: 'Error',
@@ -323,6 +331,7 @@ export default {
     lyricOffsetReset: 'Lyrics timeline reset',
     lyricOffsetDelay: 'Lyrics delayed by {value}s', lyricOffsetAdvance: 'Lyrics advanced by {value}s',
     playFailed: 'Playback failed: {title}', playNextAfter: 'Will play after "{title}"',
+    playFailedTooMany: 'Stopped auto-skip after {count} consecutive playback failures',
   },
   time: {
     second: 'second', minute: 'minute', hour: 'hour', day: 'day', week: 'week', month: 'month', year: 'year',

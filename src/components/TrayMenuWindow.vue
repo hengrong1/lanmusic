@@ -104,7 +104,7 @@ function action(a: 'show' | 'lyrics' | 'settings' | 'quit') {
   <div class="tray-root">
     <div ref="content" class="tray-content">
       <!-- 顶部信息展示区：封面 + 歌名/歌手 -->
-      <button class="info" :title="$t('tray.openMainWindow')" @click="action('show')">
+      <button class="info" v-tooltip="$t('tray.openMainWindow')" @click="action('show')">
         <div class="cover">
           <img
             v-if="!showFallback"
@@ -129,20 +129,20 @@ function action(a: 'show' | 'lyrics' | 'settings' | 'quit') {
 
       <!-- 核心媒体控制栏：上一首 / 播放暂停 / 下一首 / 喜欢 -->
       <div class="controls">
-        <button class="ctrl" :title="$t('player.prev')" @click="playback('prev')">
+        <button class="ctrl" v-tooltip="$t('player.prev')" @click="playback('prev')">
           <SkipBack class="h-[18px] w-[18px]" />
         </button>
-        <button class="ctrl play" :title="state.playing ? $t('player.pause') : $t('player.play')" @click="playback('toggle')">
+        <button class="ctrl play" v-tooltip="state.playing ? $t('player.pause') : $t('player.play')" @click="playback('toggle')">
           <Pause v-if="state.playing" class="h-[20px] w-[20px]" />
           <Play v-else class="h-[20px] w-[20px] translate-x-[1px]" />
         </button>
-        <button class="ctrl" :title="$t('player.next')" @click="playback('next')">
+        <button class="ctrl" v-tooltip="$t('player.next')" @click="playback('next')">
           <SkipForward class="h-[18px] w-[18px]" />
         </button>
         <button
           class="ctrl heart"
           :class="{ active: state.fav }"
-          :title="state.fav ? $t('tray.unlike') : $t('tray.like')"
+          v-tooltip="state.fav ? $t('tray.unlike') : $t('tray.like')"
           @click="playback('fav')"
         >
           <HeartFilled v-if="state.fav" class="h-[18px] w-[18px]" />

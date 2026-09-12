@@ -186,7 +186,7 @@ defineExpose({ focusSearch })
   >
     <button
       class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-zinc-500 transition hover:bg-zinc-200/70 hover:text-violet-500 dark:hover:bg-zinc-800 dark:text-zinc-400 dark:hover:text-violet-400"
-      :title="collapsed ? $t('settings.sidebarExpanded') : $t('settings.sidebarCollapsed')"
+      v-tooltip="collapsed ? $t('settings.sidebarExpanded') : $t('settings.sidebarCollapsed')"
       @click="toggleSidebar"
     >
       <!-- 侧栏展开时显示「折叠」（sidebar-minimalistic），收起时显示「展开」（sidebar） -->
@@ -197,7 +197,7 @@ defineExpose({ focusSearch })
     <button
       class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-zinc-500 transition hover:bg-zinc-200/70 hover:text-violet-500 disabled:cursor-not-allowed disabled:opacity-30 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-violet-400"
       :disabled="!canBack"
-      :title="$t('common.back')"
+      v-tooltip="$t('common.back')"
       @click="back()"
     >
       <ArrowLeft class="h-4 w-4" />
@@ -253,7 +253,7 @@ defineExpose({ focusSearch })
               v-for="s in recentSearches"
               :key="s"
               class="cursor-pointer truncate rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1 text-xs text-zinc-600 transition hover:border-violet-300 hover:bg-violet-50 hover:text-violet-600 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-300 dark:hover:border-violet-500 dark:hover:bg-zinc-600 dark:hover:text-violet-300"
-              :title="s"
+              v-tooltip="s"
               @mousedown.prevent="applyRecent(s)"
             >
               {{ s }}
@@ -310,7 +310,7 @@ defineExpose({ focusSearch })
                     <span
                       v-else-if="t.matchedFields?.includes('filename')"
                       class="shrink-0 rounded-full bg-purple-100 px-1.5 py-0.5 text-[10px] font-medium text-purple-700 dark:bg-purple-900/40 dark:text-purple-300"
-                      :title="t.path"
+                      v-tooltip="t.path"
                     >{{ $t('settings.fieldFilename') }}</span>
                   </div>
                   <div class="mt-0.5 flex items-center gap-1 truncate text-xs text-zinc-500 dark:text-zinc-400">
@@ -338,7 +338,7 @@ defineExpose({ focusSearch })
 
     <button
       class="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg text-zinc-500 transition hover:bg-zinc-200/70 hover:text-violet-500 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-violet-400"
-      :title="$t('settings.theme') + ' · ' + (mode === 'dark' ? $t('settings.themeDark') : mode === 'light' ? $t('settings.themeLight') : $t('settings.themeSystem'))"
+      v-tooltip="$t('settings.theme') + ' · ' + (mode === 'dark' ? $t('settings.themeDark') : mode === 'light' ? $t('settings.themeLight') : $t('settings.themeSystem'))"
       @click="cycleTheme"
     >
       <!-- 跟随系统显示日月，固定深色/浅色时分别显示月亮/太阳 -->
@@ -350,7 +350,7 @@ defineExpose({ focusSearch })
     <button
       class="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg transition hover:bg-zinc-200/70 hover:text-violet-500 dark:hover:bg-zinc-800 dark:hover:text-violet-400"
       :class="current.view === 'settings' ? 'text-violet-500' : 'text-zinc-500 dark:text-zinc-400'"
-      :title="$t('nav.settings')"
+      v-tooltip="$t('nav.settings')"
       @click="go({ view: 'settings' })"
     >
       <!-- 设置入口：当前在设置页时图标用 bold 变体（与侧栏选中态一致） -->

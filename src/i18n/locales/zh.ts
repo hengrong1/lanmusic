@@ -32,8 +32,8 @@ export default {
     buffering: '缓冲中…', playPauseHint: '播放/暂停 (空格)', rateHint: '播放倍速 {rate}x（点击切换）',
     mutedHint: '已静音（音量 {vol}%）', volumeHint: '音量 {vol}%，可滚轮调节',
     nowPlayingPrefix: '正在播放：', hiResHint: '高解析度音频（≥88.2kHz 或 ≥24bit）',
-    lyricBackHint: '歌词后退 0.5 秒（延后显示，歌词显示快了用这个，快捷键 ] ）',
-    lyricForwardHint: '歌词前进 0.5 秒（提前显示，歌词显示慢了用这个，快捷键 [ ）',
+    lyricBackHint: '歌词后退 0.5 秒（快捷键 ]）',
+    lyricForwardHint: '歌词前进 0.5 秒（快捷键 [）',
     lyricResetHint: '还原为默认时间轴', lyricCurrentHint: '当前为默认时间轴，无需还原',
     lyricOffsetLate: '，已累计延后 {value}s', lyricOffsetEarly: '，已累计提前 {value}s',
   },
@@ -141,7 +141,7 @@ export default {
     rescanAll: '重新扫描全部', rescanDesc: '扫描文件变化并更新音乐库',
     scanInProgress: '扫描中...', quickImport: '快速导入',
     quickImportDesc: '仅按文件名/目录结构入库，完整解析随时补全',
-    quickImportTip: '快速导入：不读取文件内容，按文件名/目录结构入库，适合慢速网络目录（NAS/SMB 挂载）',
+    quickImportTip: '快速导入：不读取文件内容，按文件名/目录结构入库，适合慢速网络目录（NAS / SMB 挂载 / WebDAV）。云端来源开启后不再逐个拉取文件头部，扫描更快，也不易触发远端限流',
     quickImportOn: '已开启快速导入：重新扫描后生效，仅按文件名/目录结构入库，不读文件内容',
     quickImportOff: '已关闭快速导入：下次增量扫描会自动补全解析这些歌曲的标签',
     fullParse: '完整解析', fullParseTip: '全部重新解析标签（含快速导入与解析失败的歌曲）',
@@ -155,6 +155,14 @@ export default {
     addWebdav: '添加 WebDAV', collapse: '收起',
     webdavHint: '支持 https://nas.local:5006 或 http://192.168.1.2:5005',
     webdavNamePlaceholder: '备注名（可选）', addAndScan: '添加并扫描',
+    // 云端来源的固有限制（设置页常驻展示，避免被当成 bug）
+    webdavCardHint: '云端来源：不支持目录监听、不支持 MV；标签与封面只读文件头部',
+    webdavLimitsTitle: '云端（WebDAV）来源的已知限制',
+    webdavLimitNoWatch: '不支持目录监听 —— 云端新增、删除或改名后不会自动同步，需手动点「重新扫描」',
+    webdavLimitNoMv: '不支持 MV —— 同目录下的同名视频文件不会被识别，播放页没有 MV 入口（仅本地来源支持）',
+    webdavLimitHeadOnly: '标签与封面只读文件头部（标签 1MB、封面先探 512KB 再退 2MB）—— moov box 在尾部的 M4A 会缺时长，封面块超大的文件可能取不到封面',
+    webdavLimitPartial: '拉取失败的文件会先按文件名入库并标记「待补全」—— 需重新扫描或点「完整解析」才会重试',
+    webdavLimitRateLimit: '远端限流（如 OpenList 返回 429）时播放会失败 —— 稍后重试即可，连续重试反而会延长封锁时间',
     // 曲库：多艺人分隔符
     artistSeparators: '多艺人分隔符',
     artistSeparatorsDesc:
@@ -280,8 +288,8 @@ export default {
   desktopLyrics: {
     title: '桌面歌词', enabled: '已开启', disabled: '已关闭', lock: '锁定', unlock: '解锁',
     onTop: '置顶', settings: '设置', noLyrics: '暂无歌词',
-    backHint: '歌词后退 0.5 秒（延后显示，歌词显示快了用这个）',
-    forwardHint: '歌词前进 0.5 秒（提前显示，歌词显示慢了用这个）',
+    backHint: '歌词后退 0.5 秒',
+    forwardHint: '歌词前进 0.5 秒',
   },
   dialog: {
     confirm: '确认', cancel: '取消', delete: '删除', warning: '警告', error: '错误',
@@ -317,6 +325,7 @@ export default {
     lyricOffsetReset: '歌词时间轴已还原',
     lyricOffsetDelay: '歌词已延后 {value}s', lyricOffsetAdvance: '歌词已提前 {value}s',
     playFailed: '播放失败：{title}', playNextAfter: '将在「{title}」后播放',
+    playFailedTooMany: '连续 {count} 首播放失败，已停止自动跳过',
   },
   time: {
     second: '秒', minute: '分钟', hour: '小时', day: '天', week: '周', month: '月', year: '年',

@@ -5,6 +5,7 @@ import App from './App.vue'
 import DesktopLyricsWindow from './components/DesktopLyricsWindow.vue'
 import TrayMenuWindow from './components/TrayMenuWindow.vue'
 import { applyStoredFont } from './composables/useAppFont'
+import { installTooltip } from './directives/tooltip'
 import { i18n } from './i18n'
 import './style.css'
 
@@ -14,9 +15,15 @@ applyStoredFont()
 // 各窗口共用前端 bundle：按窗口 label 区分渲染内容
 const winLabel = getCurrentWindow().label
 if (winLabel === 'lyrics') {
-  createApp(DesktopLyricsWindow).use(i18n).mount('#app')
+  const app = createApp(DesktopLyricsWindow).use(i18n)
+  installTooltip(app)
+  app.mount('#app')
 } else if (winLabel === 'tray') {
-  createApp(TrayMenuWindow).use(i18n).mount('#app')
+  const app = createApp(TrayMenuWindow).use(i18n)
+  installTooltip(app)
+  app.mount('#app')
 } else {
-  createApp(App).use(createPinia()).use(i18n).mount('#app')
+  const app = createApp(App).use(createPinia()).use(i18n)
+  installTooltip(app)
+  app.mount('#app')
 }

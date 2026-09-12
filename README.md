@@ -30,7 +30,7 @@
 
 - **本地音乐库**：添加文件夹、增量扫描（mtime + size diff）、[lofty](https://docs.rs/lofty) 元数据解析
 - **扫描性能**：独立 SQLite 连接（WAL 读写分离）、多线程并发解析（共享任务队列，不持锁）、封面惰性提取、枚举/解析双阶段进度上报
-- **快速导入**：针对网络目录的开关，仅按文件名/目录结构入库；「完整解析」随时补全标签
+- **快速导入**：针对网络目录的开关（本地与 WebDAV 来源通用），仅按文件名/目录结构入库、不读文件内容；本地来源省掉标签解析，WebDAV 来源还会**完全跳过逐文件的头部拉取**（大库首次导入能省下大量请求，也不易触发远端限流）；「完整解析」随时补全标签，且**无视该开关**（一定会真实解析，含已快速导入的歌曲）
 - **`music://` 自定义流协议**：HTTP Range 拖动进度、2MB 分块封顶、本地/WebDAV 统一路由、跨平台适配（macOS `music://` / Windows `http://music.localhost`）
 - **播放**：播放模式（顺序/列表循环/单曲/随机）、队列管理、虚拟滚动列表（10 万级）、专辑/艺人视图、搜索、全局快捷键（空格 / `N` / `P` / `Ctrl+F` / `[` / `]`）
 - **目录监听**：本地来源目录接入 notify 监听，文件变化（新增/修改/删除/重命名）自动触发增量扫描（去抖 3s；WebDAV 源无法监听，需手动重扫）
@@ -44,7 +44,7 @@
   - 排序：按加入时间倒序（新添加的歌曲在最前面）
   - 批量操作：多选模式支持播放/加入队列/移出歌单
   - 编辑集中化：通过统一弹层管理名称、简介、删除
-- **歌词**：`.lrc` 同名文件 + 内嵌歌词（USLT/LYRICS）；播放页大封面 + 时间轴滚动歌词（点击行跳转）；间奏空行折叠
+- **歌词**：`.lrc` 同名文件 + 内嵌歌词（USLT/LYRICS，本地与 WebDAV 来源都支持）；播放页大封面 + 时间轴滚动歌词（点击行跳转）；间奏空行折叠
 - **歌词校准**：播放页右下角「后退 / 还原 / 前进」控件（或快捷键 `[` / `]`），每次 ±0.5s、范围 ±10s；偏移按曲目持久化，toast 原地更新累计量（连续点击不叠加提示框）
 - **最近播放**（`play_count` / `last_played_at` 统计）
 - **喜欢**（收藏）
@@ -63,7 +63,7 @@
 
 ### M3 局域网
 
-- **WebDAV 源**：PROPFIND 遍历、Range 拉文件头 1MB 解析标签、外挂 lrc/封面 URL 记录（设置页添加）；密码存系统钥匙串，数据库仅保存用户名
+- **WebDAV 源**：PROPFIND 遍历、Range 拉文件头 1MB 解析标签、外挂 lrc/封面 URL 记录（设置页添加）；目录内无约定封面文件时，展示时再惰性拉取曲目**内嵌封面**；远端拉取失败会重试一次（429/401/403 不重试，见「故障排查」），仍失败则按文件名降级入库并标记「待补全」（下次扫描或「完整解析」重试）；来源可开「快速导入」跳过全部逐文件请求；**内嵌歌词按需读取**（外挂 `.lrc` 优先，没有才拉文件头部 1MB 解析 USLT/LYRICS）；密码存系统钥匙串且进程内缓存复用，数据库仅保存用户名
 - **远程流统一代理**：Rust 侧转发 Range（2MB 分块），凭证不出进程
 
 ### 支持的格式
@@ -139,9 +139,10 @@ src/                       # Vue 3 前端
 ├── stores/
 │   ├── player.ts          # 播放状态机：队列/模式/歌词/恢复/错误重试
 │   └── library.ts         # 库数据：来源/扫描进度/歌单/分页查询
-├── components/            # PlayerBar / TrackTable(虚拟滚动) / TrackPicker(选歌面板) / PlaylistEditDialog / Tooltip / QueuePanel / NowPlayingView ...
+├── components/            # PlayerBar / TrackTable(虚拟滚动) / TrackPicker(选歌面板) / PlaylistEditDialog / QueuePanel / NowPlayingView ...
 ├── views/                 # Tracks / Albums / Artists / Playlist / Settings
 ├── composables/           # useNav / useTheme / useSkin / useSpectrum / useAmbient / useToast ...
+├── directives/            # tooltip 指令（全项目唯一的气泡提示实现，见下表）
 ├── utils/                 # lrc 解析 / 取色 / 平台判断
 └── types.ts               # 与 Rust DTO 对应的 TS 类型
 
@@ -192,7 +193,7 @@ src-tauri/                 # Rust 后端
 
 - **音频流**：前端 `<audio>` 的 src 指向自定义协议；Rust 侧按来源类型路由——本地直接读文件流，WebDAV 经代理转发并附带 Basic 认证，凭证不出进程。Range 请求统一 2MB 封顶，媒体引擎自动续传。
 - **扫描管线**：枚举（实时进度）→ diff（mtime/size/meta_state）→ 多线程并发解析（不持锁）→ 独立连接分批事务入库（每 100 首提交 + 进度上报）→ 删除已消失文件并清理孤儿专辑与封面缓存。
-- **封面缓存**：`covers/{album_id}.jpg`，失败写 `{id}.none` 哨兵；删除专辑时同步清理缓存文件，防止 SQLite rowid 复用导致「歌和封面对不上」。
+- **封面缓存**：`covers/{album_id}.jpg`，确认无封面时写 `{id}.none` 哨兵防重复网络 I/O（但「一个字节都没拿到」的连接/读取失败不写哨兵，避免瞬时故障让封面永久缺失）；删除专辑时同步清理缓存文件，防止 SQLite rowid 复用导致「歌和封面对不上」。
 - **播放状态恢复**：队列快照（ids + index）与进度存 localStorage，启动时按 id 批量还原（分批 IN 查询），已删除曲目自动跳过。
 
 ## 键盘快捷键
@@ -298,6 +299,12 @@ SQLite（WAL 模式，外键开启），建表与列迁移见 `src-tauri/src/db.
 
 **新增一列数据库迁移**：在 `db.rs::migrate()` 中调用 `ensure_column(conn, 表名, 列名, 定义)`，不要直接改 `SCHEMA` 常量。
 
+**新增提示文案**：一律用全局指令 `v-tooltip`，**不要再写原生 `title`**（原生 title 有系统延迟、样式不受控、深色主题下也不协调）。
+- `v-tooltip="text"` 默认在元素上方居中，`v-tooltip:right="text"` 在右侧垂直居中（收起的侧栏），`v-tooltip:bottom="text"` 在下方
+- 文案为空 / `null` 时不显示，可用 `v-tooltip="cond ? tip : ''"` 做条件提示
+- 指令直接挂在元素上，**不产生额外盒子**，因此 flex / grid 子项、`truncate` 文本、`BaseButton` 等单根组件都能安全使用（气泡 Teleport 到 body，不会被 `overflow-hidden` 裁切）
+- 例外：`EmptyState` / `BaseModal` / `BaseColorPicker` 的 `title` 是组件 prop（标题文案），不是 tooltip，不要替换
+
 **运行与调试**：
 - `pnpm tauri:dev`（Rust 改动会自动重编译；前端 HMR 端口 1420/1421）
 - `pnpm test` — `scheme.rs` 中有跨平台 URI 解析的单测，改协议相关代码请补测试
@@ -310,6 +317,10 @@ SQLite（WAL 模式，外键开启），建表与列迁移见 `src-tauri/src/db.
 | 现象 | 原因与处理 |
 |---|---|
 | WebDAV 的 M4A 缺时长 | moov box 在文件尾，头部 1MB 解析不到；属于已知取舍 |
+| WebDAV 歌曲没封面 | 目录里没有 `cover.jpg`/`folder.jpg`/`front.jpg` 时改读曲目**内嵌封面**（需能连上 WebDAV）。已确认无封面的专辑会留下 `{id}.none` 哨兵，之后补了封面文件需删掉该哨兵或重扫才会重试 |
+| WebDAV 曲目显示「未知艺人 / 未知专辑」且无法播放 | 扫描时该文件的头部拉取失败（上游限流/超时），已按文件名降级入库并标记「待补全解析」。播放走的是同一条远端拉取通道，所以同样会失败；重新扫描或「完整解析」会重试 |
+| WebDAV 曲目显示「未知艺人 / 未知专辑」且无法播放 | 若文件名含 `&`（多艺人合作曲），命中过 `parse_propfind` 的解析缺陷：href 文本必须按事件**累加**，而 quick-xml 会把 `&amp;` 切成独立事件，赋值写法导致名字只剩最后一段（`张碧晨&王赫野 - 曲名` → `王赫野 - 曲名`），按这个名字 GET 必然 404，于是扫描降级成「未知艺人」、播放也失败。已在 `network.rs` 修复并加了单测；对来源执行「重新扫描」即可按正确名字重新入库并清掉失效行 |
+| WebDAV 全都播不了 / PROPFIND 也失败，但 OpenList 网页能打开 | 命中了 OpenList/AList 的 WebDAV 认证失败锁定：它按客户端 IP 计次（`DefaultMaxAuthRetries = 5`），累计 5 次失败即返回 **429** 锁 `DefaultLockDuration = 5 分钟`，而且**每个被挡住的请求都会把封锁窗口重新续期**（`server/webdav.go::WebDAVAuth`）。处理：先彻底停止对该 OpenList 的 WebDAV 访问（含正在播放的实例）静置 5 分钟，再看是否恢复；期间反复重试只会一直续锁。注意 `/dav` 才会 429，`/` 与 `/api/*` 正常，可据此判断 |
 | 封面显示错乱（旧版本库） | 启动时会一次性自愈清空封面缓存（`covers.selfheal.v1`），之后惰性重建 |
 | Windows 首次运行提示 SmartScreen | 安装包未签名，选择「仍要运行」即可 |
 | 某些歌曲显示文件名而非标签 | 标签解析失败已降级入库；对来源执行「完整解析」重试 |
@@ -318,8 +329,10 @@ SQLite（WAL 模式，外键开启），建表与列迁移见 `src-tauri/src/db.
 
 - 局域网共享模式与设备发现不提供（历史实现见 git 记录）
 - WebDAV 标签解析基于文件头部 1MB（moov 在尾部的 M4A 可能缺时长）
+- WebDAV 内嵌封面同样只能读文件头部（先探 512KB，不中退到 2MB），封面块超大的文件取不到；有同级 `cover.jpg` 等约定文件时优先用它
 - 歌词为只读展示，不提供编辑器
 - WebDAV 源无法目录监听（远端文件系统变化对本机不可见），需手动「重新扫描」
+- WebDAV 曲目没有 MV：同名视频文件的检测与播放入口目前只对本地来源生效
 - 安装包未做 OS 代码签名，Windows 首次运行 SmartScreen 提示属正常现象
 - 播放控制未接系统媒体键（SMTC/MPRIS），由应用内快捷键、托盘菜单与 Windows 任务栏缩略图按钮承担
 

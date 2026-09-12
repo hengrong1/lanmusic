@@ -150,7 +150,7 @@ watch(
           <div class="flex items-center gap-1">
             <button
               class="transition-colors duration-150 flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-zinc-500 hover:bg-zinc-100 hover:text-violet-500 disabled:cursor-default disabled:opacity-40 dark:hover:bg-zinc-800"
-              :title="$t('queue.saveAsPlaylistHint')"
+              v-tooltip="$t('queue.saveAsPlaylistHint')"
               :disabled="saving"
               @click="saveAsPlaylist"
             >
@@ -158,14 +158,14 @@ watch(
             </button>
             <button
               class="transition-colors duration-150 flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-zinc-500 hover:bg-zinc-100 hover:text-red-500 dark:hover:bg-zinc-800"
-              :title="$t('queue.clearQueue')"
+              v-tooltip="$t('queue.clearQueue')"
               @click="player.clearQueue()"
             >
               <Trash2 class="h-4 w-4" />
             </button>
             <button
               class="transition-colors duration-150 flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800"
-              :title="$t('common.close')"
+              v-tooltip="$t('common.close')"
               @click="$emit('close')"
             >
               <X class="h-4 w-4" />
@@ -213,7 +213,7 @@ watch(
             >{{ fmt(t.duration) }}</span>
             <button
               class="transition-colors duration-150 flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-lg text-zinc-400 opacity-0 hover:bg-zinc-200 hover:text-zinc-600 group-hover:opacity-100 dark:hover:bg-zinc-700"
-              :title="$t('player.removeFromQueue')"
+              v-tooltip="$t('player.removeFromQueue')"
               @click="player.removeFromQueue(i)"
             >
               <X class="h-3.5 w-3.5" />
@@ -231,7 +231,7 @@ watch(
             <button
               v-if="!activeVisible && player.index >= 0"
               class="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full bg-white shadow-lg shadow-zinc-300/50 transition hover:bg-zinc-100 dark:bg-zinc-800 dark:shadow-zinc-900/50 dark:hover:bg-zinc-700"
-              :title="$t('queue.scrollToCurrent')"
+              v-tooltip="$t('queue.scrollToCurrent')"
               @click="locateActive"
             >
               <LocateFixed class="h-4 w-4 text-zinc-600 dark:text-zinc-300" />
@@ -246,7 +246,7 @@ watch(
             <button
               v-if="showBackToTop"
               class="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full bg-white shadow-lg shadow-zinc-300/50 transition hover:bg-zinc-100 dark:bg-zinc-800 dark:shadow-zinc-900/50 dark:hover:bg-zinc-700"
-              :title="$t('common.backToTop')"
+              v-tooltip="$t('common.backToTop')"
               @click="scrollToTop"
             >
               <ArrowUp class="h-4 w-4 text-zinc-600 dark:text-zinc-300" />

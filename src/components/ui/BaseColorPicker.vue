@@ -30,7 +30,7 @@ function onInput(e: Event) {
     <label
       class="relative inline-flex h-8 w-14 shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded-lg border border-zinc-200 bg-white transition-all duration-150 hover:border-violet-400 hover:ring-2 hover:ring-violet-500/10 focus-within:border-violet-500 focus-within:ring-2 focus-within:ring-violet-500/10 dark:border-zinc-700 dark:bg-zinc-800"
       :class="{ 'cursor-not-allowed opacity-40': disabled }"
-      :title="title"
+      v-tooltip="title"
     >
       <span class="pointer-events-none absolute inset-1 rounded-md shadow-inner" :style="{ background: modelValue }" />
       <input
@@ -50,7 +50,7 @@ function onInput(e: Event) {
         class="h-4 w-4 cursor-pointer rounded-full border border-black/10 transition-transform duration-150 hover:scale-125"
         :class="isPreset(c) ? 'ring-2 ring-violet-500 ring-offset-1 ring-offset-white dark:ring-offset-zinc-800' : ''"
         :style="{ background: c }"
-        :title="c"
+        v-tooltip="c"
         @click="emit('update:modelValue', c)"
       />
     </div>

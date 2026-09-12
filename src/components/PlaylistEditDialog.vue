@@ -124,7 +124,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
       <!-- 标题栏 -->
       <div class="flex shrink-0 items-center justify-between border-b border-zinc-200 px-5 py-4 dark:border-zinc-800">
         <h2 class="text-base font-semibold text-zinc-900 dark:text-zinc-50">{{ $t('playlist.edit') }}</h2>
-        <BaseButton variant="ghost" size="xs" :icon="X" :title="$t('common.close')" :aria-label="$t('common.close')" @click="emit('close')" />
+        <BaseButton variant="ghost" size="xs" :icon="X" v-tooltip="$t('common.close')" :aria-label="$t('common.close')" @click="emit('close')" />
       </div>
 
       <!-- 表单 -->

@@ -22,7 +22,6 @@ import { toast } from '@/composables/useToast'
 import { confirmDialog } from '@/composables/useConfirm'
 import { IS_WIN } from '@/utils/platform'
 import ContextMenu from '@/components/ContextMenu.vue'
-import Tooltip from '@/components/Tooltip.vue'
 import CoverImg from '@/components/CoverImg.vue'
 import type { MenuItem } from '@/components/ContextMenu.vue'
 import type { NavRoute } from '@/types'
@@ -238,31 +237,27 @@ function openPlaylistMenu(e: MouseEvent, p: { id: number; name: string }) {
       <p class="sidebar-fade px-2 pb-1 text-[11px] font-semibold tracking-wider text-zinc-400 uppercase dark:text-zinc-600">
         {{ $t('library.myMusic') }}
       </p>
-      <Tooltip
+      <button
         v-for="e in entries"
         :key="e.label"
-        :text="e.label"
-        :disabled="!collapsed"
+        v-tooltip:right="collapsed ? e.label : ''"
+        class="group mb-0.5 flex h-9 w-full shrink-0 cursor-pointer items-center rounded-lg text-sm transition"
+        :class="[
+          showText ? 'gap-2.5 px-2.5' : 'justify-center px-0',
+          isActive(e)
+            ? 'bg-violet-100 font-medium text-violet-700 dark:bg-violet-500/15 dark:text-violet-300'
+            : 'text-zinc-600 hover:bg-zinc-200/60 dark:text-zinc-300 dark:hover:bg-zinc-800/60',
+        ]"
+        @click="go(e.route)"
       >
-        <button
-          class="group mb-0.5 flex h-9 w-full shrink-0 cursor-pointer items-center rounded-lg text-sm transition"
-          :class="[
-            showText ? 'gap-2.5 px-2.5' : 'justify-center px-0',
-            isActive(e)
-              ? 'bg-violet-100 font-medium text-violet-700 dark:bg-violet-500/15 dark:text-violet-300'
-              : 'text-zinc-600 hover:bg-zinc-200/60 dark:text-zinc-300 dark:hover:bg-zinc-800/60',
-          ]"
-          @click="go(e.route)"
-        >
-          <component
-            :is="isActive(e) ? e.iconActive : e.icon"
-            class="nav-icon h-4 w-4 shrink-0 transition-colors duration-150"
-            :class="isActive(e) ? 'text-violet-500' : 'text-zinc-400 group-hover:text-violet-500 dark:group-hover:text-violet-400'"
-          />
-          <span v-if="showText" class="sidebar-fade flex-1 text-left">{{ e.label }}</span>
-          <span v-if="showText && e.count" class="sidebar-fade text-xs tabular-nums text-zinc-400">{{ e.count() }}</span>
-        </button>
-      </Tooltip>
+        <component
+          :is="isActive(e) ? e.iconActive : e.icon"
+          class="nav-icon h-4 w-4 shrink-0 transition-colors duration-150"
+          :class="isActive(e) ? 'text-violet-500' : 'text-zinc-400 group-hover:text-violet-500 dark:group-hover:text-violet-400'"
+        />
+        <span v-if="showText" class="sidebar-fade flex-1 text-left">{{ e.label }}</span>
+        <span v-if="showText && e.count" class="sidebar-fade text-xs tabular-nums text-zinc-400">{{ e.count() }}</span>
+      </button>
     </div>
 
     <!-- 歌单：收起态仍可点击图标进入歌单（悬停有高亮 + title 提示） -->
@@ -271,7 +266,7 @@ function openPlaylistMenu(e: MouseEvent, p: { id: number; name: string }) {
         <p class="sidebar-fade text-[11px] font-semibold tracking-wider text-zinc-400 uppercase dark:text-zinc-600">{{ $t('playlist.title') }}</p>
         <button
           class="transition-colors duration-150 sidebar-fade flex h-5 w-5 cursor-pointer items-center justify-center rounded-lg text-zinc-400 hover:bg-zinc-200 hover:text-zinc-600 disabled:cursor-default dark:hover:bg-zinc-700 dark:hover:text-zinc-300"
-          :title="$t('playlist.createNew')"
+          v-tooltip="$t('playlist.createNew')"
           :disabled="collapsed"
           @click="startCreate"
         >
@@ -299,28 +294,27 @@ function openPlaylistMenu(e: MouseEvent, p: { id: number; name: string }) {
       </div>
 
       <div v-for="p in library.playlists" :key="p.id">
-        <Tooltip :text="p.name" :disabled="!collapsed">
-          <button
-            v-if="editing?.id !== p.id"
-            class="mb-0.5 flex h-9 w-full cursor-pointer items-center rounded-lg text-sm transition"
-            :class="[
-              showText ? 'gap-2.5 px-2.5' : 'justify-center px-0',
-              current.view === 'playlist' && current.playlistId === p.id
-                ? 'bg-violet-100 font-medium text-violet-700 dark:bg-violet-500/15 dark:text-violet-300'
-                : 'text-zinc-600 hover:bg-zinc-200/60 dark:text-zinc-300 dark:hover:bg-zinc-800/60',
-            ]"
-            @click="go({ view: 'playlist', playlistId: p.id, playlistName: p.name })"
-            @contextmenu="openPlaylistMenu($event, p)"
-          >
-            <CoverImg
-              class="nav-icon h-4 w-4 shrink-0 overflow-hidden"
-              :album-id="p.coverAlbumId"
-              rounded="rounded"
-            />
-            <span v-if="showText" class="sidebar-fade flex-1 truncate text-left">{{ p.name }}</span>
-            <span v-if="showText" class="sidebar-fade text-xs tabular-nums text-zinc-400">{{ p.trackCount }}</span>
-          </button>
-        </Tooltip>
+        <button
+          v-if="editing?.id !== p.id"
+          v-tooltip:right="collapsed ? p.name : ''"
+          class="mb-0.5 flex h-9 w-full cursor-pointer items-center rounded-lg text-sm transition"
+          :class="[
+            showText ? 'gap-2.5 px-2.5' : 'justify-center px-0',
+            current.view === 'playlist' && current.playlistId === p.id
+              ? 'bg-violet-100 font-medium text-violet-700 dark:bg-violet-500/15 dark:text-violet-300'
+              : 'text-zinc-600 hover:bg-zinc-200/60 dark:text-zinc-300 dark:hover:bg-zinc-800/60',
+          ]"
+          @click="go({ view: 'playlist', playlistId: p.id, playlistName: p.name })"
+          @contextmenu="openPlaylistMenu($event, p)"
+        >
+          <CoverImg
+            class="nav-icon h-4 w-4 shrink-0 overflow-hidden"
+            :album-id="p.coverAlbumId"
+            rounded="rounded"
+          />
+          <span v-if="showText" class="sidebar-fade flex-1 truncate text-left">{{ p.name }}</span>
+          <span v-if="showText" class="sidebar-fade text-xs tabular-nums text-zinc-400">{{ p.trackCount }}</span>
+        </button>
       </div>
       <p v-if="showText && !library.playlists.length && !editing" class="sidebar-fade px-2.5 py-2 text-sm text-zinc-400 dark:text-zinc-600">
         {{ $t('library.noPlaylistsHint') }}

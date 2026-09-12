@@ -171,7 +171,7 @@ onBeforeUnmount(() => {
         />
         <button
           class="flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-lg text-zinc-400 transition hover:bg-zinc-100 dark:hover:bg-zinc-800"
-          :title="$t('common.close')"
+          v-tooltip="$t('common.close')"
           @click="emit('close')"
         >
           <X class="h-4 w-4" />
@@ -200,7 +200,7 @@ onBeforeUnmount(() => {
         <button
           class="cursor-pointer rounded-lg px-2.5 py-1 text-xs text-zinc-500 transition hover:bg-zinc-100 hover:text-violet-600 disabled:opacity-40 dark:text-zinc-400 dark:hover:bg-zinc-800"
           :disabled="filterMode !== 'all' || !selectableCount"
-          :title="$t('playlist.selectAllCurrentHint')"
+          v-tooltip="$t('playlist.selectAllCurrentHint')"
           @click="selectAllVisible"
         >
           {{ $t('playlist.selectAllCurrent') }}

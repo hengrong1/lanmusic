@@ -301,7 +301,7 @@ function onDragEnd() {
         <button
           class="flex h-4 w-4 cursor-pointer items-center justify-center rounded border transition"
           :class="allSelected ? 'border-violet-500 bg-violet-500 text-white' : 'border-zinc-300 dark:border-zinc-600'"
-          :title="$t('common.selectAll')"
+          v-tooltip="$t('common.selectAll')"
           @click.stop="toggleAll"
         >
           <Check v-if="allSelected" class="h-3 w-3" />
@@ -348,7 +348,7 @@ function onDragEnd() {
                 : 'cursor-default',
             ]"
             style="grid-template-columns: 40px minmax(0, 1fr) minmax(0, 220px) minmax(0, 220px) 56px"
-            :title="t.path"
+            v-tooltip="t.path"
             :draggable="props.reorderable === true && !props.batchMode"
             @click="onRowClick(t, index)"
             @dblclick="rowDblClick(t, index)"
@@ -392,17 +392,17 @@ function onDragEnd() {
               <span
                 v-if="t.matchedFields?.includes('lyrics')"
                 class="shrink-0 rounded-full bg-violet-100 px-1.5 py-px text-[10px] font-medium text-violet-600 dark:bg-violet-500/20 dark:text-violet-300"
-                :title="$t('library.lyricsHit')"
+                v-tooltip="$t('library.lyricsHit')"
               >{{ $t('player.lyrics') }}</span>
               <span
                 v-if="t.matchedFields?.includes('filename')"
                 class="shrink-0 rounded-full bg-emerald-100 px-1.5 py-px text-[10px] font-medium text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-300"
-                :title="filenameTip(t.path)"
+                v-tooltip="filenameTip(t.path)"
               >{{ $t('settings.fieldFilename') }}</span>
               <button
                 v-if="t.hasMv"
                 class="shrink-0 rounded-lg p-0.5 text-fuchsia-500 transition hover:bg-fuchsia-50 dark:hover:bg-fuchsia-900/30"
-                :title="$t('mv.play')"
+                v-tooltip="$t('mv.play')"
                 :aria-label="$t('mv.play')"
                 @click.stop="playMv(t)"
               >
@@ -415,7 +415,7 @@ function onDragEnd() {
                 <button
                   v-if="a.id != null"
                   class="max-w-full cursor-pointer truncate transition hover:text-violet-600 hover:underline dark:hover:text-violet-400"
-                  :title="artistTip(a.name)"
+                  v-tooltip="artistTip(a.name)"
                   @click.stop="openArtist(a)"
                 ><HighlightText :text="a.name" :keyword="searchTerm" /></button>
                 <span v-else><HighlightText :text="a.name" :keyword="searchTerm" /></span>
@@ -425,7 +425,7 @@ function onDragEnd() {
             <div class="min-w-0 truncate text-zinc-500 dark:text-zinc-400">
               <button
                 class="max-w-full cursor-pointer truncate transition hover:text-violet-600 hover:underline dark:hover:text-violet-400"
-                :title="albumTip(t.album)"
+                v-tooltip="albumTip(t.album)"
                 @click.stop="openAlbum(t)"
               ><HighlightText :text="t.album ?? $t('album.unknownAlbum')" :keyword="searchTerm" /></button>
             </div>
@@ -447,7 +447,7 @@ function onDragEnd() {
           <button
             v-if="showLocate"
             class="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full bg-white shadow-lg shadow-zinc-300/50 transition hover:bg-zinc-100 dark:bg-zinc-800 dark:shadow-zinc-900/50 dark:hover:bg-zinc-700"
-            :title="$t('queue.scrollToCurrent')"
+            v-tooltip="$t('queue.scrollToCurrent')"
             @click="locatePlaying"
           >
             <LocateFixed class="h-4 w-4 text-zinc-600 dark:text-zinc-300" />
@@ -462,7 +462,7 @@ function onDragEnd() {
           <button
             v-if="showBackToTop"
             class="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full bg-white shadow-lg shadow-zinc-300/50 transition hover:bg-zinc-100 dark:bg-zinc-800 dark:shadow-zinc-900/50 dark:hover:bg-zinc-700"
-            :title="$t('common.backToTop')"
+            v-tooltip="$t('common.backToTop')"
             @click="scrollToTop"
           >
             <ArrowUp class="h-4 w-4 text-zinc-600 dark:text-zinc-300" />
