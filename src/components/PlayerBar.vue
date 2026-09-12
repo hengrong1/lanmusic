@@ -41,11 +41,12 @@ watch(
   (hidden, prev) => {
     if (prev === undefined) return // 初始渲染不做动画
     if (!footerEl.value) return
+    // 显示要快（0.4s 减速曲线，一出专注就能用）；隐藏稍缓（0.6s 渐隐，保持沉浸感）
     gsap.to(footerEl.value, {
       yPercent: hidden ? 200 : 0,
       marginBottom: hidden ? -92 : 0,
-      duration: 1.2,
-      ease: 'none',
+      duration: hidden ? 0.6 : 0.4,
+      ease: hidden ? 'power2.in' : 'power3.out',
       overwrite: 'auto',
     })
   },
