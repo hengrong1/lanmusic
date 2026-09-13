@@ -33,6 +33,8 @@ import { useMvPlayer } from '@/composables/useMvPlayer'
 import { useThemeColor } from '@/composables/useThemeColor'
 import { useBackground } from '@/composables/useBackground'
 import { bgUrl } from '@/api/scheme'
+import { toast } from '@/composables/useToast'
+import { t as translate } from '@/i18n/translate'
 
 const library = useLibraryStore()
 const player = usePlayerStore()
@@ -40,7 +42,14 @@ const nav = useNav()
 const mv = useMvPlayer()
 const { palette, setAlbum } = useAmbient()
 // 自定义背景：设置 → 外观选择图片（useBackground 模块级单例，设置页改后这里即时生效）
-const { file: bgFile, blur: bgBlur } = useBackground()
+const { file: bgFile, blur: bgBlur, set: setBg } = useBackground()
+/** 背景副本丢失自愈：副本存在 appData/backgrounds/，被清理工具删掉后 bg:// 请求 404、
+    img 加载失败 → 自动关闭自定义背景并摘除 has-bg（否则玻璃样式残留而无图可透，
+    亮色下白字叠白底不可读），并提示用户 */
+function onBgError() {
+  setBg(null)
+  toast(translate('toast.bgMissing'), 'error')
+}
 // 有背景图时给 html 挂 has-bg：主卡片经 --app-surface 变量转毛玻璃透出底图（见 style.css）
 watch(
   bgFile,
@@ -312,6 +321,7 @@ window.addEventListener('keydown', (e) => {
           transform: bgBlur > 0 ? 'scale(1.08)' : undefined,
         }"
         draggable="false"
+        @error="onBgError"
       />
     </div>
     <div class="flex min-h-0 flex-1 gap-3">

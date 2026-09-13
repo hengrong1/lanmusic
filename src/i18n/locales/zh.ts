@@ -381,6 +381,7 @@ export default {
     processing: '处理中...', saving: '保存中...', deleting: '删除中...', adding: '添加中...',
     removing: '移除中...', updating: '更新中...', connecting: '连接中...', syncing: '同步中...',
     playlistNameRequired: '歌单名不能为空', playlistSaved: '歌单已保存',
+    bgMissing: '自定义背景图文件已失效，已恢复默认背景',
     addedToQueueCount: '已加入队列（{count} 首）', removedCount: '已移除 {count} 首',
     desktopLyricsOpenFailed: '桌面歌词开启失败',
     desktopLyricsFailed: '桌面歌词操作失败：{error}',

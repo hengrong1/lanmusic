@@ -387,6 +387,7 @@ export default {
     processing: 'Processing...', saving: 'Saving...', deleting: 'Deleting...', adding: 'Adding...',
     removing: 'Removing...', updating: 'Updating...', connecting: 'Connecting...', syncing: 'Syncing...',
     playlistNameRequired: 'Playlist name cannot be empty', playlistSaved: 'Playlist saved',
+    bgMissing: 'Custom background image is missing; default background restored',
     addedToQueueCount: 'Added to queue ({count})', removedCount: 'Removed {count} songs',
     desktopLyricsOpenFailed: 'Failed to open desktop lyrics',
     desktopLyricsFailed: 'Desktop lyrics error: {error}',

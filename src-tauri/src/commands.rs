@@ -852,7 +852,17 @@ pub async fn desktop_lyrics_set(app: AppHandle, enabled: bool) -> Result<bool, S
     // 透明背景：歌词浮窗必须透明（否则 macOS 显示 WKWebView 默认白底）。
     // macOS 需要 macos-private-api feature，已在 Cargo.toml 与 tauri.conf.json(macOSPrivateApi) 启用
     let builder = builder.transparent(true);
+    // 先隐藏窗口：窗口可见时 WebView2 加载前端期间会闪出原生白底 + index.html
+    // 不透明 splash（「先白一下」），等前端渲染完成再由前端 show()（挂载后双 rAF）
+    let builder = builder.visible(false);
     let win = builder.build().map_err(|e| e.to_string())?;
+
+    // 兜底：前端异常未调用 show 时 2 秒后强制显示（show 幂等，前端已显示再调无副作用）
+    let fallback = win.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(2000));
+        let _ = fallback.show();
+    });
 
     // 主显示器底部居中（上方留出约 120 逻辑像素，避开任务栏区域）
     if let Ok(Some(monitor)) = win.primary_monitor() {
@@ -1244,8 +1254,9 @@ pub fn set_setting(state: State<'_, AppState>, key: String, value: String) -> Re
 /// 允许作为背景图的扩展名
 const BG_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "webp", "bmp", "gif"];
 
-/// 选择的自定义背景图复制到 appData/backgrounds/（文件名带时间戳，天然防缓存），
-/// 返回协议访问用的文件名（前端拼 bg://file/{name}）。旧背景文件一并清理，不堆积。
+/// 选择的自定义背景图复制到缓存目录 {app_cache_dir}/backgrounds/（文件名带时间戳，
+/// 天然防缓存），返回协议访问用的文件名（前端拼 bg://file/{name}）。旧背景文件一并
+/// 清理，不堆积。放缓存目录而非数据目录：副本可再生，清理缓存后前端自愈回默认背景。
 #[tauri::command]
 pub fn set_background_image(app: AppHandle, path: String) -> Result<String, String> {
     let ext = std::path::Path::new(&path)
@@ -1258,7 +1269,7 @@ pub fn set_background_image(app: AppHandle, path: String) -> Result<String, Stri
     }
     let dest_dir = app
         .path()
-        .app_data_dir()
+        .app_cache_dir()
         .map_err(|e| err1(codes::BG_SAVE_FAILED, "error", e))?
         .join("backgrounds");
     std::fs::create_dir_all(&dest_dir).map_err(|e| err1(codes::BG_SAVE_FAILED, "error", e))?;

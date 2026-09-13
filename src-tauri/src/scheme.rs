@@ -49,7 +49,7 @@ pub fn cover_protocol<R: Runtime>(
 }
 
 /// 自定义背景协议：bg://file/{name}（Windows 上为 http://bg.localhost/file/{name}）。
-/// 文件由 set_background_image 复制到 appData/backgrounds/，文件名带时间戳，
+/// 文件由 set_background_image 复制到缓存目录 {app_cache_dir}/backgrounds/，文件名带时间戳，
 /// 因此可以放心 immutable 长缓存（换图 = 换文件名）。
 pub fn bg_protocol<R: Runtime>(
     ctx: UriSchemeContext<'_, R>,
@@ -85,7 +85,7 @@ fn bg_handle<R: Runtime>(app: AppHandle<R>, req: Request<Vec<u8>>) -> Response<V
     }
     let full = app
         .path()
-        .app_data_dir()
+        .app_cache_dir()
         .unwrap_or_default()
         .join("backgrounds")
         .join(&name);

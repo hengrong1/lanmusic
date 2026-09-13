@@ -43,6 +43,13 @@ async function boot() {
       installErrorGuard(app)
       app.mount('#app')
       removeSplash()
+      // 歌词窗创建时 visible=false（Rust 端防 WebView2 白帧闪现），渲染完成后再显示；
+      // 双 rAF 确保首帧已绘制，用户看到的第一眼就是渲染好的透明歌词
+      requestAnimationFrame(() =>
+        requestAnimationFrame(() => {
+          void getCurrentWindow().show()
+        }),
+      )
       return
     }
     if (winLabel === 'tray') {
