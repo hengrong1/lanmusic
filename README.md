@@ -9,9 +9,9 @@
 
 ## 界面预览
 
-| 全部歌曲 | 播放页 | 设置页 |
-|:---:|:---:|:---:|
-| ![全部歌曲](docs/screenshots/tracks.png) | ![播放页](docs/screenshots/nowplaying.png) | ![设置页](docs/screenshots/settings.png) |
+| 全部歌曲 | 播放页 | 设置页 | 自定义背景 |
+|:---:|:---:|:---:|:---:|
+| ![全部歌曲](docs/screenshots/tracks.png) | ![播放页](docs/screenshots/nowplaying.png) | ![设置页](docs/screenshots/settings.png) | ![自定义背景](docs/screenshots/custom-background.png) |
 
 > 界面预览启用自定义背景图主题，展示真实曲库数据；其余界面可在运行应用后自行查看。
 
