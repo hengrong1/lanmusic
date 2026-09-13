@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { ArrowDownIcon as ArrowDown } from '@solar-icons/vue/linear/arrow-down'
 import { ArrowUpIcon as ArrowUp } from '@solar-icons/vue/linear/arrow-up'
+import { AltArrowUpIcon as BackToTopIcon } from '@solar-icons/vue/linear/alt-arrow-up'
 import { SortVerticalIcon as ChevronsUpDown } from '@solar-icons/vue/linear/sort-vertical'
 import { VinylRecordIcon as Disc3 } from '@solar-icons/vue/linear/vinyl-record'
 import { FolderOpenIcon as FolderOpen } from '@solar-icons/vue/linear/folder-open'
@@ -505,7 +506,7 @@ function onDragEnd() {
             v-tooltip="$t('common.backToTop')"
             @click="scrollToTop"
           >
-            <ArrowUp class="h-4 w-4 text-zinc-600 dark:text-zinc-300" />
+            <BackToTopIcon class="h-4 w-4 text-zinc-600 dark:text-zinc-300" />
           </button>
         </Transition>
       </div>
