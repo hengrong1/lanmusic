@@ -41,6 +41,31 @@ const coverAlbumId = ref<number | null>(null)
 const pickerOpen = ref(false)
 const editOpen = ref(false)
 
+// ---- 表头点击排序（前端客户端排序；'' / 'none' = 按加入时间倒序的默认顺序）----
+const sort = ref('')
+const sortedTracks = computed(() => {
+  const s = sort.value
+  if (!s || s === 'none') return tracks.value
+  const desc = s.startsWith('-')
+  const field = desc ? s.slice(1) : s
+  const arr = [...tracks.value]
+  arr.sort((a, b) => {
+    let c: number
+    if (field === 'duration') {
+      c = (a.duration ?? 0) - (b.duration ?? 0)
+    } else {
+      const va = String((a as unknown as Record<string, unknown>)[field] ?? '')
+      const vb = String((b as unknown as Record<string, unknown>)[field] ?? '')
+      c = va.localeCompare(vb, 'zh-CN', { numeric: true })
+    }
+    return desc ? -c : c
+  })
+  return arr
+})
+function onSortChange(v: string) {
+  sort.value = v
+}
+
 const root = ref<HTMLElement | null>(null)
 // ready = 数据落定（加载完成，空也算就绪）：加载中先隐藏 stagger 元素，就绪后播一次
 useStagger(root, computed(() => tracks.value.length > 0 || !loading.value))
@@ -62,10 +87,24 @@ const createdText = computed(() =>
 )
 
 /** 头部信息行：曲目数 · 创建时间 · 排序说明（带参翻译在 setup 内生成） */
+const sortLabel = computed(() => {
+  const s = sort.value
+  if (!s || s === 'none') return t('playlist.sortByAdded')
+  const desc = s.startsWith('-')
+  const field = desc ? s.slice(1) : s
+  const col: Record<string, string> = {
+    title: t('library.sortTitle'),
+    artist: t('library.sortArtist'),
+    album: t('library.sortAlbum'),
+    duration: t('library.sortDuration'),
+  }
+  const name = col[field] ?? ''
+  return desc ? t('playlist.sortByFieldDesc', { field: name }) : t('playlist.sortByField', { field: name })
+})
 const metaLine = computed(() => {
   const parts = [t('common.songsCount', { count: tracks.value.length })]
   if (createdText.value) parts.push(createdText.value)
-  parts.push(t('playlist.sortByAdded'))
+  parts.push(sortLabel.value)
   return parts.join(' · ')
 })
 
@@ -91,7 +130,8 @@ function onDeleted() {
 // ---- 歌单多选批量操作 ----
 const batchMode = ref(false)
 const selIds = ref<number[]>([])
-const selTracks = computed(() => tracks.value.filter((t) => selIds.value.includes(t.id)))
+/** 已选曲目按当前显示顺序取（排序后批量播放保持所见即所得） */
+const selTracks = computed(() => sortedTracks.value.filter((t) => selIds.value.includes(t.id)))
 
 function enterBatch() {
   batchMode.value = true
@@ -207,7 +247,7 @@ onMounted(load)
 watch(playlistId, load)
 
 function playAll() {
-  if (tracks.value.length) player.playList(tracks.value, 0)
+  if (sortedTracks.value.length) player.playList(sortedTracks.value, 0)
 }
 
 /** 选歌弹层添加成功后：刷新列表、封面与侧栏计数 */
@@ -222,7 +262,11 @@ async function onPickerAdded() {
       <CoverImg :album-id="coverAlbumId" rounded="h-20 w-20 shrink-0 rounded-xl shadow-md" />
       <div class="min-w-0 flex-1">
         <p data-stagger class="text-xs font-semibold tracking-wider text-violet-500 uppercase">{{ $t('playlist.title') }}</p>
-        <h1 data-stagger class="mt-0.5 truncate text-2xl font-bold text-zinc-900 dark:text-zinc-50">
+        <h1
+          data-stagger
+          v-tooltip="playlistName"
+          class="mt-0.5 truncate text-2xl font-bold text-zinc-900 dark:text-zinc-50"
+        >
           {{ playlistName }}
         </h1>
         <p data-stagger class="mt-1 text-xs text-zinc-400">
@@ -290,10 +334,12 @@ async function onPickerAdded() {
 
     <div v-else class="min-h-0 flex-1">
       <TrackTable
-        :tracks="tracks"
+        :tracks="sortedTracks"
+        :sort="sort"
         :playlist-id="playlistId ?? undefined"
         :batch-mode="batchMode"
         @selection="onSelection"
+        @sort-change="onSortChange"
         @refresh="load"
       />
     </div>

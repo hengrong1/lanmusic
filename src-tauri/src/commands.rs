@@ -1254,6 +1254,98 @@ pub fn set_setting(state: State<'_, AppState>, key: String, value: String) -> Re
 /// 允许作为背景图的扩展名
 const BG_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "webp", "bmp", "gif"];
 
+/// 自定义背景图最小边长（px）：低于此值铺满窗口会明显发糊
+const MIN_BG_DIMENSION: u32 = 600;
+
+/// 读取图片文件的像素宽高（png/jpeg/webp/bmp/gif），仅解析文件头不做完整解码
+/// （避免引入图像解码依赖），无法识别的布局返回 None（调用方放行）。
+fn image_dimensions(path: &std::path::Path) -> Option<(u32, u32)> {
+    use std::io::Read;
+    let mut data = Vec::new();
+    std::fs::File::open(path)
+        .ok()?
+        .read_to_end(&mut data)
+        .ok()?;
+    image_dimensions_bytes(&data)
+}
+
+fn image_dimensions_bytes(data: &[u8]) -> Option<(u32, u32)> {
+    if data.len() < 33 {
+        return None;
+    }
+    // PNG：8 字节签名 + IHDR（宽高为大端 16..24）
+    if data.starts_with(b"\x89PNG\r\n\x1a\n") {
+        let w = u32::from_be_bytes([data[16], data[17], data[18], data[19]]);
+        let h = u32::from_be_bytes([data[20], data[21], data[22], data[23]]);
+        return Some((w, h));
+    }
+    // GIF：签名 + 逻辑屏幕尺寸（小端 6..10）
+    if data.starts_with(b"GIF87a") || data.starts_with(b"GIF89a") {
+        let w = u16::from_le_bytes([data[6], data[7]]) as u32;
+        let h = u16::from_le_bytes([data[8], data[9]]) as u32;
+        return Some((w, h));
+    }
+    // BMP：BITMAPINFOHEADER 宽高在小端 18..26（高度可能为负 = 行序翻转，取绝对值）
+    if data.starts_with(b"BM") {
+        let w = i32::from_le_bytes([data[18], data[19], data[20], data[21]]);
+        let h = i32::from_le_bytes([data[22], data[23], data[24], data[25]]);
+        return Some((w.unsigned_abs(), h.unsigned_abs()));
+    }
+    // WebP：RIFF....WEBP，按 chunk 类型取尺寸
+    if data.starts_with(b"RIFF") && data[8..12] == *b"WEBP" {
+        return match &data[12..16] {
+            // VP8X 扩展：画布尺寸 24 位小端，存的是「边长 - 1」
+            b"VP8X" => {
+                let w = u32::from_le_bytes([data[24], data[25], data[26], 0]) + 1;
+                let h = u32::from_le_bytes([data[27], data[28], data[29], 0]) + 1;
+                Some((w, h))
+            }
+            // VP8 有损：起始码后 14 位宽高（小端 2+2 字节，高 2 位是保留段）
+            b"VP8 " => {
+                let w = (u16::from_le_bytes([data[26], data[27]]) & 0x3fff) as u32;
+                let h = (u16::from_le_bytes([data[28], data[29]]) & 0x3fff) as u32;
+                Some((w, h))
+            }
+            // VP8L 无损：14 位宽高打包在 4 字节里（各 14 位，存「边长 - 1」）
+            b"VP8L" => {
+                let bits = u32::from_le_bytes([data[21], data[22], data[23], data[24]]);
+                let w = (bits & 0x3fff) + 1;
+                let h = ((bits >> 14) & 0x3fff) + 1;
+                Some((w, h))
+            }
+            _ => None,
+        };
+    }
+    // JPEG：扫描 marker 找 SOF 帧头（含尺寸）；SOF 前有 APP 段/EXIF，扫到 256KB 足够
+    if data.starts_with(b"\xff\xd8") {
+        let mut i = 2usize;
+        while i + 4 <= data.len() {
+            if data[i] != 0xff {
+                i += 1;
+                continue;
+            }
+            let marker = data[i + 1];
+            // 填充字节与独立 marker 无段长度，跳过
+            if marker == 0xff || (0xd0..=0xd7).contains(&marker) || marker == 0x01 {
+                i += 2;
+                continue;
+            }
+            // SOF0~3 / SOF9~11（基线/渐进/算术）帧头：len(2) + 精度(1) + 高(2, 大端) + 宽(2)
+            if (0xc0..=0xcf).contains(&marker) && marker != 0xc4 && marker != 0xc8 && marker != 0xcc {
+                if i + 9 > data.len() {
+                    return None;
+                }
+                let h = u16::from_be_bytes([data[i + 5], data[i + 6]]) as u32;
+                let w = u16::from_be_bytes([data[i + 7], data[i + 8]]) as u32;
+                return Some((w, h));
+            }
+            let len = u16::from_be_bytes([data[i + 2], data[i + 3]]) as usize;
+            i += 2 + len;
+        }
+    }
+    None
+}
+
 /// 选择的自定义背景图复制到缓存目录 {app_cache_dir}/backgrounds/（文件名带时间戳，
 /// 天然防缓存），返回协议访问用的文件名（前端拼 bg://file/{name}）。旧背景文件一并
 /// 清理，不堆积。放缓存目录而非数据目录：副本可再生，清理缓存后前端自愈回默认背景。
@@ -1266,6 +1358,12 @@ pub fn set_background_image(app: AppHandle, path: String) -> Result<String, Stri
         .unwrap_or_default();
     if !BG_EXTENSIONS.contains(&ext.as_str()) {
         return Err(err(codes::BG_FORMAT));
+    }
+    // 尺寸校验：分辨率过低铺满窗口会明显发糊；文件头无法解析时放行（不误杀特殊编码图）
+    if let Some((w, h)) = image_dimensions(std::path::Path::new(&path)) {
+        if w < MIN_BG_DIMENSION || h < MIN_BG_DIMENSION {
+            return Err(err(codes::BG_TOO_SMALL));
+        }
     }
     let dest_dir = app
         .path()
@@ -2123,4 +2221,59 @@ pub fn get_mv_url(
     } else {
         format!("video://mv/{track_id}")
     }))
+}
+
+#[cfg(test)]
+mod bg_dimension_tests {
+    use super::*;
+
+    #[test]
+    fn png_size_from_ihdr() {
+        let mut b = b"\x89PNG\r\n\x1a\n".to_vec();
+        b.extend_from_slice(&[0, 0, 0, 13]);
+        b.extend_from_slice(b"IHDR");
+        b.extend_from_slice(&1920u32.to_be_bytes());
+        b.extend_from_slice(&1080u32.to_be_bytes());
+        b.extend_from_slice(&[8, 6, 0, 0, 0]);
+        b.extend_from_slice(&[0, 0, 0, 0]); // CRC（仅补足 33 字节头）
+        assert_eq!(image_dimensions_bytes(&b), Some((1920, 1080)));
+    }
+
+    #[test]
+    fn gif_size_from_logical_screen() {
+        let mut b = b"GIF89a".to_vec();
+        b.extend_from_slice(&400u16.to_le_bytes());
+        b.extend_from_slice(&300u16.to_le_bytes());
+        b.extend_from_slice(&[0u8; 23]); // 补足 33 字节头
+        assert_eq!(image_dimensions_bytes(&b), Some((400, 300)));
+    }
+
+    #[test]
+    fn jpeg_size_scans_past_app_segments() {
+        let mut b = vec![0xff, 0xd8];
+        // APP1(EXIF) 段：marker + len=16 + 14 字节载荷
+        b.extend_from_slice(&[0xff, 0xe1, 0x00, 0x10]);
+        b.extend_from_slice(&[0u8; 14]);
+        // SOF0：marker + len=17 + 精度 + 高 1080 + 宽 1920 + 分量数
+        b.extend_from_slice(&[0xff, 0xc0, 0x00, 0x11, 0x08, 0x04, 0x38, 0x07, 0x80, 0x03]);
+        b.extend_from_slice(&[0u8; 3]); // 补足 33 字节头
+        assert_eq!(image_dimensions_bytes(&b), Some((1920, 1080)));
+    }
+
+    #[test]
+    fn webp_vp8x_size() {
+        let mut b = b"RIFF\x00\x00\x00\x00WEBP".to_vec();
+        b.extend_from_slice(b"VP8X");
+        b.extend_from_slice(&[10, 0, 0, 0]); // chunk size
+        b.extend_from_slice(&[0, 0, 0, 0]); // reserved
+        b.extend_from_slice(&[191, 7, 0]); // 宽-1（小端 24 位）= 1983
+        b.extend_from_slice(&[127, 4, 0]); // 高-1 = 1151
+        b.extend_from_slice(&[0, 0, 0]); // 补足 33 字节头
+        assert_eq!(image_dimensions_bytes(&b), Some((1984, 1152)));
+    }
+
+    #[test]
+    fn too_short_buffer_is_none() {
+        assert_eq!(image_dimensions_bytes(&[0u8; 10]), None);
+    }
 }

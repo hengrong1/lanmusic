@@ -153,7 +153,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
             ref="nameInput"
             v-model="nameDraft"
             :placeholder="$t('playlist.namePlaceholder')"
-            :maxlength="60"
+            :maxlength="25"
             @keydown.enter="save"
           />
         </div>

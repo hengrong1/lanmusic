@@ -79,6 +79,8 @@ pub mod codes {
     pub const BG_FORMAT: &str = "bg.format";
     /// 背景图片保存失败：{error}
     pub const BG_SAVE_FAILED: &str = "bg.saveFailed";
+    /// 背景图片分辨率过低（宽或高小于 MIN_BG_DIMENSION）
+    pub const BG_TOO_SMALL: &str = "bg.tooSmall";
 
     // ---- 转码（macOS Ogg → WAV，见 transcode.rs；transcode.rs 仅 macOS 编译，
     //      这些码在 Windows 下是死代码，需随平台门控）----

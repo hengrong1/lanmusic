@@ -66,6 +66,7 @@ export default {
     removeFromPlaylist: 'Remove from Playlist', editInfoHint: 'Edit playlist info (name, description, delete)',
     createdAtFull: 'Created: {date}', trackCountFull: 'Tracks: {count}',
     descPlaceholderLong: 'Say something about this playlist…', sortByAdded: 'Newest first',
+    sortByField: 'By {field}', sortByFieldDesc: 'By {field}, descending',
     createFirstHint: '(Create a playlist in the sidebar first)',
   },
   library: {
@@ -490,6 +491,7 @@ export default {
     },
     bg: {
       format: 'Unsupported image format (PNG/JPG/WebP/BMP/GIF only)',
+      tooSmall: 'Image resolution too low; use at least 600×600',
       saveFailed: 'Failed to save background image: {error}',
     },
     transcode: {

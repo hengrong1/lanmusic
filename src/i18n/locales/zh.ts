@@ -65,6 +65,7 @@ export default {
     removeFromPlaylist: '移出歌单', editInfoHint: '编辑歌单信息（名称、简介、删除）',
     createdAtFull: '创建时间：{date}', trackCountFull: '歌曲：{count} 首',
     descPlaceholderLong: '写点什么，介绍这个歌单…', sortByAdded: '按加入时间倒序',
+    sortByField: '按 {field}', sortByFieldDesc: '按 {field}，倒序',
     createFirstHint: '（先在侧边栏新建歌单）',
   },
   library: {
@@ -484,6 +485,7 @@ export default {
     },
     bg: {
       format: '不支持的图片格式（仅 PNG/JPG/WebP/BMP/GIF）',
+      tooSmall: '图片分辨率过低，请选择宽高至少 600×600 的图片',
       saveFailed: '背景图片保存失败：{error}',
     },
     transcode: {

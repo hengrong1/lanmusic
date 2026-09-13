@@ -314,6 +314,7 @@ function openPlaylistMenu(e: MouseEvent, p: { id: number; name: string }) {
           v-model="editing.value"
           class="min-w-0 flex-1 bg-transparent text-sm text-zinc-800 outline-none dark:text-zinc-100"
           :placeholder="$t('playlist.namePlaceholder')"
+          maxlength="25"
           @keydown.enter="confirmEdit"
           @keydown.esc="editing = null"
           @blur="confirmEdit"
@@ -331,7 +332,7 @@ function openPlaylistMenu(e: MouseEvent, p: { id: number; name: string }) {
       <div v-for="p in library.playlists" :key="p.id">
         <button
           v-if="editing?.id !== p.id"
-          v-tooltip:right="collapsed ? p.name : ''"
+          v-tooltip:right="p.name"
           class="group mb-1 flex h-10 w-full cursor-pointer items-center rounded-lg text-sm transition"
           :class="[
             showText ? 'gap-2.5 px-2' : 'justify-center px-0',
