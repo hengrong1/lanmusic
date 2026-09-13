@@ -118,11 +118,13 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 </script>
 
 <template>
+  <!-- Teleport 到 body：脱离 app-surface-blur 主卡片 DOM 子树，避免 has-bg 映射误伤弹窗内部 -->
+  <Teleport to="body">
   <div :class="[dialogOverlayClass('z-50'), 'p-6']" @click.self="emit('close')">
     <Transition v-bind="dialogPanelTransition" appear>
       <div
         data-dialog-panel
-        class="flex w-full max-w-md flex-col overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-2xl dark:border-zinc-700 dark:bg-zinc-900"
+        class="app-surface-blur flex w-full max-w-md flex-col overflow-hidden rounded-xl border border-white/15 bg-(--app-surface) shadow-2xl"
       >
         <!-- 标题栏（可拖动） -->
         <div
@@ -183,4 +185,5 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
     </div>
     </Transition>
   </div>
+  </Teleport>
 </template>

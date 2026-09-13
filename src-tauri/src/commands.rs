@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State};
 
 use crate::db;
-use crate::error::{codes, err};
+use crate::error::{codes, err, err1};
 use crate::scanner;
 use crate::state::AppState;
 
@@ -1237,6 +1237,47 @@ pub fn set_setting(state: State<'_, AppState>, key: String, value: String) -> Re
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     db::set_setting(&conn, &key, &value).map_err(|e| e.to_string())?;
     Ok(())
+}
+
+// ---------- 自定义背景 ----------
+
+/// 允许作为背景图的扩展名
+const BG_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "webp", "bmp", "gif"];
+
+/// 选择的自定义背景图复制到 appData/backgrounds/（文件名带时间戳，天然防缓存），
+/// 返回协议访问用的文件名（前端拼 bg://file/{name}）。旧背景文件一并清理，不堆积。
+#[tauri::command]
+pub fn set_background_image(app: AppHandle, path: String) -> Result<String, String> {
+    let ext = std::path::Path::new(&path)
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_ascii_lowercase())
+        .unwrap_or_default();
+    if !BG_EXTENSIONS.contains(&ext.as_str()) {
+        return Err(err(codes::BG_FORMAT));
+    }
+    let dest_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| err1(codes::BG_SAVE_FAILED, "error", e))?
+        .join("backgrounds");
+    std::fs::create_dir_all(&dest_dir).map_err(|e| err1(codes::BG_SAVE_FAILED, "error", e))?;
+    if let Ok(entries) = std::fs::read_dir(&dest_dir) {
+        for e in entries.flatten() {
+            let name = e.file_name().to_string_lossy().to_string();
+            if name.starts_with("bg-") {
+                let _ = std::fs::remove_file(e.path());
+            }
+        }
+    }
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+    let name = format!("bg-{stamp}.{ext}");
+    std::fs::copy(&path, dest_dir.join(&name))
+        .map_err(|e| err1(codes::BG_SAVE_FAILED, "error", e))?;
+    Ok(name)
 }
 
 // ---------- 艺人分隔符 ----------

@@ -260,6 +260,8 @@ pub fn run() {
         .register_asynchronous_uri_scheme_protocol("cover", scheme::cover_protocol)
         // 视频流协议：video://mv/{track_id}（Windows 上为 http://video.localhost/mv/{track_id}）
         .register_asynchronous_uri_scheme_protocol("video", scheme::video_protocol)
+        // 自定义背景协议：bg://file/{name}（Windows 上为 http://bg.localhost/file/{name}）
+        .register_asynchronous_uri_scheme_protocol("bg", scheme::bg_protocol)
         .invoke_handler(tauri::generate_handler![
             commands::add_local_source,
             commands::list_sources,
@@ -292,6 +294,7 @@ pub fn run() {
             commands::favorite_toggle,
             commands::get_setting,
             commands::set_setting,
+            commands::set_background_image,
             commands::get_artist_separators,
             commands::set_artist_separators,
             commands::normalize_artist_names,

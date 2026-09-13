@@ -43,7 +43,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
           <div
             v-if="updater.dialogOpen.value"
             data-dialog-panel
-            class="w-[420px] rounded-2xl border border-zinc-200 bg-white p-5 shadow-2xl dark:border-zinc-700 dark:bg-zinc-800"
+            class="app-surface-blur w-[420px] rounded-2xl border border-white/15 bg-(--app-surface) p-5 shadow-2xl"
           >
             <div
               v-drag-dialog

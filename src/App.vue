@@ -31,12 +31,22 @@ import { useDesktopLyrics } from '@/composables/useDesktopLyrics'
 import { useTrayMenu } from '@/composables/useTrayMenu'
 import { useMvPlayer } from '@/composables/useMvPlayer'
 import { useThemeColor } from '@/composables/useThemeColor'
+import { useBackground } from '@/composables/useBackground'
+import { bgUrl } from '@/api/scheme'
 
 const library = useLibraryStore()
 const player = usePlayerStore()
 const nav = useNav()
 const mv = useMvPlayer()
 const { palette, setAlbum } = useAmbient()
+// 自定义背景：设置 → 外观选择图片（useBackground 模块级单例，设置页改后这里即时生效）
+const { file: bgFile, blur: bgBlur } = useBackground()
+// 有背景图时给 html 挂 has-bg：主卡片经 --app-surface 变量转毛玻璃透出底图（见 style.css）
+watch(
+  bgFile,
+  (f) => document.documentElement.classList.toggle('has-bg', !!f),
+  { immediate: true },
+)
 
 // 环境色预热：切歌后立即在后台提取专辑主色（原先等到进入播放页才提取，
 // 首次进入要现拉大图 + 解码，会和进场动画撞车造成卡顿）
@@ -287,15 +297,29 @@ window.addEventListener('keydown', (e) => {
 
 <template>
   <div
-    class="relative flex h-screen flex-col gap-3 overflow-hidden bg-zinc-100 p-3 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100"
+    class="relative isolate flex h-screen flex-col gap-3 overflow-hidden bg-zinc-100 p-3 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100"
     :class="npFocus ? 'cursor-none [&_*]:!cursor-none' : ''"
   >
+    <!-- 自定义背景图：铺满窗口底色区，卡片浮于其上（根节点 isolate 使 -z 层画在背景色之上、内容之下）。
+         播放页展开时被环境渐变层（z-15）覆盖。模糊时轻微放大防止边缘晕出露底色 -->
+    <div v-if="bgFile" class="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
+      <img
+        :src="bgUrl(bgFile)"
+        alt=""
+        class="h-full w-full object-cover"
+        :style="{
+          filter: bgBlur > 0 ? `blur(${bgBlur}px)` : undefined,
+          transform: bgBlur > 0 ? 'scale(1.08)' : undefined,
+        }"
+        draggable="false"
+      />
+    </div>
     <div class="flex min-h-0 flex-1 gap-3">
       <Sidebar />
       <div class="flex min-w-0 flex-1 flex-col gap-3">
         <TopBar />
         <!-- 内容卡片：白色圆角浮于灰色底框上，与侧栏/顶栏/播放条形成圆角卡片分区 -->
-        <main class="min-h-0 flex-1 overflow-hidden rounded-2xl bg-white dark:bg-zinc-900">
+        <main class="app-surface-blur min-h-0 flex-1 overflow-hidden rounded-2xl bg-(--app-surface)">
           <Transition :css="false" mode="out-in" @enter="viewEnter" @leave="viewLeave">
             <component :is="viewComponent" :key="viewKey" />
           </Transition>

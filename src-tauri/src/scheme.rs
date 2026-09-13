@@ -48,6 +48,59 @@ pub fn cover_protocol<R: Runtime>(
     });
 }
 
+/// 自定义背景协议：bg://file/{name}（Windows 上为 http://bg.localhost/file/{name}）。
+/// 文件由 set_background_image 复制到 appData/backgrounds/，文件名带时间戳，
+/// 因此可以放心 immutable 长缓存（换图 = 换文件名）。
+pub fn bg_protocol<R: Runtime>(
+    ctx: UriSchemeContext<'_, R>,
+    req: Request<Vec<u8>>,
+    responder: UriSchemeResponder,
+) {
+    let app = ctx.app_handle().clone();
+    std::thread::spawn(move || {
+        let resp = bg_handle(app, req);
+        let _ = responder.respond(resp);
+    });
+}
+
+fn bg_handle<R: Runtime>(app: AppHandle<R>, req: Request<Vec<u8>>) -> Response<Vec<u8>> {
+    // 兼容两种 URL 形态（与 parse_id 同源思路）：
+    // - Windows: http://bg.localhost/file/bg-1.png → path = "/file/bg-1.png"
+    // - macOS/Linux: bg://file/bg-1.png → host = "file"，path = "/bg-1.png"
+    let name = if req.uri().host() == Some("file") {
+        req.uri().path().trim_start_matches('/').to_string()
+    } else {
+        req.uri()
+            .path()
+            .trim_start_matches('/')
+            .strip_prefix("file/")
+            .unwrap_or("")
+            .to_string()
+    };
+    // 白名单字符：只放行 bg-<毫秒>.<ext> 形态，杜绝路径穿越
+    let valid =
+        !name.is_empty() && name.starts_with("bg-") && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '.');
+    if !valid {
+        return not_found();
+    }
+    let full = app
+        .path()
+        .app_data_dir()
+        .unwrap_or_default()
+        .join("backgrounds")
+        .join(&name);
+    match std::fs::read(&full) {
+        Ok(bytes) => Response::builder()
+            .status(StatusCode::OK)
+            .header(CONTENT_TYPE, sniff_image_mime(&bytes))
+            .header(CACHE_CONTROL, "public, max-age=31536000, immutable")
+            .header("Access-Control-Allow-Origin", "*")
+            .body(bytes)
+            .unwrap_or_else(|_| server_error()),
+        Err(_) => not_found(),
+    }
+}
+
 fn music_handle<R: Runtime>(app: AppHandle<R>, req: Request<Vec<u8>>) -> Response<Vec<u8>> {
     let Some(id) = parse_id(&req, "track") else {
         return not_found();

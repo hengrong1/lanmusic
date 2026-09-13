@@ -164,11 +164,14 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
+  <!-- Teleport 到 body：脱离 App 主卡片（app-surface-blur）的 DOM 子树，
+       否则 has-bg 的白字/白雾映射会命中弹窗内部（磨砂白底 + 白字 = 看不清） -->
+  <Teleport to="body">
   <div :class="[dialogOverlayClass('z-50'), 'p-6']" @click.self="emit('close')">
     <Transition v-bind="dialogPanelTransition" appear>
     <div
       data-dialog-panel
-      class="flex h-[600px] max-h-full w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-2xl dark:border-zinc-700 dark:bg-zinc-900"
+      class="app-surface-blur flex h-[600px] max-h-full w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-white/15 bg-(--app-surface) shadow-2xl"
     >
       <!-- 搜索栏 -->
       <div class="flex shrink-0 items-center gap-2 border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
@@ -176,7 +179,7 @@ onBeforeUnmount(() => {
         <input
           ref="inputEl"
           v-model="keyword"
-          class="h-8 min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-zinc-400"
+          class="h-8 min-w-0 flex-1 bg-transparent text-sm text-zinc-900 outline-none placeholder:text-zinc-400 dark:text-zinc-100"
           :placeholder="$t('library.searchPlaceholder')"
         />
         <button
@@ -296,4 +299,5 @@ onBeforeUnmount(() => {
     </div>
     </Transition>
   </div>
+  </Teleport>
 </template>

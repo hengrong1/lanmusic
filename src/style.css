@@ -5,10 +5,226 @@
 
 :root {
   --accent: #8b5cf6;
+  /* 主卡片表面色：侧栏 / 内容卡片 / 播放条共用。设置自定义背景图后（App.vue 给 html 挂
+     has-bg）转半透明毛玻璃，透出底图；未设置时保持实色不变 */
+  --app-surface: #ffffff;
   color-scheme: light;
 }
 html.dark {
   color-scheme: dark;
+  --app-surface: #18181b;
+}
+html.has-bg {
+  /* 白字方案：卡片背景完全透明，可读底只靠 backdrop（blur 8px + 压暗）。
+     亮暗同配方（用户定稿：开背景图后亮暗观感一致，暗色不再有专属分支） */
+  --app-surface: transparent;
+}
+/* 深色玻璃的毛玻璃补偿：压暗透出图，白字对比充足 */
+html.has-bg .app-surface-blur {
+  backdrop-filter: blur(8px) saturate(0.9) brightness(0.75);
+  -webkit-backdrop-filter: blur(8px) saturate(0.9) brightness(0.75);
+}
+/* 亮色深色玻璃下卡片内文字映射为白系分级（保主次层级）：
+   原 zinc 深色字全转白，灰度随原层级递减；强调色（violet/绿/红）保持原样 */
+html.has-bg .app-surface-blur .text-zinc-800 {
+  color: #fff;
+}
+html.has-bg .app-surface-blur .text-zinc-700 {
+  color: rgb(255 255 255 / 0.92);
+}
+html.has-bg .app-surface-blur .text-zinc-600 {
+  color: rgb(255 255 255 / 0.85);
+}
+html.has-bg .app-surface-blur .text-zinc-500 {
+  color: rgb(255 255 255 / 0.72);
+}
+html.has-bg .app-surface-blur .text-zinc-400 {
+  color: rgb(255 255 255 / 0.6);
+}
+html.has-bg .app-surface-blur .text-zinc-900,
+html.has-bg .app-surface-blur .text-black {
+  color: #fff;
+}
+/* 浅底元素 → 白雾梯度（嵌套卡/输入框/按钮底/开关轨道），在深玻璃上仍可辨认但不刺眼 */
+html.has-bg .app-surface-blur .bg-white {
+  background-color: rgb(255 255 255 / 0.06);
+}
+html.has-bg .app-surface-blur .bg-zinc-50 {
+  background-color: rgb(255 255 255 / 0.04);
+}
+html.has-bg .app-surface-blur .bg-zinc-100 {
+  background-color: rgb(255 255 255 / 0.1);
+}
+html.has-bg .app-surface-blur .bg-zinc-200 {
+  background-color: rgb(255 255 255 / 0.16);
+}
+html.has-bg .app-surface-blur .hover\:bg-zinc-50:hover {
+  background-color: rgb(9 9 11 / 0.08);
+}
+html.has-bg .app-surface-blur .hover\:bg-zinc-100:hover {
+  background-color: rgb(9 9 11 / 0.14);
+}
+html.has-bg .app-surface-blur .hover\:bg-zinc-200:hover {
+  background-color: rgb(9 9 11 / 0.22);
+}
+html.has-bg .app-surface-blur .hover\:bg-zinc-200\/60:hover {
+  background-color: rgb(9 9 11 / 0.12);
+}
+html.has-bg .app-surface-blur .hover\:bg-zinc-200\/70:hover {
+  background-color: rgb(9 9 11 / 0.14);
+}
+html.has-bg .app-surface-blur .active\:bg-zinc-100:active {
+  background-color: rgb(9 9 11 / 0.2);
+}
+html.has-bg .app-surface-blur .active\:bg-zinc-300:active {
+  background-color: rgb(9 9 11 / 0.28);
+}
+/* 边框 → 白雾（分隔线/输入框描边在深玻璃上太亮会碎） */
+html.has-bg .app-surface-blur .border-zinc-100 {
+  border-color: rgb(255 255 255 / 0.08);
+}
+html.has-bg .app-surface-blur .border-zinc-200 {
+  border-color: rgb(255 255 255 / 0.14);
+}
+html.has-bg .app-surface-blur .border-zinc-200\/70 {
+  border-color: rgb(255 255 255 / 0.12);
+}
+html.has-bg .app-surface-blur .border-zinc-300 {
+  border-color: rgb(255 255 255 / 0.2);
+}
+/* 浮层（右键/通知/弹窗/多选面板/下拉）用更实的深玻璃：浮层下是主界面内容而非纯背景图，
+   近全透会让内容透出来干扰可读。挂 .app-surface-blur 后白字映射与浅底白雾化自动生效 */
+/* 浮层（右键/通知/弹窗/下拉/批量操作条）表面：无背景图 = 实色白/深（原样）；
+   has-bg = 磨砂白玻璃（半透白 + 强模糊），文字保持深色原样（浮层内可读性最稳，
+   不参与深玻璃的白字/暗雾映射——浮层组件根挂 .app-float 而非 .app-surface-blur） */
+:root {
+  --app-overlay: #ffffff;
+}
+html.dark {
+  --app-overlay: #27272a;
+}
+html.has-bg:not(.dark) {
+  --app-overlay: rgb(255 255 255 / 0.85);
+}
+html.dark.has-bg {
+  --app-overlay: #27272a;
+}
+html.has-bg:not(.dark) .app-float {
+  backdrop-filter: blur(24px) saturate(1.3);
+  -webkit-backdrop-filter: blur(24px) saturate(1.3);
+}
+/* 实心操作圆钮豁免玻璃映射：has-bg 下用深玻璃圆钮（白实底太跳、白雾又太透） */
+html.has-bg .app-surface-blur .bg-solid {
+  background-color: rgb(24 24 27 / 0.55);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+/* has-bg 下弹窗遮罩微模糊（用户反馈 16px 与面板叠加过糊 → 2px）：弹窗四周背景仅轻微化 */
+html.has-bg .dialog-overlay {
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+}
+/* 弹窗面板 backdrop 单独压到 2px（主卡片仍走通用 8px 规则，不受影响）：
+   data-dialog-panel 只有弹窗面板持有，特异性高于上面的 .app-surface-blur 通用规则；
+   压暗/去饱和保留（白字对比靠它）。深色模式面板实色，此规则无观感影响 */
+html.has-bg .app-surface-blur[data-dialog-panel] {
+  backdrop-filter: blur(2px) saturate(0.9) brightness(0.75);
+  -webkit-backdrop-filter: blur(2px) saturate(0.9) brightness(0.75);
+}
+/* 选中行/选中项/播放行：violet 亮底 → 半透 violet（深玻璃上亮粉块太突兀） */
+html.has-bg .app-surface-blur .bg-violet-100 {
+  background-color: color-mix(in srgb, var(--color-violet-500) 45%, transparent);
+}
+html.has-bg .app-surface-blur .bg-violet-100\/70 {
+  background-color: color-mix(in srgb, var(--color-violet-500) 36%, transparent);
+}
+html.has-bg .app-surface-blur .text-violet-700 {
+  color: var(--color-violet-100);
+}
+html.has-bg .app-surface-blur .text-violet-600 {
+  color: var(--color-violet-200);
+}
+/* 勾选行浅紫底 → 半透 violet 雾（用户反馈 32% 仍偏实 → 22%；深玻璃压暗垫底，白字仍可读） */
+html.has-bg .app-surface-blur .bg-violet-50 {
+  background-color: color-mix(in srgb, var(--color-violet-500) 22%, transparent);
+}
+html.has-bg .app-surface-blur .hover\:bg-violet-50\/50:hover,
+html.has-bg .app-surface-blur .hover\:bg-violet-50:hover {
+  background-color: color-mix(in srgb, var(--color-violet-500) 12%, transparent);
+}
+html.has-bg .app-surface-blur .hover\:bg-violet-100:hover {
+  background-color: color-mix(in srgb, var(--color-violet-500) 25%, transparent);
+}
+/* 危险色（red）深玻璃提亮：text-red-600 暗红叠压暗图发虚（「删除歌单」等 danger 文字/图标），
+   同 violet 系思路提亮到 red-400；浅底（图标圆底/hover/active/描边）→ 半透红雾，近白红块不再刺眼 */
+html.has-bg .app-surface-blur .text-red-600,
+html.has-bg .app-surface-blur .text-red-500 {
+  color: var(--color-red-400);
+}
+html.has-bg .app-surface-blur .bg-red-100 {
+  background-color: color-mix(in srgb, var(--color-red-500) 30%, transparent);
+}
+html.has-bg .app-surface-blur .bg-red-50 {
+  background-color: color-mix(in srgb, var(--color-red-500) 15%, transparent);
+}
+html.has-bg .app-surface-blur .hover\:bg-red-50:hover {
+  background-color: color-mix(in srgb, var(--color-red-500) 12%, transparent);
+}
+html.has-bg .app-surface-blur .active\:bg-red-100:active {
+  background-color: color-mix(in srgb, var(--color-red-500) 20%, transparent);
+}
+html.has-bg .app-surface-blur .border-red-300 {
+  border-color: color-mix(in srgb, var(--color-red-500) 35%, transparent);
+}
+/* 映射遗漏的 zinc hover 变体（设置页列表项 / 窗口控制钮 group-hover / 选歌弹窗行）→ 暗雾同档 */
+html.has-bg .app-surface-blur .hover\:bg-zinc-100\/70:hover,
+html.has-bg .app-surface-blur .hover\:bg-zinc-100\/80:hover,
+html.has-bg .app-surface-blur .group:hover .group-hover\:bg-zinc-200\/80 {
+  background-color: rgb(9 9 11 / 0.14);
+}
+/* 顶栏搜索框 focus:bg-white 纯白在深玻璃上是亮块 → 白雾微增亮 */
+html.has-bg .app-surface-blur .focus\:bg-white:focus {
+  background-color: rgb(255 255 255 / 0.14);
+}
+/* 输入框 placeholder 走 ::placeholder 伪元素，.text-zinc-400 类映射不命中 → 单独提亮 */
+html.has-bg .app-surface-blur .placeholder\:text-zinc-400::placeholder {
+  color: rgb(255 255 255 / 0.5);
+}
+/* 输入框聚焦边框跟随主题色：border-zinc-200 的白雾映射 (0,3,1) 会压过
+   focus-within:border-violet-500 (0,2,0)，显式补同域 focus 映射保证聚焦态主题色可见 */
+html.has-bg .app-surface-blur .focus-within\:border-violet-500:focus-within {
+  border-color: var(--color-violet-500);
+}
+html.has-bg .app-surface-blur .focus\:border-violet-400:focus {
+  border-color: var(--color-violet-400);
+}
+/* 正在播放行（TrackTable）：violet-200 亮渐变 → 半透 violet 渐变；
+   光晕脉冲 keyframes（scoped 名不可预测）直接以 animation 覆盖为仅 shimmer 流动 */
+html.has-bg .app-surface-blur .row-playing {
+  background-image: linear-gradient(
+    to right,
+    color-mix(in srgb, var(--color-violet-500) 45%, transparent) 0%,
+    color-mix(in srgb, var(--color-violet-500) 20%, transparent) 50%,
+    transparent 100%
+  );
+  box-shadow:
+    inset 3px 0 0 0 var(--color-violet-300),
+    0 0 0 1px color-mix(in srgb, var(--color-violet-500) 45%, transparent),
+    0 2px 12px color-mix(in srgb, var(--color-violet-500) 25%, transparent);
+  animation: row-shimmer 3s ease-in-out infinite;
+}
+/* 播放队列活动行（QueuePanel）同理 */
+html.has-bg .app-surface-blur .queue-active-row {
+  background-image: linear-gradient(
+    to right,
+    color-mix(in srgb, var(--color-violet-500) 40%, transparent) 0%,
+    color-mix(in srgb, var(--color-violet-500) 18%, transparent) 50%,
+    transparent 100%
+  );
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--color-violet-500) 45%, transparent),
+    0 2px 12px -2px color-mix(in srgb, var(--color-violet-500) 30%, transparent);
+  animation: queue-shimmer 3s ease-in-out infinite;
 }
 
 html,

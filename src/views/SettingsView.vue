@@ -12,6 +12,7 @@ import { VerifiedCheckIcon as Check } from '@solar-icons/vue/linear/verified-che
 import { FolderOpenIcon as FolderOpen } from '@solar-icons/vue/linear/folder-open'
 import { GlobeIcon as Globe } from '@solar-icons/vue/linear/globe'
 import { InfoCircleIcon as InfoCircle } from '@solar-icons/vue/linear/info-circle'
+import { GalleryIcon as ImageIcon } from '@solar-icons/vue/linear/gallery'
 import { DatabaseIcon as HardDrive } from '@solar-icons/vue/linear/database'
 import { MagnifierIcon as Search } from '@solar-icons/vue/linear/magnifier'
 import { PaletteIcon as Palette } from '@solar-icons/vue/linear/palette'
@@ -31,6 +32,7 @@ import { useStagger } from '@/composables/useStagger'
 import { useDesktopLyrics } from '@/composables/useDesktopLyrics'
 import { getAppFont, setAppFont } from '@/composables/useAppFont'
 import { dialogBlur, dialogDraggable, type DialogBlur } from '@/composables/useDialogPrefs'
+import { useBackground } from '@/composables/useBackground'
 import { getPreventSleep, setPreventSleepSetting } from '@/composables/usePowerGuard'
 import { useUpdater } from '@/composables/useUpdater'
 import { usePlayerStore } from '@/stores/player'
@@ -562,6 +564,40 @@ const dialogBlurOptions = computed<SelectOption[]>(() => [
 function onDialogBlur(v: string | number) {
   dialogBlurLevel.value = v as DialogBlur
   localStorage.setItem('lm.dialogBlur', String(v))
+}
+
+// ---- 自定义背景（外观）：本机图片复制到应用数据目录，经 bg:// 协议铺满底色区（useBackground 模块级单例） ----
+const { file: bgFile, blur: bgBlur, set: setBg } = useBackground()
+const bgBlurOptions = computed<SelectOption[]>(() => [
+  { value: '0', label: t('settings.blurNone') },
+  { value: '6', label: t('settings.blurLight') },
+  { value: '12', label: t('settings.blurMedium') },
+  { value: '20', label: t('settings.blurHeavy') },
+])
+function onBgBlur(v: string | number) {
+  setBg(bgFile.value, Number(v))
+}
+const bgPicking = ref(false)
+async function pickBgImage() {
+  const p = await openDialog({
+    multiple: false,
+    directory: false,
+    filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'bmp', 'gif'] }],
+  })
+  if (!p || bgPicking.value) return
+  bgPicking.value = true
+  try {
+    const name = await api.setBackgroundImage(p as string)
+    setBg(name, bgBlur.value)
+    toast(t('settings.bgImageSaved'))
+  } catch (e) {
+    toast(errorText(e), 'error')
+  } finally {
+    bgPicking.value = false
+  }
+}
+function clearBgImage() {
+  setBg(null)
 }
 
 // ---- 播放页专注模式（默认开启、5 秒；App.vue 播放时按此计时隐藏控制条）----
@@ -1328,6 +1364,38 @@ const showWebdavLimits = computed(() => showWebdav.value || library.sources.some
                       :options="dialogBlurOptions"
                       size="sm"
                       @update:model-value="onDialogBlur"
+                    />
+                  </div>
+                </div>
+                <!-- 自定义背景：本机图片复制到应用数据目录（bg:// 协议），铺满底色区，卡片浮于其上 -->
+                <div class="flex items-center justify-between gap-3 border-t border-zinc-100 pt-4 dark:border-zinc-800">
+                  <div class="min-w-0">
+                    <p class="text-zinc-600 dark:text-zinc-300">{{ t('settings.bgImage') }}</p>
+                    <p class="mt-0.5 text-xs text-zinc-400">{{ t('settings.bgImageHint') }}</p>
+                  </div>
+                  <div class="flex shrink-0 items-center gap-2">
+                    <BaseButton
+                      size="sm"
+                      :icon="bgPicking ? LoaderCircle : ImageIcon"
+                      :loading="bgPicking"
+                      :disabled="bgPicking"
+                      @click="pickBgImage"
+                    >
+                      {{ t('settings.bgImagePick') }}
+                    </BaseButton>
+                    <BaseButton v-if="bgFile" variant="ghost" size="sm" @click="clearBgImage">
+                      {{ t('settings.bgImageClear') }}
+                    </BaseButton>
+                  </div>
+                </div>
+                <div v-if="bgFile" class="flex items-center justify-between gap-3 border-t border-zinc-100 pt-4 dark:border-zinc-800">
+                  <span class="text-zinc-600 dark:text-zinc-300">{{ t('settings.bgBlur') }}</span>
+                  <div class="w-28">
+                    <BaseSelect
+                      :model-value="String(bgBlur)"
+                      :options="bgBlurOptions"
+                      size="sm"
+                      @update:model-value="onBgBlur"
                     />
                   </div>
                 </div>

@@ -187,7 +187,7 @@ defineExpose({ focusSearch })
   -->
   <header
     data-tauri-drag-region
-    class="flex h-14 shrink-0 items-center gap-3 rounded-2xl bg-white pl-4 dark:bg-zinc-900"
+    class="app-surface-blur relative z-10 flex h-14 shrink-0 items-center gap-3 rounded-2xl bg-(--app-surface) pl-4"
     :class="CUSTOM_WINDOW_CONTROLS ? 'pr-0' : 'pr-4'"
   >
     <button

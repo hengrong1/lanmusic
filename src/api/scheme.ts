@@ -10,3 +10,8 @@ export function coverUrl(albumId: number | null | undefined): string | null {
   if (albumId == null) return null
   return IS_WIN ? `http://cover.localhost/album/${albumId}` : `cover://album/${albumId}`
 }
+
+/// 自定义背景：bg://file/{name}（Rust 侧复制到 appData/backgrounds/ 的文件名）
+export function bgUrl(file: string): string {
+  return IS_WIN ? `http://bg.localhost/file/${file}` : `bg://file/${file}`
+}

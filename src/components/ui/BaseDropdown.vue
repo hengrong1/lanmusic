@@ -135,7 +135,7 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
           :class="[
             item.danger
               ? 'text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-500/10'
-              : 'text-zinc-700 hover:bg-zinc-50 dark:text-zinc-200 dark:hover:bg-zinc-700/50',
+              : 'text-zinc-700 hover:bg-violet-500/10 dark:text-zinc-200',
             item.disabled ? 'opacity-40 cursor-not-allowed' : '',
           ]"
           :disabled="item.disabled"

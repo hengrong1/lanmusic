@@ -194,6 +194,12 @@ export default {
     dialogDragHint: 'Drag dialogs by their title bar; they re-center on reopen',
     dialogBlur: 'Dialog backdrop blur',
     blurNone: 'None', blurLight: 'Light', blurMedium: 'Medium', blurHeavy: 'Heavy',
+    bgImage: 'Custom background',
+    bgImageHint: 'Pick a local image to fill the app base area; cards float above it',
+    bgImagePick: 'Choose image',
+    bgImageClear: 'Clear background',
+    bgBlur: 'Background blur',
+    bgImageSaved: 'Background updated',
     // Now Playing focus mode
     focusMode: 'Now Playing focus mode',
     focusModeHint: 'While playing, hide the top bar and player bar automatically after the mouse is idle; move the mouse to bring them back',
@@ -480,6 +486,10 @@ export default {
     },
     power: {
       preventSleepFailed: 'Failed to call SetThreadExecutionState',
+    },
+    bg: {
+      format: 'Unsupported image format (PNG/JPG/WebP/BMP/GIF only)',
+      saveFailed: 'Failed to save background image: {error}',
     },
     transcode: {
       cacheDirMissing: 'Could not locate the cache directory',

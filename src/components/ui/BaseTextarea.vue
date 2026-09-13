@@ -49,7 +49,7 @@ function onInput(e: Event) {
         :readonly="readonly"
         :rows="rows"
         :maxlength="maxlength"
-        class="w-full bg-transparent px-3.5 py-2 text-sm outline-none placeholder:text-zinc-400 dark:text-zinc-100"
+        class="w-full bg-transparent px-3.5 py-2 text-sm text-zinc-900 outline-none placeholder:text-zinc-400 dark:text-zinc-100"
         :class="[resize ? 'resize-y' : 'resize-none']"
         @input="onInput"
       />

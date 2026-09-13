@@ -54,7 +54,7 @@ function toggle() {
       ]"
     >
       <span
-        class="absolute top-0.5 left-0.5 rounded-full bg-white shadow-sm transition-transform duration-200"
+        class="absolute top-0.5 left-0.5 rounded-full bg-violet-300 shadow-sm transition-transform duration-200"
         :class="[sizeMap[size].thumb, modelValue ? sizeMap[size].translate : 'translate-x-0']"
       />
     </span>

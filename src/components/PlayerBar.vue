@@ -467,7 +467,7 @@ const theme = computed(() =>
         trackRow: '',
       }
     : {
-        bar: 'bg-white dark:bg-zinc-900',
+        bar: 'app-surface-blur bg-(--app-surface)',
         time: 'text-zinc-400',
         title: 'text-zinc-800 dark:text-zinc-100',
         artist: 'text-zinc-500 dark:text-zinc-400',

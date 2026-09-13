@@ -93,7 +93,7 @@ function onInput(e: Event) {
         :required="required"
         :autocomplete="autocomplete"
         :name="name"
-        class="w-full bg-transparent outline-none placeholder:text-zinc-400 dark:text-zinc-100"
+        class="w-full bg-transparent text-zinc-900 outline-none placeholder:text-zinc-400 dark:text-zinc-100"
         :class="[sizeClasses[size], icon ? 'pl-2' : '', iconRight ? 'pr-2' : '']"
         @input="onInput"
       />

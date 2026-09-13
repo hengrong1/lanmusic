@@ -280,7 +280,8 @@ async function batchRemoveFromLibrary() {
       />
     </div>
 
-    <!-- 批量操作条 -->
+    <!-- 批量操作条（Teleport 到 body：脱离 app-surface-blur 主卡片 DOM，否则 bg-white 被映射成近全透白雾） -->
+    <Teleport to="body">
     <Transition
       enter-active-class="transition duration-200 ease-out"
       enter-from-class="opacity-0 translate-y-3"
@@ -289,7 +290,7 @@ async function batchRemoveFromLibrary() {
     >
       <div
         v-if="batchMode && selIds.length"
-        class="fixed bottom-24 left-1/2 z-30 flex max-w-[calc(100vw-16px)] -translate-x-1/2 flex-wrap items-center justify-center gap-1.5 rounded-2xl border border-zinc-200 bg-white px-3.5 py-2 shadow-xl [&>*]:shrink-0 dark:border-zinc-700 dark:bg-zinc-800"
+        class="app-surface-blur fixed bottom-24 left-1/2 z-30 flex max-w-[calc(100vw-16px)] -translate-x-1/2 flex-wrap items-center justify-center gap-1.5 rounded-2xl border border-white/15 bg-(--app-surface) px-3.5 py-2 shadow-xl [&>*]:shrink-0"
       >
         <span class="px-2 text-xs font-medium text-zinc-500 dark:text-zinc-400">{{ selLabel }}</span>
         <BaseButton variant="ghost" size="sm" :icon="Play" @click="batchPlay">{{ $t('player.play') }}</BaseButton>
@@ -299,6 +300,7 @@ async function batchRemoveFromLibrary() {
         <BaseButton variant="ghost" size="sm" class="ml-1" @click="exitBatch">{{ $t('common.cancel') }}</BaseButton>
       </div>
     </Transition>
+    </Teleport>
 
     <!-- 添加到歌单：歌单选择菜单 -->
     <ContextMenu

@@ -76,7 +76,7 @@ watch(
             v-if="open"
             ref="panelEl"
             data-dialog-panel
-            class="w-full rounded-2xl border border-zinc-200 bg-white shadow-2xl dark:border-zinc-700 dark:bg-zinc-800"
+            class="app-surface-blur w-full rounded-2xl border border-white/15 bg-(--app-surface) shadow-2xl"
             :class="sizeClasses[size]"
           >
             <div

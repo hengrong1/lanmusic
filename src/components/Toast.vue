@@ -18,7 +18,7 @@ const { toasts } = useToast()
         <div
           v-for="t in toasts"
           :key="t.id"
-          class="pointer-events-auto flex max-w-md items-center gap-2 rounded-full border border-zinc-200 bg-white/98 px-4 py-2 text-sm shadow-lg dark:border-zinc-700 dark:bg-zinc-800/98 dark:text-zinc-100"
+          class="app-float pointer-events-auto flex max-w-md items-center gap-2 rounded-full border border-white/15 bg-(--app-overlay) px-4 py-2 text-sm shadow-lg dark:border-zinc-700 dark:bg-zinc-800/98 dark:text-zinc-100"
         >
           <CircleAlert v-if="t.kind === 'error'" class="h-4 w-4 shrink-0 text-red-500" />
           <Info v-else class="h-4 w-4 shrink-0 text-violet-500" />

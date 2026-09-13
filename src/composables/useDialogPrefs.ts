@@ -26,9 +26,10 @@ export function dialogDraggable(): boolean {
   return localStorage.getItem(DRAG_KEY) !== '0'
 }
 
-/** 统一的弹窗遮罩类：居中布局 + 半透明底 + 按设置的模糊度（z 由调用方传入） */
+/** 统一的弹窗遮罩类：居中布局 + 半透明底 + 按设置的模糊度（z 由调用方传入）。
+    dialog-overlay 供 style.css 在自定义背景图（has-bg）下强制加强模糊 */
 export function dialogOverlayClass(z = 'z-[70]'): string {
-  return `fixed inset-0 ${z} flex items-center justify-center bg-black/40 ${BLUR_CLASSES[dialogBlur()]}`
+  return `fixed inset-0 dialog-overlay ${z} flex items-center justify-center bg-black/40 ${BLUR_CLASSES[dialogBlur()]}`
 }
 
 /** 弹窗面板的出入场动画（与遮罩淡入淡出叠加） */

@@ -205,7 +205,7 @@ watch(
         v-if="open && player.queue.length"
         ref="panel"
         class="fixed right-2 bottom-[88px] z-50 flex h-[calc(100vh-120px)] w-80 origin-bottom-right flex-col overflow-hidden rounded-xl border shadow-2xl"
-        :class="themed ? 'border-white/10' : 'border-zinc-200 bg-white/98 dark:border-zinc-800 dark:bg-zinc-900/98'"
+        :class="themed ? 'border-white/10' : 'app-surface-blur border-white/15 bg-transparent dark:border-zinc-800 dark:bg-zinc-900/98'"
         :style="themed ? { background: panelBg } : undefined"
       >
         <header
@@ -326,7 +326,7 @@ watch(
             <button
               v-if="!activeVisible && player.index >= 0"
               class="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full shadow-lg transition"
-              :class="themed ? 'bg-white/10 shadow-black/30 hover:bg-white/20' : 'bg-white shadow-zinc-300/50 hover:bg-zinc-100 dark:bg-zinc-800 dark:shadow-zinc-900/50 dark:hover:bg-zinc-700'"
+              :class="themed ? 'bg-white/10 shadow-black/30 hover:bg-white/20' : 'bg-white bg-solid shadow-zinc-300/50 hover:bg-zinc-100 dark:bg-zinc-800 dark:shadow-zinc-900/50 dark:hover:bg-zinc-700'"
               v-tooltip="$t('queue.scrollToCurrent')"
               @click="locateActive"
             >
@@ -342,7 +342,7 @@ watch(
             <button
               v-if="showBackToTop"
               class="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full shadow-lg transition"
-              :class="themed ? 'bg-white/10 shadow-black/30 hover:bg-white/20' : 'bg-white shadow-zinc-300/50 hover:bg-zinc-100 dark:bg-zinc-800 dark:shadow-zinc-900/50 dark:hover:bg-zinc-700'"
+              :class="themed ? 'bg-white/10 shadow-black/30 hover:bg-white/20' : 'bg-white bg-solid shadow-zinc-300/50 hover:bg-zinc-100 dark:bg-zinc-800 dark:shadow-zinc-900/50 dark:hover:bg-zinc-700'"
               v-tooltip="$t('common.backToTop')"
               @click="scrollToTop"
             >

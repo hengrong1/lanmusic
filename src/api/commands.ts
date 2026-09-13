@@ -96,6 +96,7 @@ export const api = {
   // 设置（M2/M3）
   getSetting: (key: string) => invoke<string | null>('get_setting', { key }),
   setSetting: (key: string, value: string) => invoke<void>('set_setting', { key, value }),
+  setBackgroundImage: (path: string) => invoke<string>('set_background_image', { path }),
 
   // 艺人分隔符（设置后立即按新分隔符重拆曲库，返回受影响曲目的变更列表）
   getArtistSeparators: () => invoke<string>('get_artist_separators'),

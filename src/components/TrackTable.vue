@@ -336,7 +336,7 @@ function onDragEnd() {
   <div class="flex h-full min-h-0 flex-col">
     <!-- 表头 -->
     <div
-      class="group/th grid h-10 shrink-0 items-center gap-3 border-b border-zinc-200 px-4 pb-0.5 text-xs font-medium text-zinc-500 dark:border-zinc-800 dark:text-zinc-500"
+      class="group/th mx-2 grid h-10 shrink-0 items-center gap-3 border-b border-zinc-200 px-4 pb-0.5 text-xs font-medium text-zinc-500 dark:border-zinc-800 dark:text-zinc-500"
       style="grid-template-columns: 40px minmax(0, 1fr) minmax(0, 220px) minmax(0, 220px) 56px"
     >
       <span v-if="props.batchMode" class="flex justify-center">
@@ -381,7 +381,7 @@ function onDragEnd() {
       >
         <template #default="{ item: t, index }">
           <div
-            class="group grid h-full items-center gap-3 px-4 text-sm select-none"
+            class="group mx-2 grid h-full items-center gap-3 rounded-lg px-4 text-sm select-none"
             :class="[
               rowClass(t, index),
               dragOverIndex === index && dragIndex !== index ? 'border-t-2 border-violet-500' : '',
@@ -486,7 +486,7 @@ function onDragEnd() {
         >
           <button
             v-if="showLocate"
-            class="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full bg-white shadow-lg shadow-zinc-300/50 transition hover:bg-zinc-100 dark:bg-zinc-800 dark:shadow-zinc-900/50 dark:hover:bg-zinc-700"
+            class="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full bg-white bg-solid shadow-lg shadow-zinc-300/50 transition hover:bg-zinc-100 dark:bg-zinc-800 dark:shadow-zinc-900/50 dark:hover:bg-zinc-700"
             v-tooltip="$t('queue.scrollToCurrent')"
             @click="locatePlaying"
           >
@@ -501,7 +501,7 @@ function onDragEnd() {
         >
           <button
             v-if="showBackToTop"
-            class="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full bg-white shadow-lg shadow-zinc-300/50 transition hover:bg-zinc-100 dark:bg-zinc-800 dark:shadow-zinc-900/50 dark:hover:bg-zinc-700"
+            class="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full bg-white bg-solid shadow-lg shadow-zinc-300/50 transition hover:bg-zinc-100 dark:bg-zinc-800 dark:shadow-zinc-900/50 dark:hover:bg-zinc-700"
             v-tooltip="$t('common.backToTop')"
             @click="scrollToTop"
           >

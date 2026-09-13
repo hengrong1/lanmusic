@@ -294,7 +294,7 @@ onBeforeUnmount(() => {
           v-if="open"
           ref="panel"
           role="listbox"
-          class="fixed z-[80] rounded-lg border border-zinc-200 bg-white py-1 shadow-xl dark:border-zinc-700 dark:bg-zinc-800"
+          class="app-surface-blur fixed z-[80] rounded-lg border border-white/15 bg-(--app-surface) py-1 shadow-xl"
           :style="panelStyle"
           @keydown="onPanelKeydown"
         >
@@ -323,7 +323,7 @@ onBeforeUnmount(() => {
               :class="[
                 opt.value === modelValue
                   ? 'bg-violet-50 text-violet-600 font-medium dark:bg-violet-500/10 dark:text-violet-400'
-                  : 'text-zinc-700 hover:bg-zinc-50 dark:text-zinc-200 dark:hover:bg-zinc-700/50',
+                  : 'text-zinc-700 hover:bg-violet-500/10 dark:text-zinc-200',
                 opt.disabled ? 'opacity-40 cursor-not-allowed' : '',
               ]"
               :disabled="opt.disabled"

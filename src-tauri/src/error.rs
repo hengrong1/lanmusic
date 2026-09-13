@@ -74,6 +74,12 @@ pub mod codes {
     /// SetThreadExecutionState 调用失败（阻止休眠）
     pub const PREVENT_SLEEP_FAILED: &str = "power.preventSleepFailed";
 
+    // ---- 自定义背景 ----
+    /// 不支持的背景图片格式（仅 png/jpg/jpeg/webp/bmp/gif）
+    pub const BG_FORMAT: &str = "bg.format";
+    /// 背景图片保存失败：{error}
+    pub const BG_SAVE_FAILED: &str = "bg.saveFailed";
+
     // ---- 转码（macOS Ogg → WAV，见 transcode.rs；transcode.rs 仅 macOS 编译，
     //      这些码在 Windows 下是死代码，需随平台门控）----
     /// 无法定位缓存目录

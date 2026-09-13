@@ -186,6 +186,12 @@ export default {
     dialogDragHint: '按住弹窗标题栏拖动位置，重新打开时恢复居中',
     dialogBlur: '弹窗背景模糊',
     blurNone: '无', blurLight: '轻', blurMedium: '中', blurHeavy: '重',
+    bgImage: '自定义背景',
+    bgImageHint: '选择本机图片铺满应用底色，卡片浮于其上',
+    bgImagePick: '选择图片',
+    bgImageClear: '清除背景',
+    bgBlur: '背景模糊',
+    bgImageSaved: '背景已更新',
     // 播放页专注模式
     focusMode: '播放页专注模式',
     focusModeHint: '播放中鼠标停顿一段时间后自动隐藏顶栏与播放条，移动鼠标即恢复',
@@ -474,6 +480,10 @@ export default {
     },
     power: {
       preventSleepFailed: 'SetThreadExecutionState 调用失败',
+    },
+    bg: {
+      format: '不支持的图片格式（仅 PNG/JPG/WebP/BMP/GIF）',
+      saveFailed: '背景图片保存失败：{error}',
     },
     transcode: {
       cacheDirMissing: '无法定位缓存目录',
