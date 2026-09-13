@@ -345,10 +345,10 @@ function action(a: 'show' | 'lyrics' | 'settings' | 'quit') {
   color: #fff;
 }
 .act.active {
-  color: #a78bfa;
+  color: var(--color-violet-400);
 }
 .act .is-active {
-  color: #a78bfa;
+  color: var(--color-violet-400);
 }
 .act.quit {
   color: #f87171;

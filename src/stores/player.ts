@@ -9,6 +9,8 @@ import { useLibraryStore } from '@/stores/library'
 import { toast } from '@/composables/useToast'
 import { t as tr } from '@/i18n/translate'
 import { activeLineIndex, parseLrc, plainLines, type LrcLine } from '@/utils/lrc'
+import { looksBinaryish, looksLikeHexQrc, qrcToLrcLines } from '@/utils/qrc'
+import type { QrcLine } from '@/types'
 import { applyPowerGuard } from '@/composables/usePowerGuard'
 import { errorText } from '@/i18n/error'
 
@@ -77,6 +79,10 @@ export const usePlayerStore = defineStore('player', () => {
   // ---------- 歌词 ----------
   const lyricsLines = ref<LrcLine[] | null>(null)
   const lyricsPlain = ref<string[] | null>(null)
+  /** QRC 逐字歌词（Rust 侧解密+解析，毫秒时间轴）；非逐字歌词为 null */
+  const lyricsWordLines = ref<QrcLine[] | null>(null)
+  /** 歌词是加密/二进制内容，无法解析显示 */
+  const lyricsUnsupported = ref(false)
   const lyricsLoading = ref(false)
   /** 歌词偏移（秒）：>0 歌词延后显示，<0 提前。按曲目持久化，用于校准 LRC 时间轴与音频不同步 */
   const lyricOffset = ref(0)
@@ -91,6 +97,8 @@ export const usePlayerStore = defineStore('player', () => {
     const trackId = t.id
     lyricsLines.value = null
     lyricsPlain.value = null
+    lyricsWordLines.value = null
+    lyricsUnsupported.value = false
     lyricOffset.value = readLrcOffset(trackId)
     lyricsLoading.value = true
     try {
@@ -99,18 +107,39 @@ export const usePlayerStore = defineStore('player', () => {
       // 切歌后旧回包直接丢弃（歌词与偏移都是按曲目记的，不能落到新歌上）
       if (my !== lyricsSeq || current.value?.id !== trackId) return
       if (!raw) return
+      // QRC 逐字歌词优先（Rust 侧解密+解析，兼容新旧加密/明文/XML/行式）：
+      // 行级时间轴复用现有滚动/跳转链路（偏移由 activeLyricIndex 统一处理），单词级另存供逐字高亮
+      const qrc = await api.parseQrc(raw).catch(() => null)
+      // 切歌后旧回包直接丢弃
+      if (my !== lyricsSeq || current.value?.id !== trackId) return
+      if (qrc && qrc.length) {
+        lyricsWordLines.value = qrc
+        lyricsLines.value = qrcToLrcLines(qrc)
+        return
+      }
       const { lines, synced } = parseLrc(raw)
       if (synced) {
         lyricsLines.value = lines
-      } else {
-        lyricsPlain.value = plainLines(raw)
+        return
       }
+      // 加密/二进制内容（如未知方案的加密 QRC）：明确提示，不展示乱码
+      if (looksLikeHexQrc(raw) || looksBinaryish(raw)) {
+        lyricsUnsupported.value = true
+        return
+      }
+      lyricsPlain.value = plainLines(raw)
     } catch {
       /* 歌词获取失败静默忽略 */
     } finally {
       // 只有最新请求能关 loading：旧请求的 finally 不能灭掉新歌的加载态
       if (my === lyricsSeq) lyricsLoading.value = false
     }
+  }
+
+  /** 当前曲目歌词按最新设置重新加载（歌词来源优先级等设置变更后调用） */
+  function reloadLyrics() {
+    const t = current.value
+    if (t) void loadLyrics(t)
   }
 
   /** 读取某曲目的持久化歌词偏移 */
@@ -487,6 +516,8 @@ export const usePlayerStore = defineStore('player', () => {
       resetPlaybackState()
       lyricsLines.value = null
       lyricsPlain.value = null
+      lyricsWordLines.value = null
+      lyricsUnsupported.value = false
       const next = current.value
       if (next) {
         if (wasPlaying) {
@@ -645,9 +676,12 @@ export const usePlayerStore = defineStore('player', () => {
     current,
     lyricsLines,
     lyricsPlain,
+    lyricsWordLines,
+    lyricsUnsupported,
     lyricsLoading,
     lyricOffset,
     setLyricOffset,
+    reloadLyrics,
     activeLyricIndex,
     playList,
     playAt,

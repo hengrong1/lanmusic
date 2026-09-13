@@ -6,6 +6,7 @@ import { getAppFont } from '@/composables/useAppFont'
 import { toast } from '@/composables/useToast'
 import { t } from '@/i18n/translate'
 import { errorText } from '@/i18n/error'
+import type { QrcWord } from '@/types'
 
 /** 桌面歌词配置 */
 export interface DeskLyricsConfig {
@@ -47,20 +48,32 @@ const DEFAULT_CONFIG: DeskLyricsConfig = {
   fontSize: 34,
   bgColor: '#000000',
   bgOpacity: 0.35,
-  outline: true,
-  outlineColor: '#000000',
+  // 描边默认关闭（逐字渐变本身可读性足够）；开启时默认灰色——黑色在深色壁纸上几乎不可见
+  outline: false,
+  outlineColor: '#808080',
   bold: true,
 }
+/** 存档版本：v1（无版本号）为旧默认（描边开 + 黑色），读入时一次性迁移到当前默认 */
+const CONFIG_VERSION = 2
 
 function loadState(): { enabled: boolean; config: DeskLyricsConfig } {
   try {
     const raw = localStorage.getItem(LS_KEY)
     if (raw) {
-      const s = JSON.parse(raw) as { enabled?: boolean; config?: Partial<DeskLyricsConfig> }
+      const s = JSON.parse(raw) as {
+        enabled?: boolean
+        config?: Partial<DeskLyricsConfig>
+        version?: number
+      }
       const config = { ...DEFAULT_CONFIG, ...s.config }
       // 单行不支持「左右分离」：历史存档或手改 localStorage 可能留下非法组合，读取时就收敛，
       // 避免"只有切换行数时才纠正"导致单行 + split 的错位状态一直存在
       if (config.lines === 1 && config.align === 'split') config.align = 'center'
+      // 旧版存档迁移：描边收敛到新默认（关闭 + 灰色）；带版本号的存档完全尊重用户改动
+      if (!s.version) {
+        config.outline = DEFAULT_CONFIG.outline
+        config.outlineColor = DEFAULT_CONFIG.outlineColor
+      }
       return { enabled: !!s.enabled, config }
     }
   } catch {
@@ -79,13 +92,39 @@ function push(lines: string[], active: 0 | 1) {
   if (!enabled.value) return
   const player = usePlayerStore()
   // font：全局字体随事件同步给浮窗（与设置页修改即时联动）
+  // words/anchor：逐字时间轴 + 卡拉OK时钟锚点，浮窗按锚点本地插值自绘逐字渐变（不逐帧通信）
   void emit('lyrics:sync', {
     lines,
     active,
     config: config.value,
     playing: player.playing,
     font: getAppFont(),
+    words: currentDeskWords(player),
+    anchor: lyricAnchor(),
   }).catch(() => {})
+}
+
+/**
+ * 当前行逐字时间轴（QRC）：与行下标一一对应（Rust 侧折叠后行数组与逐字数组等长）。
+ * null = 行级歌词，浮窗整行纯文本渲染；单词数 ≤1 的行同样按整行处理。
+ */
+function currentDeskWords(player: ReturnType<typeof usePlayerStore>): QrcWord[] | null {
+  const wl = player.lyricsWordLines
+  if (!wl?.length || !player.lyricsLines?.length) return null
+  const line = wl[Math.max(0, player.activeLyricIndex)]
+  return line && line.words.length > 1 ? line.words : null
+}
+
+/** 卡拉OK时钟锚点：推送时刻的歌词轴位置（毫秒，含偏移）、播放速率与运行状态；
+ * 浮窗按 posMs + (now - at) × rate 插值，running=false（暂停/缓冲）时冻结在 posMs */
+function lyricAnchor() {
+  const player = usePlayerStore()
+  return {
+    posMs: (player.audio.currentTime - player.lyricOffset) * 1000,
+    rate: player.rate,
+    running: player.playing && !player.buffering,
+    at: Date.now(),
+  }
 }
 
 /**
@@ -115,9 +154,16 @@ export function useDesktopLyrics() {
     return { lines: [EMPTY_LYRIC, ''], active: 0 }
   })
 
+  /**
+   * 当前行逐字时间轴（QRC）：与 deskLines 的行下标一一对应。单独暴露成 computed
+   * 是为了覆盖「相邻两行文本完全相同」的场景——行文本不变时 deskLines 不触发，
+   * 逐字数据仍需重推，否则浮窗拿旧词继续走字。
+   */
+  const deskWords = computed(() => currentDeskWords(player))
+
   function persist() {
     try {
-      localStorage.setItem(LS_KEY, JSON.stringify({ enabled: enabled.value, config: config.value }))
+      localStorage.setItem(LS_KEY, JSON.stringify({ enabled: enabled.value, config: config.value, version: CONFIG_VERSION }))
     } catch {
       /* ignore */
     }
@@ -141,8 +187,8 @@ export function useDesktopLyrics() {
 
   if (!started) {
     started = true
-    // 歌词行变化：只推送到浮窗（高频，每句切行一次，不写磁盘）
-    watch(deskLines, () => {
+    // 歌词行 / 逐字行变化：只推送到浮窗（每句切行一次，不写磁盘）
+    watch([deskLines, deskWords], () => {
       push(deskLines.value.lines, deskLines.value.active)
     })
     // 配置变化：持久化 + 推送（低频，仅用户改设置时）
@@ -159,6 +205,17 @@ export function useDesktopLyrics() {
       () => player.playing,
       () => push(deskLines.value.lines, deskLines.value.active),
     )
+    // 倍速变化：卡拉OK流逝速度随之变化，重推锚点
+    watch(
+      () => player.rate,
+      () => push(deskLines.value.lines, deskLines.value.active),
+    )
+    // 拖动进度（seeked）与缓冲停顿（waiting）：位置发生跳变/冻结，重推锚点。
+    // 常规播放不逐帧同步——浮窗按锚点 + 本地时钟插值即可平滑走字
+    const onAudioJump = () => push(deskLines.value.lines, deskLines.value.active)
+    player.audio.addEventListener('seeked', onAudioJump)
+    player.audio.addEventListener('waiting', onAudioJump)
+    player.audio.addEventListener('ratechange', onAudioJump)
     // 歌词浮窗就绪后立即补推一次（覆盖窗口刚创建/无新歌词行变化的场景）
     void listen('lyrics:ready', () => push(deskLines.value.lines, deskLines.value.active))
     // 全局字体变更（设置页）：立即同步给歌词浮窗

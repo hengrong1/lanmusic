@@ -5,6 +5,7 @@ import { RefreshIcon as LoaderCircle } from '@solar-icons/vue/linear/refresh'
 import { RestartIcon as RotateCcw } from '@solar-icons/vue/linear/restart'
 import { BaseButton } from '@/components/ui'
 import { useUpdater } from '@/composables/useUpdater'
+import { dialogOverlayClass, dialogPanelTransition, dialogDraggable } from '@/composables/useDialogPrefs'
 
 const updater = useUpdater()
 
@@ -37,13 +38,18 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
       leave-active-class="transition duration-100 ease-in"
       leave-to-class="opacity-0"
     >
-      <div
-        v-if="updater.dialogOpen.value"
-        class="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 backdrop-blur-sm"
-        @click.self="dismiss"
-      >
-        <div class="w-[420px] rounded-2xl border border-zinc-200 bg-white p-5 shadow-2xl dark:border-zinc-700 dark:bg-zinc-800">
-          <div class="flex items-start gap-3">
+      <div v-if="updater.dialogOpen.value" :class="dialogOverlayClass()" @click.self="dismiss">
+        <Transition v-bind="dialogPanelTransition">
+          <div
+            v-if="updater.dialogOpen.value"
+            data-dialog-panel
+            class="w-[420px] rounded-2xl border border-zinc-200 bg-white p-5 shadow-2xl dark:border-zinc-700 dark:bg-zinc-800"
+          >
+            <div
+              v-drag-dialog
+              class="flex items-start gap-3"
+              :class="dialogDraggable() ? 'cursor-move select-none' : ''"
+            >
             <div class="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-violet-100 text-violet-500 dark:bg-violet-500/15">
               <ArrowDown class="h-4.5 w-4.5" />
             </div>
@@ -112,6 +118,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
             </BaseButton>
           </div>
         </div>
+        </Transition>
       </div>
     </Transition>
   </Teleport>

@@ -33,6 +33,10 @@ const W_COLLAPSED = 60
 // 收起态图标视觉尺寸 = 基础 16px 的 1.25 倍（即原来的 h-5 = 20px）；
 // 基础占位固定为 h-4 w-4，视觉缩放由 GSAP transform 控制，与宽度动画统一调度更顺滑
 const ICON_SCALE_COLLAPSED = 20 / 16
+// 歌单封面的横向补偿量（px）：展开态封面缩进按钮 px-2（按钮内容宽 216px 时左缘 8、中心 24），
+// 折叠态 justify-center 后居中（按钮内容宽 36px 时左缘 2、中心 18）——showText 瞬时切换布局
+// 会让 32px 封面瞬跳 6px。用 GSAP 把这 6px 融进宽度动画（.playlist-cover 的 x 补偿，见下）
+const COVER_SHIFT = 6
 
 const { t, locale } = useI18n()
 /** 带参翻译在 setup 内生成（模板 `$t` 无带参重载） */
@@ -51,6 +55,7 @@ watch(collapsed, () => animateSidebar())
 function animateSidebar() {
   if (!navEl.value) return
   const collapsing = collapsed.value
+  const covers = () => navEl.value?.querySelectorAll<HTMLElement>('.playlist-cover')
 
   if (collapsing) {
     // 先淡出文字，宽度收拢完成后（文字已被裁切不可见）再从 DOM 移除
@@ -67,6 +72,15 @@ function animateSidebar() {
       delay: 0.12,
       ease: 'power3.out',
       overwrite: 'auto',
+    })
+    // 封面横向补偿：随宽度收拢平滑滑向折叠态居中位。结束后 showText 翻转会令布局瞬跳 +6px
+    // （左对齐→居中），等 Vue 打完补丁的同一帧把 x 归零抵消，视觉无感
+    gsap.to(covers() ?? [], {
+      x: -COVER_SHIFT,
+      duration: 0.3,
+      ease: 'power3.inOut',
+      overwrite: 'auto',
+      onComplete: () => void nextTick(() => gsap.set(covers() ?? [], { x: 0 })),
     })
     gsap.to(navEl.value, {
       width: W_COLLAPSED,
@@ -85,6 +99,13 @@ function animateSidebar() {
           { opacity: 0 },
           { opacity: 1, duration: 0.2, delay: 0.12, ease: 'power2.out', overwrite: 'auto' },
         )
+      }
+      // 布局此刻已切回展开态（封面缩进回到 8px）：先瞬移 -6px 保持与折叠态视觉连续，
+      // 再随宽度展开平滑滑回 0，消掉展开方向的同源跳变
+      const coverEls = covers()
+      if (coverEls?.length) {
+        gsap.set(coverEls, { x: -COVER_SHIFT })
+        gsap.to(coverEls, { x: 0, duration: 0.3, ease: 'power3.inOut', overwrite: 'auto' })
       }
     })
     // 图标在宽度展开前段缩小回 16px，与文字淡入同向衔接
@@ -322,7 +343,7 @@ function openPlaylistMenu(e: MouseEvent, p: { id: number; name: string }) {
           @contextmenu="openPlaylistMenu($event, p)"
         >
           <CoverImg
-            class="nav-icon h-8 w-8 shrink-0 overflow-hidden shadow-sm"
+            class="nav-icon playlist-cover h-8 w-8 shrink-0 overflow-hidden shadow-sm"
             :album-id="p.coverAlbumId"
             rounded="rounded-md"
           />

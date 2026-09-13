@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { emit, listen } from '@tauri-apps/api/event'
 import { SkipPreviousIcon as SkipBack } from '@solar-icons/vue/bold/skip-previous'
 import { SkipNextIcon as SkipForward } from '@solar-icons/vue/bold/skip-next'
@@ -10,6 +10,7 @@ import { Rewind5SecondsForwardIcon as RewindForward } from '@solar-icons/vue/lin
 import { RestartIcon as RotateCcw } from '@solar-icons/vue/linear/restart'
 import { CloseIcon as X } from '@solar-icons/vue/linear/close'
 import { EMPTY_LYRIC, type DeskControl, type DeskLyricsConfig } from '@/composables/useDesktopLyrics'
+import type { QrcWord } from '@/types'
 import { hexToRgba } from '@/utils/color'
 
 // 桌面歌词浮窗：接收主窗口推送的歌词行与配置进行渲染；
@@ -17,10 +18,16 @@ import { hexToRgba } from '@/utils/color'
 // 鼠标悬停时在歌词上方浮现控制条（半透明背景）：
 // 上一首 / 播放暂停 / 下一首 · 歌词校准（后退/还原/前进） · 关闭，
 // 指令通过 lyrics:control 事件发回主窗口由播放器执行。
+// 逐字歌词：主窗口推送当前行的词级时间轴（words）与卡拉OK时钟锚点（anchor），
+// 本地 rAF 按 posMs + (now - at) × rate 插值出歌词轴位置，做双色渐变填充。
 
 const lines = ref<string[]>([])
 /** 当前播放行所在位置：0=第一行，1=第二行（双行交替滚动） */
 const active = ref<0 | 1>(0)
+/** 当前行的逐字时间轴；空数组 = 行级歌词（整行纯文本） */
+const words = ref<QrcWord[]>([])
+/** 卡拉OK时钟锚点：推送时刻的歌词轴位置 / 速率 / 是否走秒 */
+const anchor = ref({ posMs: 0, rate: 1, running: false, at: Date.now() })
 const config = ref<DeskLyricsConfig>({
   lines: 2,
   align: 'center',
@@ -46,6 +53,8 @@ onMounted(async () => {
     config: DeskLyricsConfig
     playing?: boolean
     font?: string
+    words?: QrcWord[] | null
+    anchor?: { posMs: number; rate: number; running: boolean; at: number }
   }>('lyrics:sync', (e) => {
     if (Array.isArray(e.payload?.lines)) lines.value = e.payload.lines
     if (e.payload?.active === 0 || e.payload?.active === 1) active.value = e.payload.active
@@ -53,11 +62,34 @@ onMounted(async () => {
     if (typeof e.payload?.playing === 'boolean') playing.value = e.payload.playing
     // 全局字体（设置页修改即时联动；空串 = 恢复默认字体栈）
     if (typeof e.payload?.font === 'string') document.body.style.fontFamily = e.payload.font
+    // 逐字数据与时钟锚点：仅在有 payload 字段时覆盖（锚点可单独推送）
+    if (Array.isArray(e.payload?.words)) words.value = e.payload.words
+    else if (e.payload?.words === null) words.value = []
+    if (e.payload?.anchor) anchor.value = e.payload.anchor
   })
   // 通知主窗口：浮窗已就绪，请求推送当前歌词与配置
   void emit('lyrics:ready')
 })
 onBeforeUnmount(() => unlisten?.())
+
+/** 卡拉OK当前歌词轴位置（毫秒）：按锚点 + 本地时钟插值，避免与主窗口逐帧通信 */
+const karaokeMs = ref(0)
+let karaokeRaf = 0
+watch(
+  words,
+  (w) => {
+    cancelAnimationFrame(karaokeRaf)
+    if (!w.length) return
+    const tick = () => {
+      const a = anchor.value
+      karaokeMs.value = a.running ? a.posMs + (Date.now() - a.at) * a.rate : a.posMs
+      karaokeRaf = requestAnimationFrame(tick)
+    }
+    karaokeRaf = requestAnimationFrame(tick)
+  },
+  { immediate: true },
+)
+onBeforeUnmount(() => cancelAnimationFrame(karaokeRaf))
 
 function control(action: DeskControl) {
   void emit('lyrics:control', action)
@@ -107,6 +139,31 @@ const rowStyle = (row: 0 | 1) => {
     textAlign,
   }
 }
+/**
+ * 逐字行的描边：渐变填充走 background-clip:text（透明文字），text-shadow 会叠在
+ * 渐变上把颜色压暗，改用文字描边（paint-order: stroke 让描边垫在填充下方）。
+ */
+const strokeOutline = computed(() => {
+  if (!config.value.outline) return { textShadow: 'none' }
+  return {
+    textShadow: 'none',
+    WebkitTextStroke: `${Math.max(2, config.value.fontSize * 0.08)}px ${config.value.outlineColor}`,
+    paintOrder: 'stroke',
+  }
+})
+/** 单词样式：按播放进度双色渐变（已唱=播放行颜色，未唱=未播放行颜色） */
+const wordStyle = (w: QrcWord) => {
+  const dur = Math.max(1, w.endTime - w.startTime)
+  const p = Math.min(1, Math.max(0, (karaokeMs.value - w.startTime) / dur))
+  if (p >= 1) return { color: config.value.color }
+  if (p <= 0) return { color: config.value.pendingColor }
+  return {
+    background: `linear-gradient(90deg, ${config.value.color} ${p * 100}%, ${config.value.pendingColor} ${p * 100}%)`,
+    WebkitBackgroundClip: 'text',
+    backgroundClip: 'text',
+    color: 'transparent',
+  }
+}
 /** 控制条背景：与面板同色系，略微加深以便在面板上浮起；无面板背景时用默认深色 */
 const controlsStyle = computed(() => ({
   background:
@@ -114,15 +171,32 @@ const controlsStyle = computed(() => ({
       ? hexToRgba(config.value.bgColor, Math.min(0.9, config.value.bgOpacity + 0.2))
       : 'rgba(24, 24, 27, 0.55)',
 }))
-/** 渲染行：单行只显示播放行；双行两行位置固定（对齐固定），只交换文字与高亮 */
+/** 渲染行：单行只显示播放行；双行两行位置固定（对齐固定），只交换文字与高亮。
+ * 逐字行（words 非空）额外携带词级时间轴与描边覆盖，模板里按字渲染渐变 */
 const rows = computed(() => {
+  const wordsFor = (row: 0 | 1) => (active.value === row && words.value.length > 1 ? words.value : undefined)
   if (config.value.lines === 1) {
-    // 单行只有播放行，始终用播放行颜色
-    return [{ text: lines.value[active.value] || EMPTY_LYRIC, style: { ...rowStyle(0), color: config.value.color } }]
+    // 单行只有播放行（无论交替到哪个位置），始终用播放行颜色并携带逐字数据
+    const w = words.value.length > 1 ? words.value : undefined
+    return [
+      {
+        text: lines.value[active.value] || EMPTY_LYRIC,
+        words: w,
+        style: { ...rowStyle(0), color: config.value.color, ...(w ? strokeOutline.value : {}) },
+      },
+    ]
   }
   return [
-    { text: lines.value[0] || (active.value === 0 ? EMPTY_LYRIC : '\u00A0'), style: rowStyle(0) },
-    { text: lines.value[1] || '\u00A0', style: rowStyle(1) },
+    {
+      text: lines.value[0] || (active.value === 0 ? EMPTY_LYRIC : '\u00A0'),
+      words: wordsFor(0),
+      style: wordsFor(0) ? { ...rowStyle(0), ...strokeOutline.value } : rowStyle(0),
+    },
+    {
+      text: lines.value[1] || '\u00A0',
+      words: wordsFor(1),
+      style: wordsFor(1) ? { ...rowStyle(1), ...strokeOutline.value } : rowStyle(1),
+    },
   ]
 })
 </script>
@@ -160,9 +234,13 @@ const rows = computed(() => {
         <X class="h-4 w-4" />
       </button>
     </div>
-    <!-- 歌词（背景铺满整个面板）：播放行主样式，另一行次样式，双行交替滚动 -->
+    <!-- 歌词（背景铺满整个面板）：播放行主样式，另一行次样式，双行交替滚动；
+         逐字行按词渲染双色渐变（空白用 whitespace-pre 保留），否则整行纯文本 -->
     <p v-for="(row, i) in rows" :key="i" class="dl-line" data-tauri-drag-region :style="row.style">
-      {{ row.text }}
+      <template v-if="row.words">
+        <span v-for="(w, wi) in row.words" :key="wi" class="dl-word" :style="wordStyle(w)">{{ w.word }}</span>
+      </template>
+      <template v-else>{{ row.text }}</template>
     </p>
   </div>
 </template>
@@ -243,5 +321,9 @@ const rows = computed(() => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+/* 逐字单词：保留词内/词间空白（连续空格词不被折叠） */
+.dl-word {
+  white-space: pre;
 }
 </style>

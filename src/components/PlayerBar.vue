@@ -24,11 +24,13 @@ import { usePlayerStore, PLAYBACK_RATES, type PlayMode } from '@/stores/player'
 import { useDesktopLyrics } from '@/composables/useDesktopLyrics'
 import { useNav } from '@/composables/useNav'
 import { useAmbient } from '@/composables/useAmbient'
+import { themeAmbientPalette } from '@/composables/useThemeColor'
 import { useSkin, useSkinOpen, useSpectrumMode } from '@/composables/useSkin'
 import { useNowPlayingStyle } from '@/composables/useNowPlayingStyle'
 import { CloseIcon as X } from '@solar-icons/vue/linear/close'
 import { ensureAnalyser, readSpectrum } from '@/composables/useSpectrum'
 import { activeLineIndex } from '@/utils/lrc'
+import type { QrcWord } from '@/types'
 import CoverImg from '@/components/CoverImg.vue'
 import MarqueeText from '@/components/MarqueeText.vue'
 import { useI18n } from 'vue-i18n'
@@ -291,6 +293,43 @@ const currentLyricLine = computed(() => {
   return player.current?.album ?? 'LanMusic'
 })
 
+/** 当前活动行是否带逐字时间轴（QRC）：有则单行歌词按字渐变填充，无则整行滚动 */
+const activeWords = computed(() => {
+  const wl = player.lyricsWordLines
+  if (!wl?.length || player.activeLyricIndex < 0) return null
+  const line = wl[player.activeLyricIndex]
+  return line && line.words.length > 1 ? line.words : null
+})
+/** 逐字行歌词轴位置（毫秒，含偏移）：rAF 直读 audio，比 timeupdate 事件平滑 */
+const karaokeMs = ref(0)
+let karaokeRaf = 0
+watch(activeWords, (w) => {
+  cancelAnimationFrame(karaokeRaf)
+  if (!w) return
+  const loop = () => {
+    karaokeMs.value = (player.audio.currentTime - player.lyricOffset) * 1000
+    karaokeRaf = requestAnimationFrame(loop)
+  }
+  karaokeRaf = requestAnimationFrame(loop)
+})
+onUnmounted(() => cancelAnimationFrame(karaokeRaf))
+/** 逐字填充的已唱色：播放页展开跟随封面主色，未展开跟随设置里的主题色（见 themeAmbientPalette） */
+const lyricSung = computed(() => accent.value ?? themeAmbientPalette().accent)
+/** 单词样式：按播放进度双色渐变（已唱强调色 → 未唱半透明），与播放页歌词面板同款 */
+function barWordStyle(w: QrcWord) {
+  const dur = Math.max(1, w.endTime - w.startTime)
+  const p = Math.min(1, Math.max(0, (karaokeMs.value - w.startTime) / dur))
+  const unsung = `color-mix(in srgb, ${lyricSung.value} 38%, transparent)`
+  if (p >= 1) return { color: lyricSung.value }
+  if (p <= 0) return { color: unsung }
+  return {
+    background: `linear-gradient(90deg, ${lyricSung.value} ${p * 100}%, ${unsung} ${p * 100}%)`,
+    WebkitBackgroundClip: 'text',
+    backgroundClip: 'text',
+    color: 'transparent',
+  }
+}
+
 const pct = computed(() => (player.duration > 0 ? (player.position / player.duration) * 100 : 0))
 const volPct = computed(() => (player.muted ? 0 : player.volume * 100))
 const volDisplay = computed(() => Math.round(player.volume * 100))
@@ -483,12 +522,12 @@ const theme = computed(() =>
           >{{ player.current.title }}</span>
           <span v-else class="truncate font-medium" :class="theme.title">{{ $t('player.notPlaying') }}</span>
           <span v-if="player.current" class="shrink-0 opacity-40">–</span>
-          <!-- 多艺人：每个名字独立可点击（区分每一个艺人） -->
+          <!-- 多艺人：每个名字独立可点击（区分每一个艺人）；播放页悬停色跟随封面主色（--accent），普通页保持主题紫 -->
           <template v-for="(a, i) in currentArtistLinks" :key="a.id ?? `na-${i}`">
             <button
               v-if="a.id != null"
-              class="min-w-0 cursor-pointer truncate transition hover:text-violet-500 hover:underline"
-              :class="theme.artist"
+              class="min-w-0 cursor-pointer truncate transition hover:underline"
+              :class="[theme.artist, props.nowPlayingOpen ? 'hover:text-[var(--accent)]' : 'hover:text-violet-500']"
               v-tooltip="artistTip(a.name)"
               @click.stop="goArtist(a)"
             >{{ a.name }}</button>
@@ -496,14 +535,18 @@ const theme = computed(() =>
             <span v-if="i < currentArtistLinks.length - 1" class="shrink-0 opacity-40"> / </span>
           </template>
         </div>
-        <!-- 行2：当前歌词（过长滚动），无歌词时显示专辑名；纯展示，不响应点击 -->
+        <!-- 行2：当前歌词——逐字行按进度渐变填充（已唱强调色/未唱半透明），
+             行级歌词过长滚动，无歌词时显示专辑名；纯展示，不响应点击 -->
         <div
           v-if="player.current"
           class="w-full text-left text-xs leading-tight transition-colors duration-500 [-webkit-font-smoothing:antialiased]"
-          :class="theme.artist"
-          :style="accent && player.lyricsLines?.length ? { color: accent } : undefined"
+          :class="activeWords ? '' : theme.artist"
+          :style="!activeWords && accent && player.lyricsLines?.length ? { color: accent } : undefined"
         >
-          <MarqueeText :text="currentLyricLine" />
+          <span v-if="activeWords" class="block truncate whitespace-pre">
+            <span v-for="(w, wi) in activeWords" :key="wi" :style="barWordStyle(w)">{{ w.word }}</span>
+          </span>
+          <MarqueeText v-else :text="currentLyricLine" />
         </div>
         <span v-else class="text-xs" :class="theme.artist">LanMusic</span>
       </div>
@@ -620,10 +663,16 @@ const theme = computed(() =>
 
     <!-- 右：倍速 / 皮肤 / 音量 / 队列 -->
     <div class="flex w-64 items-center justify-end gap-1">
-      <!-- 倍速循环按钮：非 1x 时高亮提示当前处于变速播放 -->
+      <!-- 倍速循环按钮：非 1x 时高亮提示当前处于变速播放（播放页跟随封面主色） -->
       <button
         class="flex h-8 w-9 shrink-0 cursor-pointer items-center justify-center rounded-full text-xs font-semibold tabular-nums transition-colors duration-500 hover:duration-200"
-        :class="player.rate === 1 ? theme.iconBtn : 'text-violet-500 hover:bg-violet-500/10'"
+        :class="
+          player.rate === 1
+            ? theme.iconBtn
+            : props.nowPlayingOpen
+              ? 'text-[var(--accent)] hover:bg-white/10'
+              : 'text-violet-500 hover:bg-violet-500/10'
+        "
         v-tooltip="rateTip"
         @click="cycleRate"
       >
@@ -801,10 +850,16 @@ const theme = computed(() =>
           @input="player.setVolume(Number(($event.target as HTMLInputElement).value))"
         />
       </div>
-      <!-- 桌面歌词开关：音量之后 -->
+      <!-- 桌面歌词开关：音量之后（播放页开启态跟随封面主色） -->
       <button
         class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full transition-colors duration-500 hover:duration-200"
-        :class="dlEnabled ? 'text-violet-500 hover:bg-violet-500/10' : theme.iconBtn"
+        :class="
+          dlEnabled
+            ? props.nowPlayingOpen
+              ? 'text-[var(--accent)] hover:bg-white/10'
+              : 'text-violet-500 hover:bg-violet-500/10'
+            : theme.iconBtn
+        "
         v-tooltip="dlEnabled ? $t('tray.disableDesktopLyrics') : $t('tray.enableDesktopLyrics')"
         @click="dlToggle()"
       >

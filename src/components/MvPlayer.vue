@@ -132,10 +132,10 @@ onBeforeUnmount(() => {
   aspect-ratio: 16 / 9;
   display: block;
 }
-/* 主题色：跟随应用主色（violet-500） */
+/* 主题色：跟随应用主色（设置 → 自定义主题色覆盖 violet 变量，未选时回落 violet-500） */
 .mv-shell .plyr {
-  --plyr-color-main: #8b5cf6;
-  --plyr-badge-background: #8b5cf6;
+  --plyr-color-main: var(--color-violet-500);
+  --plyr-badge-background: var(--color-violet-500);
   --plyr-range-thumb-size: 13px;
 }
 /* 菜单/设置面板配色跟随深浅色主题 */
@@ -149,10 +149,10 @@ onBeforeUnmount(() => {
 }
 /* 控件悬停底色随主题色 */
 .mv-shell .plyr__control--overlaid {
-  background: rgba(139, 92, 246, 0.85);
+  background: color-mix(in srgb, var(--color-violet-500) 85%, transparent);
 }
 .mv-shell .plyr__control--overlaid:hover,
 .mv-shell .plyr__control--overlaid:focus {
-  background: #8b5cf6;
+  background: var(--color-violet-500);
 }
 </style>

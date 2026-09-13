@@ -1,22 +1,30 @@
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { coverUrl } from '@/api/scheme'
 import { extractAmbient, type AmbientPalette } from '@/utils/color'
+import { themeAmbientPalette } from './useThemeColor'
 
 // 模块级单例：播放页负责提取，播放条等组件共享读取
-const palette = ref<AmbientPalette | null>(null)
+const extracted = ref<AmbientPalette | null>(null)
 let lastAlbumId: number | null | undefined
 
 /** 跟随当前歌曲专辑更新环境色（幂等，切歌时自动失效旧结果） */
 async function setAlbum(id?: number | null) {
   if (id === lastAlbumId) return
   lastAlbumId = id
-  palette.value = null
+  extracted.value = null
   if (id == null) return
   const url = coverUrl(id)
   if (!url) return
   const p = await extractAmbient(url)
-  if (lastAlbumId === id && p) palette.value = p
+  if (lastAlbumId === id && p) extracted.value = p
 }
+
+/**
+ * 对外暴露的环境色：封面主色不可用（无封面/提取失败/切歌间隙）时，
+ * 回落到当前主题色派生的环境色（见 useThemeColor.themeAmbientPalette），
+ * 播放页环境渐变、粒子、强调色兜底因此全部跟随设置里的自定义主题色。
+ */
+const palette = computed<AmbientPalette>(() => extracted.value ?? themeAmbientPalette())
 
 export function useAmbient() {
   return { palette, setAlbum }

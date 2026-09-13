@@ -28,8 +28,12 @@ tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
 rusqlite = { version = "0.40.2", features = ["bundled"] }
 lofty = "0.25.1"
+# 歌词文件编码识别：QQ 生态歌词常见 GBK/GB18030，按 UTF-8 读会乱码（见 lyrics.rs decode_lyric_bytes）
+encoding_rs = "0.8"
 # 拼音搜索：汉字转全拼/首字母（搜索匹配用，见 search.rs）
 pinyin = "0.10"
+# QRC 逐字歌词解密：QQ 改版三重 DES（自移植，见 qrc.rs；标准 DES 位序不适用于 QQ 歌词）
+miniz_oxide = "0.8"
 walkdir = "2.5.0"
 notify = "7"
 keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service"] }

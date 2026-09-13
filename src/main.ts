@@ -4,6 +4,7 @@ import { getCurrentWindow } from '@tauri-apps/api/window'
 import App from './App.vue'
 import { applyStoredFont } from './composables/useAppFont'
 import { installTooltip } from './directives/tooltip'
+import { dragDialog } from './directives/dragDialog'
 import { i18n } from './i18n'
 import { errorText } from './i18n/error'
 import { toast } from './composables/useToast'
@@ -38,15 +39,19 @@ async function boot() {
       const { default: Comp } = await import('./components/DesktopLyricsWindow.vue')
       const app = createApp(Comp).use(i18n)
       installTooltip(app)
+      app.directive('drag-dialog', dragDialog)
       installErrorGuard(app)
       app.mount('#app')
       removeSplash()
       return
     }
     if (winLabel === 'tray') {
+      // 托盘是独立 webview：主动应用主题色覆盖（模块加载即写 <html> 变量，读同一份 localStorage）
+      await import('./composables/useThemeColor')
       const { default: Comp } = await import('./components/TrayMenuWindow.vue')
       const app = createApp(Comp).use(i18n)
       installTooltip(app)
+      app.directive('drag-dialog', dragDialog)
       installErrorGuard(app)
       app.mount('#app')
       removeSplash()
@@ -54,6 +59,7 @@ async function boot() {
     }
     const app = createApp(App).use(createPinia()).use(i18n)
     installTooltip(app)
+    app.directive('drag-dialog', dragDialog)
     installErrorGuard(app)
     app.mount('#app')
     removeSplash()
@@ -70,7 +76,7 @@ async function boot() {
       const btn = document.createElement('button')
       btn.textContent = i18n.global.t('common.retry')
       btn.style.cssText =
-        'margin-top:12px;cursor:pointer;border:none;border-radius:8px;padding:6px 16px;font:13px system-ui,sans-serif;color:#fff;background:#8b5cf6'
+        'margin-top:12px;cursor:pointer;border:none;border-radius:8px;padding:6px 16px;font:13px system-ui,sans-serif;color:#fff;background:var(--color-violet-500)'
       btn.onclick = () => location.reload()
       box.appendChild(document.createElement('br'))
       box.appendChild(btn)

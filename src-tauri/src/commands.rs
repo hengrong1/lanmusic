@@ -1217,6 +1217,13 @@ pub fn get_lyrics(app: AppHandle, id: i64) -> Result<Option<String>, String> {
     crate::lyrics::fetch(&app, id)
 }
 
+/// QRC 逐字歌词解析：解密（新旧两种加密格式）+ 词级毫秒时间轴，见 qrc.rs。
+/// 非 QRC 内容返回 None，前端回退 LRC/纯文本解析。
+#[tauri::command]
+pub fn parse_qrc(raw: String) -> Result<Option<Vec<crate::qrc::QrcLine>>, String> {
+    Ok(crate::qrc::parse(&raw))
+}
+
 // ================================================================ 应用设置（M2/M3）
 
 #[tauri::command]
@@ -1735,6 +1742,134 @@ pub fn clear_removed_tracks(state: State<'_, AppState>) -> Result<(), String> {
     conn.execute("DELETE FROM removed_tracks", [])
         .map_err(|e| e.to_string())?;
     Ok(())
+}
+
+/// 还原结果：restored = 已接受还原的记录数（文件仍在，来源扫描会重新入库）；
+/// missing = 文件已不存在 / 来源已删除的记录数
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct RemovedRestoreResult {
+    pub restored: usize,
+    pub missing: usize,
+}
+
+/// 还原已移除的歌曲：确认文件仍在（本地查磁盘 / WebDAV 探测头部 1 字节），
+/// 删除对应记录并对来源触发一次增量扫描——增量管线发现「库里没有、磁盘上有」
+/// 会按标准路径重新入库（元数据/歌词/封面全走既有逻辑）。来源正在扫描时不重复
+/// 触发（进行中的扫描本就会把它捞回来）。
+#[tauri::command]
+pub fn restore_removed_tracks(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    ids: Vec<i64>,
+) -> Result<RemovedRestoreResult, String> {
+    if ids.is_empty() {
+        return Ok(RemovedRestoreResult {
+            restored: 0,
+            missing: 0,
+        });
+    }
+    let placeholders = ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    /// 移除记录行：(记录 id, 相对路径, 来源 id, 来源类型, 本地根目录, WebDAV 根地址)
+    type RestoreRow = (
+        i64,
+        String,
+        i64,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+    );
+    // 记录 + 来源信息（来源已删除的按 missing 处理）
+    let rows: Vec<RestoreRow> = {
+        let mut stmt = conn
+            .prepare(&format!(
+                "SELECT r.id, r.path, r.source_id, s.kind, s.base_path, s.base_url \
+                 FROM removed_tracks r \
+                 LEFT JOIN sources s ON s.id = r.source_id \
+                 WHERE r.id IN ({placeholders})"
+            ))
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(params_from_iter(ids.iter()), |r| {
+                Ok((
+                    r.get(0)?,
+                    r.get(1)?,
+                    r.get(2)?,
+                    r.get(3)?,
+                    r.get(4)?,
+                    r.get(5)?,
+                ))
+            })
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())?
+    };
+    drop(conn);
+
+    let mut restorable: Vec<i64> = Vec::new(); // 可还原的记录 id（删记录）
+    let mut missing = 0usize;
+    let mut sources_to_scan: Vec<i64> = Vec::new();
+    for (id, path, source_id, kind, base_path, base_url) in &rows {
+        let available = match kind.as_deref() {
+            Some("local") => base_path
+                .as_ref()
+                .map(|base| std::path::Path::new(base).join(path).is_file())
+                .unwrap_or(false),
+            Some("webdav") => {
+                // 探测头部 1 字节：2xx 即存在（404/403 等视为不可还原）
+                let probe = || -> Option<bool> {
+                    let base = crate::network::webdav::normalize_base(base_url.as_ref()?).ok()?;
+                    let url = crate::network::webdav::file_url(&base, path);
+                    let auth = {
+                        let conn = state.db.lock().ok()?;
+                        let config: Option<String> = conn
+                            .query_row(
+                                "SELECT config FROM sources WHERE id = ?1",
+                                params![source_id],
+                                |r| r.get(0),
+                            )
+                            .ok();
+                        crate::network::webdav::Auth::from_source(config.as_deref(), *source_id)
+                    };
+                    Some(
+                        crate::network::webdav::download_short(&url, auth.as_ref(), Some((0, 0)))
+                            .is_ok(),
+                    )
+                }()
+                .unwrap_or(false);
+                probe
+            }
+            _ => false,
+        };
+        if available {
+            restorable.push(*id);
+            if !sources_to_scan.contains(source_id) {
+                sources_to_scan.push(*source_id);
+            }
+        } else {
+            missing += 1;
+        }
+    }
+
+    if !restorable.is_empty() {
+        let conn = state.db.lock().map_err(|e| e.to_string())?;
+        let placeholders = restorable.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+        conn.execute(
+            &format!("DELETE FROM removed_tracks WHERE id IN ({placeholders})"),
+            params_from_iter(restorable.iter()),
+        )
+        .map_err(|e| e.to_string())?;
+        drop(conn);
+        // 触发来源增量扫描（正在扫描中的来源跳过：进行中的扫描本就会重新入库）
+        for source_id in sources_to_scan {
+            let _ = spawn_scan(&app, &state, source_id, false);
+        }
+    }
+    Ok(RemovedRestoreResult {
+        restored: restorable.len(),
+        missing,
+    })
 }
 
 /// 从曲库移除指定曲目（不删除磁盘上的文件）：清理子表引用、回收孤儿专辑/艺人并

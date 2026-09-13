@@ -2514,9 +2514,11 @@ dependencies = [
 name = "lanmusic"
 version = "0.3.0"
 dependencies = [
+ "encoding_rs",
  "image",
  "keyring",
  "lofty",
+ "miniz_oxide 0.8.9",
  "notify",
  "objc2-app-kit",
  "percent-encoding",

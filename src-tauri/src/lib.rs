@@ -8,6 +8,7 @@ mod keyring;
 mod lyrics;
 mod metadata;
 mod network;
+pub mod qrc;
 mod scanner;
 mod scheme;
 mod search;
@@ -287,6 +288,7 @@ pub fn run() {
             commands::playlist_cover,
             commands::report_play,
             commands::get_lyrics,
+            commands::parse_qrc,
             commands::favorite_toggle,
             commands::get_setting,
             commands::set_setting,
@@ -304,6 +306,7 @@ pub fn run() {
             commands::remove_tracks,
             commands::list_removed_tracks,
             commands::clear_removed_tracks,
+            commands::restore_removed_tracks,
             commands::webdav_add_source,
             commands::get_mv_url
         ])

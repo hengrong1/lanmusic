@@ -285,7 +285,7 @@ fn run_local_scan(
         else {
             continue;
         };
-        if ext == "lrc" {
+        if ext == "lrc" || ext == "qrc" {
             lrc_map.insert(
                 stem_key(&rel),
                 base.join(&rel).to_string_lossy().to_string(),
@@ -471,7 +471,7 @@ fn run_webdav_scan(
             } else {
                 let ext = ext_of(&rel);
                 let name = file_name_of(&rel).to_ascii_lowercase();
-                if ext.as_deref() == Some("lrc") {
+                if matches!(ext.as_deref(), Some("lrc") | Some("qrc")) {
                     lrc_map.insert(stem_key(&rel), webdav::file_url(&base, &rel).to_string());
                 } else if COVER_NAMES.contains(&name.as_str()) {
                     cover_map.insert(parent_dir(&rel), webdav::file_url(&base, &rel).to_string());
@@ -892,7 +892,7 @@ fn write_batch(
                 .as_ref()
                 .filter(|p| !p.is_empty())
                 .and_then(|p| std::fs::read(p).ok())
-                .map(|b| String::from_utf8_lossy(&b).into_owned())
+                .map(|b| crate::lyrics::decode_lyric_bytes(&b))
         });
         match lyrics_text {
             Some(text) if !text.trim().is_empty() => {

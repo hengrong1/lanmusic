@@ -57,7 +57,7 @@ function eqStyle(delay: string) {
 const activeRowClass = computed(() =>
   themed.value
     ? 'mx-1 rounded-xl'
-    : 'queue-active-row mx-1 rounded-xl bg-gradient-to-r from-violet-100 via-violet-50/50 to-transparent shadow-[inset_0_0_0_1px_rgba(139,92,246,0.15),0_2px_8px_-2px_rgba(139,92,246,0.2)] dark:from-violet-500/20 dark:via-violet-500/10 dark:to-transparent dark:shadow-[inset_0_0_0_1px_rgba(139,92,246,0.25),0_2px_8px_-2px_rgba(139,92,246,0.3)]',
+    : 'queue-active-row mx-1 rounded-xl bg-gradient-to-r from-violet-100 via-violet-50/50 to-transparent shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--color-violet-500)_15%,transparent),0_2px_8px_-2px_color-mix(in_srgb,var(--color-violet-500)_20%,transparent)] dark:from-violet-500/20 dark:via-violet-500/10 dark:to-transparent dark:shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--color-violet-500)_25%,transparent),0_2px_8px_-2px_color-mix(in_srgb,var(--color-violet-500)_30%,transparent)]',
 )
 const inactiveRowClass = computed(() =>
   themed.value ? 'mx-1 rounded-xl hover:bg-white/10' : 'mx-1 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-800/60',
@@ -269,9 +269,9 @@ watch(
                 class="flex h-4 w-5 shrink-0 items-end justify-center gap-[2.5px]"
                 :class="player.playing ? '' : 'eq-paused'"
               >
-                <span class="eq-bar w-[3px] rounded-full bg-gradient-to-t from-violet-600 to-fuchsia-400" :style="eqStyle('0s')"></span>
-                <span class="eq-bar w-[3px] rounded-full bg-gradient-to-t from-violet-600 to-fuchsia-400" :style="eqStyle('0.25s')"></span>
-                <span class="eq-bar w-[3px] rounded-full bg-gradient-to-t from-violet-600 to-fuchsia-400" :style="eqStyle('0.5s')"></span>
+                <span class="eq-bar w-[3px] rounded-full bg-gradient-to-t from-violet-600 to-violet-400" :style="eqStyle('0s')"></span>
+                <span class="eq-bar w-[3px] rounded-full bg-gradient-to-t from-violet-600 to-violet-400" :style="eqStyle('0.25s')"></span>
+                <span class="eq-bar w-[3px] rounded-full bg-gradient-to-t from-violet-600 to-violet-400" :style="eqStyle('0.5s')"></span>
               </span>
               <span
                 v-else
@@ -392,13 +392,13 @@ watch(
   0%,
   100% {
     box-shadow:
-      inset 0 0 0 1px rgba(139, 92, 246, 0.15),
-      0 2px 8px -2px rgba(139, 92, 246, 0.2);
+      inset 0 0 0 1px color-mix(in srgb, var(--color-violet-500) 15%, transparent),
+      0 2px 8px -2px color-mix(in srgb, var(--color-violet-500) 20%, transparent);
   }
   50% {
     box-shadow:
-      inset 0 0 0 1px rgba(139, 92, 246, 0.3),
-      0 4px 16px -2px rgba(139, 92, 246, 0.35);
+      inset 0 0 0 1px color-mix(in srgb, var(--color-violet-500) 30%, transparent),
+      0 4px 16px -2px color-mix(in srgb, var(--color-violet-500) 35%, transparent);
   }
 }
 </style>

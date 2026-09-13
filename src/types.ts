@@ -76,6 +76,12 @@ export interface RemovedTrack {
   removedAt: number
 }
 
+/** 还原结果：restored = 已接受（文件仍在，来源扫描会重新入库）；missing = 文件已不在 */
+export interface RemovedRestoreResult {
+  restored: number
+  missing: number
+}
+
 export interface Page<T> {
   total: number
   items: T[]
@@ -157,4 +163,19 @@ export interface Playlist {
   coverAlbumId: number | null
   /** 歌单简介 */
   description: string | null
+}
+
+/** QRC 逐字歌词单词：毫秒时间轴（Rust 侧解析，见 src-tauri/src/qrc.rs） */
+export interface QrcWord {
+  word: string
+  startTime: number
+  endTime: number
+}
+
+/** QRC 逐字歌词行：words 为空表示间奏占位，text 为全部单词拼接 */
+export interface QrcLine {
+  startTime: number
+  endTime: number
+  text: string
+  words: QrcWord[]
 }

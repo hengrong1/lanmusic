@@ -9,6 +9,8 @@ import type {
   LibraryStats,
   Page,
   Playlist,
+  QrcLine,
+  RemovedRestoreResult,
   RemovedTrack,
   Source,
   Track,
@@ -73,6 +75,8 @@ export const api = {
   // 播放统计与歌词（M2）
   reportPlay: (id: number) => invoke<void>('report_play', { id }),
   getLyrics: (id: number) => invoke<string | null>('get_lyrics', { id }),
+  /** QRC 逐字歌词解析（Rust 侧解密 + 词级毫秒时间轴，见 src-tauri/src/qrc.rs）；非 QRC 返回 null */
+  parseQrc: (raw: string) => invoke<QrcLine[] | null>('parse_qrc', { raw }),
   favoriteToggle: (id: number, fav: boolean) => invoke<void>('favorite_toggle', { id, fav }),
   // Windows 任务栏缩略图按钮：同步播放/暂停图标（其他平台为空操作）
   setThumbbarPlaying: (playing: boolean) => invoke<void>('set_thumbbar_playing', { playing }),
@@ -109,6 +113,9 @@ export const api = {
   removeTracks: (ids: number[]) => invoke<number>('remove_tracks', { ids }),
   listRemovedTracks: () => invoke<RemovedTrack[]>('list_removed_tracks'),
   clearRemovedTracks: () => invoke<void>('clear_removed_tracks'),
+  /** 还原已移除歌曲（确认文件仍在后触发来源增量扫描重新入库） */
+  restoreRemovedTracks: (ids: number[]) =>
+    invoke<RemovedRestoreResult>('restore_removed_tracks', { ids }),
 
   // WebDAV（M3）
   webdavAddSource: (url: string, username: string, password: string, name?: string) =>

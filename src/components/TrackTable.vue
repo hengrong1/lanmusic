@@ -420,9 +420,9 @@ function onDragEnd() {
                 class="flex h-4 items-end justify-center gap-[2.5px]"
                 :class="player.playing ? '' : 'eq-paused'"
               >
-                <span class="eq-bar w-[3px] rounded-full bg-gradient-to-t from-violet-600 to-fuchsia-400" style="animation-delay: 0s"></span>
-                <span class="eq-bar w-[3px] rounded-full bg-gradient-to-t from-violet-600 to-fuchsia-400" style="animation-delay: 0.25s"></span>
-                <span class="eq-bar w-[3px] rounded-full bg-gradient-to-t from-violet-600 to-fuchsia-400" style="animation-delay: 0.5s"></span>
+                <span class="eq-bar w-[3px] rounded-full bg-gradient-to-t from-violet-600 to-violet-400" style="animation-delay: 0s"></span>
+                <span class="eq-bar w-[3px] rounded-full bg-gradient-to-t from-violet-600 to-violet-400" style="animation-delay: 0.25s"></span>
+                <span class="eq-bar w-[3px] rounded-full bg-gradient-to-t from-violet-600 to-violet-400" style="animation-delay: 0.5s"></span>
               </span>
             </div>
             <div class="flex min-w-0 items-center gap-1.5" :class="player.current?.id === t.id ? 'font-medium text-violet-600 dark:text-violet-400' : 'text-zinc-800 dark:text-zinc-100'">
@@ -440,7 +440,7 @@ function onDragEnd() {
               >{{ $t('settings.fieldFilename') }}</span>
               <button
                 v-if="t.hasMv"
-                class="shrink-0 rounded-lg p-0.5 text-fuchsia-500 transition hover:bg-fuchsia-50 dark:hover:bg-fuchsia-900/30"
+                class="shrink-0 rounded-lg p-0.5 text-violet-500 transition hover:bg-violet-500/10"
                 v-tooltip="$t('mv.play')"
                 :aria-label="$t('mv.play')"
                 @click.stop="playMv(t)"
@@ -535,7 +535,8 @@ function onDragEnd() {
   }
 }
 
-/* 正在播放的行：圆角卡片 + 脉冲边框 + 左侧高亮条 + 渐变动画 */
+/* 正在播放的行：圆角卡片 + 脉冲边框 + 左侧高亮条 + 渐变动画
+   （颜色全部走 violet 变量：跟随设置 → 自定义主题色，未选时回落 Tailwind 原生紫） */
 .row-playing {
   position: relative;
   border-radius: 12px;
@@ -543,28 +544,28 @@ function onDragEnd() {
   background-size: 200% 100%;
   background-image: linear-gradient(
     to right,
-    rgb(233 213 255 / 0.9) 0%,
-    rgb(243 232 255 / 0.6) 50%,
+    color-mix(in srgb, var(--color-violet-200) 90%, transparent) 0%,
+    color-mix(in srgb, var(--color-violet-100) 60%, transparent) 50%,
     transparent 100%
   );
   box-shadow:
-    inset 3px 0 0 0 #8b5cf6,
-    0 0 0 1px rgb(139 92 246 / 0.15),
-    0 2px 8px rgb(139 92 246 / 0.08);
+    inset 3px 0 0 0 var(--color-violet-500),
+    0 0 0 1px color-mix(in srgb, var(--color-violet-500) 15%, transparent),
+    0 2px 8px color-mix(in srgb, var(--color-violet-500) 8%, transparent);
   animation: row-shimmer 3s ease-in-out infinite, row-pulse 2s ease-in-out infinite;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 .dark .row-playing {
   background-image: linear-gradient(
     to right,
-    rgb(139 92 246 / 0.25) 0%,
-    rgb(139 92 246 / 0.12) 50%,
+    color-mix(in srgb, var(--color-violet-500) 25%, transparent) 0%,
+    color-mix(in srgb, var(--color-violet-500) 12%, transparent) 50%,
     transparent 100%
   );
   box-shadow:
-    inset 3px 0 0 0 #a78bfa,
-    0 0 0 1px rgb(167 139 250 / 0.2),
-    0 2px 12px rgb(139 92 246 / 0.15);
+    inset 3px 0 0 0 var(--color-violet-400),
+    0 0 0 1px color-mix(in srgb, var(--color-violet-400) 20%, transparent),
+    0 2px 12px color-mix(in srgb, var(--color-violet-500) 15%, transparent);
   animation-name: row-shimmer, row-pulse-dark;
 }
 
@@ -582,15 +583,15 @@ function onDragEnd() {
 @keyframes row-pulse {
   0%, 100% {
     box-shadow:
-      inset 3px 0 0 0 #8b5cf6,
-      0 0 0 1px rgb(139 92 246 / 0.15),
-      0 2px 8px rgb(139 92 246 / 0.08);
+      inset 3px 0 0 0 var(--color-violet-500),
+      0 0 0 1px color-mix(in srgb, var(--color-violet-500) 15%, transparent),
+      0 2px 8px color-mix(in srgb, var(--color-violet-500) 8%, transparent);
   }
   50% {
     box-shadow:
-      inset 3px 0 0 0 #8b5cf6,
-      0 0 0 2px rgb(139 92 246 / 0.3),
-      0 4px 16px rgb(139 92 246 / 0.15);
+      inset 3px 0 0 0 var(--color-violet-500),
+      0 0 0 2px color-mix(in srgb, var(--color-violet-500) 30%, transparent),
+      0 4px 16px color-mix(in srgb, var(--color-violet-500) 15%, transparent);
   }
 }
 
@@ -598,15 +599,15 @@ function onDragEnd() {
 @keyframes row-pulse-dark {
   0%, 100% {
     box-shadow:
-      inset 3px 0 0 0 #a78bfa,
-      0 0 0 1px rgb(167 139 250 / 0.2),
-      0 2px 12px rgb(139 92 246 / 0.15);
+      inset 3px 0 0 0 var(--color-violet-400),
+      0 0 0 1px color-mix(in srgb, var(--color-violet-400) 20%, transparent),
+      0 2px 12px color-mix(in srgb, var(--color-violet-500) 15%, transparent);
   }
   50% {
     box-shadow:
-      inset 3px 0 0 0 #a78bfa,
-      0 0 0 2px rgb(167 139 250 / 0.4),
-      0 4px 20px rgb(139 92 246 / 0.25);
+      inset 3px 0 0 0 var(--color-violet-400),
+      0 0 0 2px color-mix(in srgb, var(--color-violet-400) 40%, transparent),
+      0 4px 20px color-mix(in srgb, var(--color-violet-500) 25%, transparent);
   }
 }
 </style>

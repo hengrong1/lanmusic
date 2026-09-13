@@ -9,6 +9,7 @@ import { toast } from '@/composables/useToast'
 import { BaseInput, BaseTextarea, BaseButton } from '@/components/ui'
 import { useI18n } from 'vue-i18n'
 import { errorText } from '@/i18n/error'
+import { dialogOverlayClass, dialogPanelTransition, dialogDraggable } from '@/composables/useDialogPrefs'
 
 /**
  * 编辑歌单弹层：集中修改名称、简介；只读展示创建时间 / 歌曲数 / 封面；删除歌单。
@@ -117,15 +118,21 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 </script>
 
 <template>
-  <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-6" @click.self="emit('close')">
-    <div
-      class="flex w-full max-w-md flex-col overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-2xl dark:border-zinc-700 dark:bg-zinc-900"
-    >
-      <!-- 标题栏 -->
-      <div class="flex shrink-0 items-center justify-between border-b border-zinc-200 px-5 py-4 dark:border-zinc-800">
-        <h2 class="text-base font-semibold text-zinc-900 dark:text-zinc-50">{{ $t('playlist.edit') }}</h2>
-        <BaseButton variant="ghost" size="xs" :icon="X" v-tooltip="$t('common.close')" :aria-label="$t('common.close')" @click="emit('close')" />
-      </div>
+  <div :class="[dialogOverlayClass('z-50'), 'p-6']" @click.self="emit('close')">
+    <Transition v-bind="dialogPanelTransition" appear>
+      <div
+        data-dialog-panel
+        class="flex w-full max-w-md flex-col overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-2xl dark:border-zinc-700 dark:bg-zinc-900"
+      >
+        <!-- 标题栏（可拖动） -->
+        <div
+          v-drag-dialog
+          class="flex shrink-0 items-center justify-between border-b border-zinc-200 px-5 py-4 dark:border-zinc-800"
+          :class="dialogDraggable() ? 'cursor-move select-none' : ''"
+        >
+          <h2 class="text-base font-semibold text-zinc-900 dark:text-zinc-50">{{ $t('playlist.edit') }}</h2>
+          <BaseButton variant="ghost" size="xs" :icon="X" data-no-drag v-tooltip="$t('common.close')" :aria-label="$t('common.close')" @click="emit('close')" />
+        </div>
 
       <!-- 表单 -->
       <div class="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
@@ -174,5 +181,6 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
         </BaseButton>
       </div>
     </div>
+    </Transition>
   </div>
 </template>

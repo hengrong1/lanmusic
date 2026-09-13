@@ -17,17 +17,20 @@ import { MagnifierIcon as Search } from '@solar-icons/vue/linear/magnifier'
 import { PaletteIcon as Palette } from '@solar-icons/vue/linear/palette'
 import { PlayIcon as Play } from '@solar-icons/vue/linear/play'
 import { RefreshIcon as LoaderCircle } from '@solar-icons/vue/linear/refresh'
+import { RestartIcon as RotateCcw } from '@solar-icons/vue/linear/restart'
 import { RefreshIcon as RefreshCw } from '@solar-icons/vue/linear/refresh'
 import { SettingsIcon as Settings } from '@solar-icons/vue/linear/settings'
 import { SubtitlesIcon as Subtitles } from '@solar-icons/vue/linear/subtitles'
 import { TrashBin2Icon as Trash2 } from '@solar-icons/vue/linear/trash-bin-2'
 import { useLibraryStore } from '@/stores/library'
 import { useTheme, type ThemeMode } from '@/composables/useTheme'
+import { useThemeColor } from '@/composables/useThemeColor'
 import { toast } from '@/composables/useToast'
 import { confirmDialog } from '@/composables/useConfirm'
 import { useStagger } from '@/composables/useStagger'
 import { useDesktopLyrics } from '@/composables/useDesktopLyrics'
 import { getAppFont, setAppFont } from '@/composables/useAppFont'
+import { dialogBlur, dialogDraggable, type DialogBlur } from '@/composables/useDialogPrefs'
 import { getPreventSleep, setPreventSleepSetting } from '@/composables/usePowerGuard'
 import { useUpdater } from '@/composables/useUpdater'
 import { usePlayerStore } from '@/stores/player'
@@ -54,6 +57,8 @@ import { hexToRgba } from '@/utils/color'
 
 const library = useLibraryStore()
 const { mode, setTheme } = useTheme()
+// ---- 主题色：Ant Design 色板预设（覆盖 --color-violet-* 变量全局换肤，见 useThemeColor.ts） ----
+const { themeColor, presets, setThemeColor } = useThemeColor()
 const { enabled: dlEnabled, toggle: dlToggle, config: dlConfig } = useDesktopLyrics()
 const player = usePlayerStore()
 const { t, locale } = useI18n()
@@ -150,6 +155,69 @@ onMounted(() => {
         closeAction.value = v
         localStorage.setItem('lm.closeAction', v)
       }
+    })
+    .catch(() => {})
+})
+
+// ---- 歌词来源优先级（设置 → 歌词）----
+// 值为逗号分隔的来源顺序，Rust 侧取歌词时按此顺序尝试（见 src-tauri/src/lyrics.rs lyric_priority）
+const LYRIC_PRIORITY_KEY = 'lm.lyricPriority'
+const LYRIC_PRIORITY_PARTS = ['qrc', 'lrc', 'embedded'] as const
+const LYRIC_SRC_LABEL_KEYS = {
+  qrc: 'settings.lyricSrcQrc',
+  lrc: 'settings.lyricSrcLrc',
+  embedded: 'settings.lyricSrcEmbedded',
+} as const
+type LyricSrcPart = (typeof LYRIC_PRIORITY_PARTS)[number]
+
+/** 解析并修补顺序：非法项忽略、重复去重、缺失层级按默认顺序补齐（三种来源都保留） */
+function normalizeLyricPriority(v: string | null | undefined): string {
+  const out: LyricSrcPart[] = []
+  for (const part of (v ?? '').split(',')) {
+    const p = part.trim() as LyricSrcPart
+    if ((LYRIC_PRIORITY_PARTS as readonly string[]).includes(p) && !out.includes(p)) {
+      out.push(p)
+    }
+  }
+  for (const p of LYRIC_PRIORITY_PARTS) {
+    if (!out.includes(p)) out.push(p)
+  }
+  return out.join(',')
+}
+
+/** N 个来源的全排列 → 6 个预设顺序选项（标签形如「外挂 QRC → 外挂 LRC → 内嵌歌词」） */
+function permutations<T>(items: T[]): T[][] {
+  if (items.length <= 1) return [items]
+  return items.flatMap((item, i) =>
+    permutations(items.filter((_, j) => j !== i)).map((rest) => [item, ...rest]),
+  )
+}
+const lyricPriority = ref(normalizeLyricPriority(localStorage.getItem(LYRIC_PRIORITY_KEY)))
+let lyricPriorityTouched = false
+const lyricPriorityOptions = computed<SelectOption[]>(() =>
+  permutations([...LYRIC_PRIORITY_PARTS]).map((order) => ({
+    value: order.join(','),
+    label: order.map((s) => t(LYRIC_SRC_LABEL_KEYS[s])).join(' → '),
+  })),
+)
+function onLyricPriorityChange(val: string | number) {
+  const v = normalizeLyricPriority(String(val))
+  lyricPriorityTouched = true // 用户已手动操作：启动期的 SQLite 回读不得再回滚此值
+  lyricPriority.value = v
+  localStorage.setItem(LYRIC_PRIORITY_KEY, v)
+  // 同步到 SQLite，供 Rust 侧取歌词时读取；当前曲目歌词按新优先级立即重载
+  api.setSetting(LYRIC_PRIORITY_KEY, v).catch(() => {})
+  player.reloadLyrics()
+  toast(t('settings.lyricPrioritySaved'))
+}
+onMounted(() => {
+  api
+    .getSetting(LYRIC_PRIORITY_KEY)
+    .then((v) => {
+      if (lyricPriorityTouched || !v) return
+      const n = normalizeLyricPriority(v)
+      lyricPriority.value = n
+      localStorage.setItem(LYRIC_PRIORITY_KEY, n)
     })
     .catch(() => {})
 })
@@ -478,6 +546,40 @@ onMounted(() => {
   spyRaf = requestAnimationFrame(updateActiveFromScroll)
 })
 
+// ---- 弹窗偏好（外观）：可拖动 + 背景模糊度；弹窗打开时读取，立即生效于下一个弹窗 ----
+const dialogDragOn = ref(dialogDraggable())
+function setDialogDrag(v: boolean) {
+  dialogDragOn.value = v
+  localStorage.setItem('lm.dialogDrag', v ? '1' : '0')
+}
+const dialogBlurLevel = ref<DialogBlur>(dialogBlur())
+const dialogBlurOptions = computed<SelectOption[]>(() => [
+  { value: 'none', label: t('settings.blurNone') },
+  { value: 'sm', label: t('settings.blurLight') },
+  { value: 'md', label: t('settings.blurMedium') },
+  { value: 'lg', label: t('settings.blurHeavy') },
+])
+function onDialogBlur(v: string | number) {
+  dialogBlurLevel.value = v as DialogBlur
+  localStorage.setItem('lm.dialogBlur', String(v))
+}
+
+// ---- 播放页专注模式（默认开启、5 秒；App.vue 播放时按此计时隐藏控制条）----
+const focusModeOn = ref(localStorage.getItem('lm.focusMode') !== '0')
+function setFocusMode(v: boolean) {
+  focusModeOn.value = v
+  localStorage.setItem('lm.focusMode', v ? '1' : '0')
+}
+const FOCUS_DELAY_KEY = 'lm.focusDelay'
+const focusDelay = ref(Number(localStorage.getItem(FOCUS_DELAY_KEY)) || 5)
+const focusDelayOptions = computed<SelectOption[]>(() =>
+  [3, 5, 8, 10, 15, 30].map((s) => ({ value: s, label: t('settings.focusDelaySecs', { value: s }) })),
+)
+function onFocusDelay(v: string | number) {
+  focusDelay.value = Number(v)
+  localStorage.setItem(FOCUS_DELAY_KEY, String(v))
+}
+
 const appVersion = ref('')
 onMounted(async () => {
   try {
@@ -571,6 +673,10 @@ async function toggleScanSubdirs(s: Source, val?: boolean) {
 // ---- 跳过目录：扫描时忽略的目录名（与内置 NAS 回收站/系统目录合并生效）----
 // 存档沿用逗号分隔字符串（后端 load_skip_dirs 已按逗号/换行拆分），前端以标签数组编辑
 const SKIP_DIRS_KEY = 'scan.skipDirs'
+/** 提示中的示例目录名：经插值参数传入（@/$ 是 vue-i18n 消息语法的特殊字符，不能直接写进文案） */
+const skipDirExamples = computed(() =>
+  ['#recycle', '@eaDir', '$RECYCLE.BIN'].join(t('common.listSep')),
+)
 const skipDirs = ref<string[]>([])
 /** 最近一次成功保存的值（null = 还没从 SQLite 读到），用于判断标签变化是否需要落库 */
 let skipDirsSaved: string | null = null
@@ -633,6 +739,26 @@ async function loadRemovedTracks() {
 function removedReasonLabel(reason: string) {
   return reason === 'scan' ? t('settings.removedTracksScan') : t('settings.removedTracksManual')
 }
+/** 还原：确认文件仍在后触发来源增量扫描，重新入库并删除记录 */
+const restoringRemoved = ref(false)
+async function restoreRemoved(ids: number[]) {
+  if (!ids.length || restoringRemoved.value) return
+  restoringRemoved.value = true
+  try {
+    const r = await api.restoreRemovedTracks(ids)
+    if (r.restored > 0) {
+      removedTracks.value = removedTracks.value.filter((x) => !ids.includes(x.id))
+      toast(t('settings.removedRestoreStarted', { count: r.restored }))
+    }
+    if (r.missing > 0) {
+      toast(t('settings.removedRestoreMissing', { count: r.missing }), r.restored > 0 ? 'info' : 'error')
+    }
+  } catch (e) {
+    toast(errorText(e), 'error')
+  } finally {
+    restoringRemoved.value = false
+  }
+}
 async function clearRemovedTracks() {
   const ok = await confirmDialog({
     title: t('settings.removedTracksClearTitle'),
@@ -662,19 +788,23 @@ const showWebdavLimits = computed(() => showWebdav.value || library.sources.some
 </script>
 
 <template>
-  <div ref="root" class="flex h-full min-h-0">
-    <!-- 左侧：分类导航 -->
-    <aside class="flex w-56 shrink-0 flex-col border-r border-zinc-100 px-3 pt-5 pb-4 dark:border-zinc-800">
-      <div class="px-3 pb-5">
-        <p data-stagger class="text-xs font-semibold tracking-wider text-violet-500 uppercase">{{ t('settings.title') }}</p>
-        <h1 data-stagger class="mt-0.5 text-2xl font-bold text-zinc-900 dark:text-zinc-50">{{ t('settings.preferences') }}</h1>
-      </div>
-      <nav class="min-h-0 flex-1 space-y-0.5 overflow-y-auto" :aria-label="t('settings.title')">
+  <div ref="root" class="flex h-full min-h-0 flex-col">
+    <!-- 顶部：标题 + 横向分类目录（原左侧竖排目录，改顶部后内容区通栏更宽敞） -->
+    <header
+      class="flex shrink-0 items-center justify-between gap-4 border-b border-zinc-100 py-3 pl-6 pr-4 dark:border-zinc-800"
+    >
+      <h1 data-stagger class="shrink-0 text-lg font-bold text-zinc-900 dark:text-zinc-50">
+        {{ t('settings.preferences') }}
+      </h1>
+      <nav
+        class="flex min-w-0 items-center gap-1 overflow-x-auto pl-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        :aria-label="t('settings.title')"
+      >
         <button
           v-for="c in categories"
           :key="c.id"
           type="button"
-          class="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm transition-colors"
+          class="flex shrink-0 items-center gap-2 rounded-lg px-3 py-1.5 text-left text-sm transition-colors"
           :class="
             active === c.id
               ? 'bg-violet-50 font-medium text-violet-600 dark:bg-violet-500/10 dark:text-violet-300'
@@ -683,15 +813,15 @@ const showWebdavLimits = computed(() => showWebdav.value || library.sources.some
           :aria-current="active === c.id ? 'page' : undefined"
           @click="scrollToSection(c.id)"
         >
-          <!-- 选中分类的图标用 bold 变体，与左侧栏选中态一致 -->
+          <!-- 选中分类的图标用 bold 变体，与侧栏选中态一致 -->
           <component :is="active === c.id ? c.iconActive : c.icon" class="h-4 w-4 shrink-0" />
-          <span class="truncate">{{ c.label }}</span>
+          <span class="whitespace-nowrap">{{ c.label }}</span>
         </button>
       </nav>
-    </aside>
+    </header>
 
-    <!-- 右侧：全部分区纵向铺开，随滚动浏览；左侧目录点击跳转 -->
-    <div ref="contentEl" class="min-w-0 flex-1 overflow-y-auto px-6 pt-5 pb-8" @scroll.passive="onContentScroll">
+    <!-- 全部分区纵向铺开，随滚动浏览；顶部目录点击跳转 -->
+    <div ref="contentEl" class="min-h-0 flex-1 overflow-y-auto px-6 pt-5 pb-8" @scroll.passive="onContentScroll">
       <div class="mx-auto max-w-2xl">
       <!-- ===== 音乐库 ===== -->
         <section :id="`settings-section-library`" data-settings-section="library" class="scroll-mt-4">
@@ -721,68 +851,75 @@ const showWebdavLimits = computed(() => showWebdav.value || library.sources.some
                   :key="s.id"
                   class="rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900"
                 >
+                  <!-- 图标跨「名称+地址」两行垂直居中；内容列：行1 名称+开关+按钮，行2 地址+曲目/时间 -->
                   <div class="flex items-center gap-3">
                     <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">
                       <component :is="s.kind === 'webdav' ? Globe : HardDrive" class="h-4.5 w-4.5" />
                     </div>
                     <div class="min-w-0 flex-1">
-                      <p class="truncate text-sm font-medium text-zinc-800 dark:text-zinc-100">{{ s.name }}</p>
-                      <p class="truncate text-xs text-zinc-500" v-tooltip="s.basePath ?? s.baseUrl ?? ''">{{ s.basePath ?? s.baseUrl }}</p>
-                    </div>
-                    <span class="shrink-0 text-xs text-zinc-400">
-                      {{ t('settings.sourceTrackCount', { count: s.trackCount }) }} · {{ fmtTime(s.lastScanAt) }}
-                    </span>
-                    <div
-                      class="flex shrink-0 items-center gap-1.5 text-xs text-zinc-500"
-                      v-tooltip="t('settings.quickImportTip')"
-                    >
-                      {{ t('settings.quickImport') }}
-                      <BaseSwitch
-                        :model-value="s.fastImport"
-                        size="sm"
-                        @update:model-value="(v) => toggleFastImport(s, v)"
-                      />
-                    </div>
-                    <div
-                      class="flex shrink-0 items-center gap-1.5 text-xs text-zinc-500"
-                      v-tooltip="t('settings.scanSubdirsTip')"
-                    >
-                      {{ t('settings.scanSubdirs') }}
-                      <BaseSwitch
-                        :model-value="s.scanSubdirs"
-                        size="sm"
-                        @update:model-value="(v) => toggleScanSubdirs(s, v)"
-                      />
-                    </div>
-                    <div class="flex shrink-0 items-center gap-1">
-                      <BaseButton
-                        variant="ghost"
-                        size="xs"
-                        :disabled="scannedSourceIds.has(s.id)"
-                        v-tooltip="t('settings.fullParseTip')"
-                        @click="rescanFull(s)"
-                      >
-                        {{ t('settings.fullParse') }}
-                      </BaseButton>
-                      <BaseButton
-                        variant="ghost"
-                        size="xs"
-                        :icon="RefreshCw"
-                        :loading="scannedSourceIds.has(s.id)"
-                        :disabled="scannedSourceIds.has(s.id)"
-                        v-tooltip="t('settings.incrementalScan')"
-                        :aria-label="t('settings.incrementalScan')"
-                        @click="rescan(s.id)"
-                      />
-                      <BaseButton
-                        variant="ghost"
-                        tone="danger"
-                        size="xs"
-                        :icon="Trash2"
-                        v-tooltip="t('common.remove')"
-                        :aria-label="t('common.remove')"
-                        @click="remove(s)"
-                      />
+                      <div class="flex items-center gap-3">
+                        <p class="min-w-0 flex-1 truncate text-sm font-medium text-zinc-800 dark:text-zinc-100">{{ s.name }}</p>
+                        <div
+                          class="flex shrink-0 items-center gap-1.5 text-xs text-zinc-500"
+                          v-tooltip="t('settings.quickImportTip')"
+                        >
+                          {{ t('settings.quickImport') }}
+                          <BaseSwitch
+                            :model-value="s.fastImport"
+                            size="sm"
+                            @update:model-value="(v) => toggleFastImport(s, v)"
+                          />
+                        </div>
+                        <div
+                          class="flex shrink-0 items-center gap-1.5 text-xs text-zinc-500"
+                          v-tooltip="t('settings.scanSubdirsTip')"
+                        >
+                          {{ t('settings.scanSubdirs') }}
+                          <BaseSwitch
+                            :model-value="s.scanSubdirs"
+                            size="sm"
+                            @update:model-value="(v) => toggleScanSubdirs(s, v)"
+                          />
+                        </div>
+                        <div class="flex shrink-0 items-center gap-1">
+                          <BaseButton
+                            variant="ghost"
+                            size="xs"
+                            :disabled="scannedSourceIds.has(s.id)"
+                            v-tooltip="t('settings.fullParseTip')"
+                            @click="rescanFull(s)"
+                          >
+                            {{ t('settings.fullParse') }}
+                          </BaseButton>
+                          <BaseButton
+                            variant="ghost"
+                            size="xs"
+                            :icon="RefreshCw"
+                            :loading="scannedSourceIds.has(s.id)"
+                            :disabled="scannedSourceIds.has(s.id)"
+                            v-tooltip="t('settings.incrementalScan')"
+                            :aria-label="t('settings.incrementalScan')"
+                            @click="rescan(s.id)"
+                          />
+                          <BaseButton
+                            variant="ghost"
+                            tone="danger"
+                            size="xs"
+                            :icon="Trash2"
+                            v-tooltip="t('common.remove')"
+                            :aria-label="t('common.remove')"
+                            @click="remove(s)"
+                          />
+                        </div>
+                      </div>
+                      <div class="mt-1.5 flex items-center gap-3">
+                        <p class="min-w-0 flex-1 truncate text-xs text-zinc-500" v-tooltip="s.basePath ?? s.baseUrl ?? ''">
+                          {{ s.basePath ?? s.baseUrl }}
+                        </p>
+                        <span class="shrink-0 text-xs text-zinc-400">
+                          {{ t('settings.sourceTrackCount', { count: s.trackCount }) }} · {{ fmtTime(s.lastScanAt) }}
+                        </span>
+                      </div>
                     </div>
                   </div>
                   <!-- WebDAV 来源的固有限制，直接写在卡片里（不藏在 tooltip） -->
@@ -829,9 +966,12 @@ const showWebdavLimits = computed(() => showWebdav.value || library.sources.some
               </div>
 
               <!-- 跳过目录：NAS 回收站 / 系统目录内置跳过，可按目录名追加；修改后重新扫描生效 -->
-              <div class="rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
+              <!-- mt-6：与各区块间 space-y-6 同距，避免卡片贴着来源列表与相邻卡片 -->
+              <div class="mt-6 rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
                 <p class="text-sm font-semibold text-zinc-800 dark:text-zinc-100">{{ t('settings.skipDirs') }}</p>
-                <p class="mt-1 text-xs leading-relaxed text-zinc-400">{{ t('settings.skipDirsHint') }}</p>
+                <p class="mt-1 text-xs leading-relaxed text-zinc-400">
+                  {{ t('settings.skipDirsHint', { examples: skipDirExamples }) }}
+                </p>
                 <BaseTagInput
                   v-model="skipDirs"
                   class="mt-3"
@@ -840,7 +980,7 @@ const showWebdavLimits = computed(() => showWebdav.value || library.sources.some
               </div>
 
               <!-- 已移除歌曲：手动移除 / 扫描消失的记录（仅曲目信息，便于找回文件位置）；数量多，列表收在弹出窗里 -->
-              <div class="rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
+              <div class="mt-6 rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
                 <div class="flex flex-wrap items-center justify-between gap-2">
                   <p class="text-sm font-semibold text-zinc-800 dark:text-zinc-100">
                     {{ t('settings.removedTracks') }}
@@ -860,41 +1000,58 @@ const showWebdavLimits = computed(() => showWebdav.value || library.sources.some
                   :title="`${t('settings.removedTracks')}${removedTracks.length ? ` (${removedTracks.length})` : ''}`"
                   @close="removedTracksOpen = false"
                 >
-                  <ul v-if="removedTracks.length" class="max-h-[60vh] space-y-0.5 overflow-y-auto pr-1">
-                    <li
-                      v-for="r in removedTracks"
-                      :key="r.id"
-                      class="flex min-w-0 items-center gap-2 rounded-lg px-2 py-1.5 text-xs hover:bg-zinc-100/70 dark:hover:bg-zinc-800/50"
-                      v-tooltip="r.path"
+                <ul v-if="removedTracks.length" class="max-h-[60vh] space-y-0.5 overflow-y-auto pr-1">
+                  <li
+                    v-for="r in removedTracks"
+                    :key="r.id"
+                    class="group flex min-w-0 items-center gap-2 rounded-lg px-2 py-1.5 text-xs hover:bg-zinc-100/70 dark:hover:bg-zinc-800/50"
+                    v-tooltip="r.path"
+                  >
+                    <span class="min-w-0 flex-1 truncate text-zinc-700 dark:text-zinc-200">{{ r.title }}</span>
+                    <span class="hidden w-36 shrink-0 truncate text-zinc-400 sm:block">{{ r.artist ?? $t('artist.unknownArtist') }}</span>
+                    <span
+                      class="shrink-0 rounded-full px-1.5 py-px text-[10px] font-medium"
+                      :class="
+                        r.reason === 'scan'
+                          ? 'bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-300'
+                          : 'bg-zinc-200 text-zinc-500 dark:bg-zinc-700 dark:text-zinc-300'
+                      "
                     >
-                      <span class="min-w-0 flex-1 truncate text-zinc-700 dark:text-zinc-200">{{ r.title }}</span>
-                      <span class="hidden w-36 shrink-0 truncate text-zinc-400 sm:block">{{ r.artist ?? $t('artist.unknownArtist') }}</span>
-                      <span
-                        class="shrink-0 rounded-full px-1.5 py-px text-[10px] font-medium"
-                        :class="
-                          r.reason === 'scan'
-                            ? 'bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-300'
-                            : 'bg-zinc-200 text-zinc-500 dark:bg-zinc-700 dark:text-zinc-300'
-                        "
-                      >
-                        {{ removedReasonLabel(r.reason) }}
-                      </span>
-                      <span class="shrink-0 tabular-nums text-zinc-400">
-                        {{ new Date(r.removedAt * 1000).toLocaleString() }}
-                      </span>
-                    </li>
-                  </ul>
-                  <p v-else class="py-2 text-xs text-zinc-400">{{ t('settings.removedTracksEmpty') }}</p>
-                  <template #footer>
-                    <BaseButton
-                      variant="ghost"
-                      tone="danger"
-                      size="sm"
-                      :disabled="!removedTracks.length"
-                      @click="clearRemovedTracks"
+                      {{ removedReasonLabel(r.reason) }}
+                    </span>
+                    <span class="shrink-0 tabular-nums text-zinc-400">
+                      {{ new Date(r.removedAt * 1000).toLocaleString() }}
+                    </span>
+                    <button
+                      class="shrink-0 cursor-pointer rounded-md p-1 text-zinc-400 opacity-0 transition hover:bg-zinc-200/70 hover:text-violet-500 group-hover:opacity-100 disabled:cursor-default disabled:opacity-30 dark:hover:bg-zinc-700"
+                      :disabled="restoringRemoved"
+                      v-tooltip="$t('settings.removedRestore')"
+                      :aria-label="$t('settings.removedRestore')"
+                      @click="restoreRemoved([r.id])"
                     >
-                      {{ t('settings.removedTracksClear') }}
-                    </BaseButton>
+                      <RotateCcw class="h-3.5 w-3.5" />
+                    </button>
+                  </li>
+                </ul>
+                <p v-else class="py-2 text-xs text-zinc-400">{{ t('settings.removedTracksEmpty') }}</p>
+                <template #footer>
+                  <BaseButton
+                    variant="secondary"
+                    size="sm"
+                    :disabled="!removedTracks.length || restoringRemoved"
+                    @click="restoreRemoved(removedTracks.map((r) => r.id))"
+                  >
+                    {{ t('settings.removedRestoreAll') }}
+                  </BaseButton>
+                  <BaseButton
+                    variant="ghost"
+                    tone="danger"
+                    size="sm"
+                    :disabled="!removedTracks.length"
+                    @click="clearRemovedTracks"
+                  >
+                    {{ t('settings.removedTracksClear') }}
+                  </BaseButton>
                     <BaseButton variant="secondary" size="sm" @click="removedTracksOpen = false">
                       {{ t('common.close') }}
                     </BaseButton>
@@ -1116,6 +1273,31 @@ const showWebdavLimits = computed(() => showWebdav.value || library.sources.some
                   <span class="text-zinc-600 dark:text-zinc-300">{{ t('settings.theme') }}</span>
                   <BaseButtonGroup :model-value="mode" :items="themeItems" size="sm" @update:model-value="onThemeChange" />
                 </div>
+                <!-- 主题色：Ant Design 色板预设，覆盖 --color-violet-* 变量全局换肤（见 useThemeColor.ts） -->
+                <div class="flex items-center justify-between gap-3">
+                  <span class="shrink-0 text-zinc-600 dark:text-zinc-300">{{ t('settings.themeColor') }}</span>
+                  <div class="flex flex-wrap items-center justify-end gap-1.5">
+                    <button
+                      v-for="p in presets"
+                      :key="p.key"
+                      class="h-5 w-5 cursor-pointer rounded-full transition-transform hover:scale-110"
+                      :class="themeColor === p.key ? 'ring-2 ring-zinc-500 ring-offset-2 ring-offset-white dark:ring-zinc-300 dark:ring-offset-zinc-900' : ''"
+                      :style="{ background: p.scale[5] }"
+                      v-tooltip="t(p.nameKey)"
+                      :aria-label="t(p.nameKey)"
+                      @click="setThemeColor(p.key)"
+                    ></button>
+                    <button
+                      class="flex h-5 w-5 cursor-pointer items-center justify-center rounded-full bg-gradient-to-br from-violet-400 to-violet-600 transition-transform hover:scale-110"
+                      :class="themeColor === null ? 'ring-2 ring-zinc-500 ring-offset-2 ring-offset-white dark:ring-zinc-300 dark:ring-offset-zinc-900' : ''"
+                      v-tooltip="t('settings.themeColorDefault')"
+                      :aria-label="t('settings.themeColorDefault')"
+                      @click="setThemeColor(null)"
+                    >
+                      <Check v-if="themeColor === null" class="h-3 w-3 text-white" />
+                    </button>
+                  </div>
+                </div>
                 <!-- 全局字体：应用于整个软件（含桌面歌词），从系统读取；系统字体多，开启搜索过滤 -->
                 <div class="flex items-center justify-between gap-3 border-t border-zinc-100 pt-4 dark:border-zinc-800">
                   <span class="text-zinc-600 dark:text-zinc-300">{{ t('settings.fontFamily') }}</span>
@@ -1126,6 +1308,26 @@ const showWebdavLimits = computed(() => showWebdav.value || library.sources.some
                       size="sm"
                       searchable
                       @update:model-value="onFontChange"
+                    />
+                  </div>
+                </div>
+                <!-- 弹窗可拖动：按住标题栏拖动位置 -->
+                <div class="flex items-center justify-between gap-3 border-t border-zinc-100 pt-4 dark:border-zinc-800">
+                  <div class="min-w-0">
+                    <p class="text-zinc-600 dark:text-zinc-300">{{ t('settings.dialogDrag') }}</p>
+                    <p class="mt-0.5 text-xs text-zinc-400">{{ t('settings.dialogDragHint') }}</p>
+                  </div>
+                  <BaseSwitch :model-value="dialogDragOn" size="sm" @update:model-value="setDialogDrag" />
+                </div>
+                <!-- 弹窗背景模糊度 -->
+                <div class="flex items-center justify-between gap-3 border-t border-zinc-100 pt-4 dark:border-zinc-800">
+                  <span class="text-zinc-600 dark:text-zinc-300">{{ t('settings.dialogBlur') }}</span>
+                  <div class="w-28">
+                    <BaseSelect
+                      :model-value="dialogBlurLevel"
+                      :options="dialogBlurOptions"
+                      size="sm"
+                      @update:model-value="onDialogBlur"
                     />
                   </div>
                 </div>
@@ -1144,8 +1346,29 @@ const showWebdavLimits = computed(() => showWebdav.value || library.sources.some
           <div class="space-y-6">
             <section>
               <div class="space-y-4 rounded-xl border border-zinc-200 bg-white p-4 text-sm dark:border-zinc-800 dark:bg-zinc-900">
-                <!-- 淡入淡出 -->
+                <!-- 播放页专注模式：播放中鼠标停顿自动隐藏顶栏与播放条 -->
                 <div>
+                  <div class="flex items-center justify-between gap-3">
+                    <div class="min-w-0">
+                      <span class="text-zinc-600 dark:text-zinc-300">{{ t('settings.focusMode') }}</span>
+                      <p class="mt-0.5 text-xs leading-relaxed text-zinc-400">{{ t('settings.focusModeHint') }}</p>
+                    </div>
+                    <BaseSwitch :model-value="focusModeOn" size="sm" @update:model-value="setFocusMode" />
+                  </div>
+                  <div v-if="focusModeOn" class="mt-3 flex items-center justify-between gap-3 border-t border-zinc-100 pt-3 dark:border-zinc-800">
+                    <span class="text-zinc-600 dark:text-zinc-300">{{ t('settings.focusDelay') }}</span>
+                    <div class="w-28">
+                      <BaseSelect
+                        :model-value="focusDelay"
+                        :options="focusDelayOptions"
+                        size="sm"
+                        @update:model-value="onFocusDelay"
+                      />
+                    </div>
+                  </div>
+                </div>
+                <!-- 淡入淡出 -->
+                <div class="border-t border-zinc-100 pt-4 dark:border-zinc-800">
                   <div class="flex items-center justify-between gap-3">
                     <span class="text-zinc-600 dark:text-zinc-300">{{ t('settings.fadeInOut') }}</span>
                     <BaseSwitch
@@ -1258,6 +1481,23 @@ const showWebdavLimits = computed(() => showWebdav.value || library.sources.some
             <p class="mt-0.5 text-xs text-zinc-400">{{ t('settings.lyricsDesc') }}</p>
           </header>
           <div class="space-y-6">
+            <!-- 歌词来源优先级 -->
+            <section>
+              <div class="flex items-center justify-between gap-3 rounded-xl border border-zinc-200 bg-white p-4 text-sm dark:border-zinc-800 dark:bg-zinc-900">
+                <div class="min-w-0">
+                  <p class="text-zinc-600 dark:text-zinc-300">{{ t('settings.lyricPriority') }}</p>
+                  <p class="mt-0.5 text-xs text-zinc-400">{{ t('settings.lyricPriorityDesc') }}</p>
+                </div>
+                <div class="w-64 shrink-0">
+                  <BaseSelect
+                    :model-value="lyricPriority"
+                    :options="lyricPriorityOptions"
+                    size="sm"
+                    @update:model-value="onLyricPriorityChange"
+                  />
+                </div>
+              </div>
+            </section>
             <section>
               <div class="rounded-xl border border-zinc-200 bg-white p-4 text-sm dark:border-zinc-800 dark:bg-zinc-900">
                 <!-- 预览：与浮窗样式一致，随下方设置实时变化 -->

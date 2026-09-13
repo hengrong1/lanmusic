@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { onMounted, onBeforeUnmount } from 'vue'
+import { onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import { CloseIcon as X } from '@solar-icons/vue/linear/close'
+import { dialogOverlayClass, dialogDraggable } from '@/composables/useDialogPrefs'
 
 const props = withDefaults(
   defineProps<{
@@ -35,6 +36,21 @@ function onKey(e: KeyboardEvent) {
 
 onMounted(() => window.addEventListener('keydown', onKey))
 onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
+
+// 每次打开恢复居中：清掉上次拖动留下的定位样式
+const panelEl = ref<HTMLElement | null>(null)
+watch(
+  () => props.open,
+  (v) => {
+    if (v && panelEl.value) {
+      panelEl.value.style.position = ''
+      panelEl.value.style.left = ''
+      panelEl.value.style.top = ''
+      panelEl.value.style.margin = ''
+      panelEl.value.style.width = ''
+    }
+  },
+)
 </script>
 
 <template>
@@ -47,11 +63,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
       leave-from-class="opacity-100"
       leave-to-class="opacity-0"
     >
-      <div
-        v-if="open"
-        class="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 backdrop-blur-sm"
-        @click.self="closable && close()"
-      >
+      <div v-if="open" :class="dialogOverlayClass()" @click.self="closable && close()">
         <Transition
           enter-active-class="transition duration-200 ease-out"
           enter-from-class="opacity-0 scale-95"
@@ -62,15 +74,23 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
         >
           <div
             v-if="open"
+            ref="panelEl"
+            data-dialog-panel
             class="w-full rounded-2xl border border-zinc-200 bg-white shadow-2xl dark:border-zinc-700 dark:bg-zinc-800"
             :class="sizeClasses[size]"
           >
-            <div v-if="title || closable" class="flex items-center justify-between border-b border-zinc-100 px-5 py-4 dark:border-zinc-700">
+            <div
+              v-if="title || closable"
+              v-drag-dialog
+              class="flex items-center justify-between border-b border-zinc-100 px-5 py-4 dark:border-zinc-700"
+              :class="dialogDraggable() ? 'cursor-move select-none' : ''"
+            >
               <h2 v-if="title" class="text-base font-semibold text-zinc-900 dark:text-zinc-50">
                 {{ title }}
               </h2>
               <button
                 v-if="closable"
+                data-no-drag
                 class="cursor-pointer rounded-lg p-1 text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-700 dark:hover:text-zinc-200"
                 @click="close()"
               >

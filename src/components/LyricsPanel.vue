@@ -3,6 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { PlayIcon as Play } from '@solar-icons/vue/bold/play'
 import { usePlayerStore } from '@/stores/player'
 import { useI18n } from 'vue-i18n'
+import type { QrcWord } from '@/types'
 
 const { t } = useI18n()
 const player = usePlayerStore()
@@ -10,6 +11,48 @@ const container = ref<HTMLElement | null>(null)
 
 /** 歌词行对齐：center = 居中（经典/上下），left = 靠左（黑胶） */
 withDefaults(defineProps<{ align?: 'center' | 'left' }>(), { align: 'center' })
+
+// ---- QRC 逐字高亮：rAF 逐帧驱动当前行的单词填充进度 ----
+const hasWords = computed(() => !!player.lyricsWordLines?.length)
+/** 当前播放位置（毫秒，已扣歌词偏移）：rAF 直读 audio.currentTime，比 timeupdate 事件平滑得多 */
+const karaokeMs = ref(0)
+let karaokeRaf = 0
+function karaokeLoop() {
+  karaokeMs.value = (player.audio.currentTime - player.lyricOffset) * 1000
+  karaokeRaf = requestAnimationFrame(karaokeLoop)
+}
+watch(
+  hasWords,
+  (w) => {
+    cancelAnimationFrame(karaokeRaf)
+    if (w) karaokeRaf = requestAnimationFrame(karaokeLoop)
+  },
+  { immediate: true },
+)
+onBeforeUnmount(() => cancelAnimationFrame(karaokeRaf))
+
+/** 活动行是否为逐字行（QRC 行携带多个带时间的单词） */
+function isWordLine(i: number): boolean {
+  const line = player.lyricsWordLines?.[i]
+  return !!line && line.words.length > 1
+}
+
+/** 未演唱部分的颜色：压暗的白，与未激活行同调 */
+const UNSUNG = 'rgba(255, 255, 255, 0.38)'
+
+/** 单词样式：按播放进度做双色渐变填充（已唱强调色 → 未唱暗色） */
+function wordStyle(w: QrcWord): Record<string, string> {
+  const dur = Math.max(1, w.endTime - w.startTime)
+  const p = Math.min(1, Math.max(0, (karaokeMs.value - w.startTime) / dur))
+  if (p >= 1) return { color: 'var(--np-accent, #ffffff)' }
+  if (p <= 0) return { color: UNSUNG }
+  return {
+    background: `linear-gradient(90deg, var(--np-accent, #ffffff) ${p * 100}%, ${UNSUNG} ${p * 100}%)`,
+    WebkitBackgroundClip: 'text',
+    backgroundClip: 'text',
+    color: 'transparent',
+  }
+}
 
 /** 用户手动滚动后暂停自动跟随 8s（翻看歌词不被拽回）；切歌/歌词重载时立即恢复跟随 */
 const FOLLOW_RESUME_MS = 8000
@@ -99,6 +142,11 @@ onMounted(() => void nextTick(scrollToActive))
     <!-- 加载中 -->
     <p v-if="player.lyricsLoading" class="text-center text-sm text-zinc-500">{{ $t('lyrics.loading') }}</p>
 
+    <!-- 加密/不支持的歌词格式：明确提示，不展示乱码 -->
+    <p v-else-if="player.lyricsUnsupported" class="text-center text-sm text-zinc-500">
+      {{ $t('lyrics.unsupported') }}
+    </p>
+
     <!-- 时间轴歌词 -->
     <template v-else-if="player.lyricsLines?.length">
       <div
@@ -143,7 +191,16 @@ onMounted(() => void nextTick(scrollToActive))
               : { fontSize: lyricFontSize(i, line.text) }
           "
         >
-          <template v-if="line.text">{{ line.text }}</template>
+          <!-- QRC 逐字行（活动行）：单词按播放进度渐变填充；其余行显示整行文本 -->
+          <template v-if="i === player.activeLyricIndex && isWordLine(i)">
+            <span
+              v-for="(w, wi) in player.lyricsWordLines?.[i]?.words ?? []"
+              :key="wi"
+              class="whitespace-pre-wrap"
+              :style="wordStyle(w)"
+            >{{ w.word }}</span>
+          </template>
+          <template v-else-if="line.text">{{ line.text }}</template>
           <!-- 间奏占位：折叠后的一行，极简 -->
           <span v-else class="tracking-[0.5em] opacity-30">···</span>
         </p>

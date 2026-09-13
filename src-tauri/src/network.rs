@@ -315,7 +315,7 @@ pub mod webdav {
             ));
         }
         let bytes = resp.bytes().map_err(|e| e.to_string())?;
-        Ok(Some(String::from_utf8_lossy(&bytes).into_owned()))
+        Ok(Some(crate::lyrics::decode_lyric_bytes(&bytes)))
     }
 
     #[cfg(test)]

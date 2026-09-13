@@ -12,6 +12,7 @@ import { useLibraryStore } from '@/stores/library'
 import { toast } from '@/composables/useToast'
 import { useI18n } from 'vue-i18n'
 import { errorText } from '@/i18n/error'
+import { dialogOverlayClass, dialogPanelTransition } from '@/composables/useDialogPrefs'
 
 /**
  * 歌单选歌弹层：搜索曲库 + 多选添加。
@@ -163,8 +164,10 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-6" @click.self="emit('close')">
+  <div :class="[dialogOverlayClass('z-50'), 'p-6']" @click.self="emit('close')">
+    <Transition v-bind="dialogPanelTransition" appear>
     <div
+      data-dialog-panel
       class="flex h-[600px] max-h-full w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-2xl dark:border-zinc-700 dark:bg-zinc-900"
     >
       <!-- 搜索栏 -->
@@ -291,5 +294,6 @@ onBeforeUnmount(() => {
         </div>
       </div>
     </div>
+    </Transition>
   </div>
 </template>

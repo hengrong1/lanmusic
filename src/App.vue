@@ -30,6 +30,7 @@ import { ensureAnalyser } from '@/composables/useSpectrum'
 import { useDesktopLyrics } from '@/composables/useDesktopLyrics'
 import { useTrayMenu } from '@/composables/useTrayMenu'
 import { useMvPlayer } from '@/composables/useMvPlayer'
+import { useThemeColor } from '@/composables/useThemeColor'
 
 const library = useLibraryStore()
 const player = usePlayerStore()
@@ -63,6 +64,8 @@ const nowPlaying = ref(false)
 
 // 桌面歌词：初始化同步监听并恢复上次开启状态（主窗口内仅此一次）
 useDesktopLyrics()
+// 自定义主题色：恢复上次选择并覆盖 --color-violet-* 变量（模块导入时已应用，此处保持初始化口径一致）
+useThemeColor()
 // 系统托盘菜单：向 tray 弹窗同步播放状态并处理其系统级指令
 useTrayMenu()
 
@@ -76,14 +79,21 @@ let focusTimer: ReturnType<typeof setTimeout> | undefined
 /** 专注模式启用条件：播放页打开 且 正在播放（暂停时不做专注隐藏）；皮肤设置弹层 / 播放队列面板展开时暂停专注，
  * 避免用户调整皮肤或翻看队列时停留超过 5s 被触发隐藏（队列面板锚定播放条，播放条一藏面板就悬空） */
 const skinOpen = useSkinOpen()
+/** 专注模式开关与进入延时（设置 → 播放；默认开启、5 秒）。
+ * computed 依赖播放/面板状态，设置变更在下一次状态变化后生效 */
+const focusEnabled = () => localStorage.getItem('lm.focusMode') !== '0'
+const focusDelayMs = () => {
+  const s = Number(localStorage.getItem('lm.focusDelay'))
+  return Number.isFinite(s) && s > 0 ? s * 1000 : 5000
+}
 const focusActive = computed(
-  () => nowPlaying.value && player.playing && !skinOpen.value && !queueOpen.value,
+  () => focusEnabled() && nowPlaying.value && player.playing && !skinOpen.value && !queueOpen.value,
 )
 
-/** 启动/重置专注计时（5s 后隐藏控制） */
+/** 启动/重置专注计时（延时可在设置调整） */
 function armFocusTimer() {
   clearTimeout(focusTimer)
-  focusTimer = setTimeout(() => (npFocus.value = true), 5000)
+  focusTimer = setTimeout(() => (npFocus.value = true), focusDelayMs())
 }
 /** 取消专注并清掉计时 */
 function clearFocus() {
