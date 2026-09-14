@@ -64,8 +64,10 @@ export function plainLines(raw: string): string[] {
     .filter((l) => l.length > 0)
 }
 
-/** 增强版 LRC 的字级时间标签：`<mm:ss.xx>` / `<mm:ss.xxx>`（Enhanced LRC / A2 扩展） */
+/** A2 / Enhanced LRC 的字级标签（尖括号）：`<mm:ss.xx>` */
 const WORD_TIME_TAG = /<(\d{1,3}):(\d{1,2})(?:[.:](\d{1,3}))?>/g
+/** 元数据标签行（`[ti:]` / `[ar:]` / `[al:]` / `[by:]` / `[offset:]` 等），不产出歌词行 */
+const META_TAG = /^\s*\[[a-zA-Z]/
 
 /** 时间标签匹配结果 → 毫秒 */
 function tagToMs(m: RegExpMatchArray): number {
@@ -76,78 +78,151 @@ function tagToMs(m: RegExpMatchArray): number {
   return Math.round((mm * 60 + ss + frac) * 1000)
 }
 
+/** 词段：起点（毫秒）+ 文本（可含空格，不 trim——逐字格式里空格也是独立一段） */
+interface WordSeg {
+  start: number
+  text: string
+}
+
+/** 词段 → QrcLine（每段终点 = 下一段起点；末段用行结束标记或自身，稍后统一修正） */
+function toQrcLine(segs: WordSeg[], endHint?: number): QrcLine {
+  const words: QrcWord[] = segs.map((s, i) => ({
+    word: s.text,
+    startTime: s.start,
+    endTime: segs[i + 1] ? segs[i + 1].start : endHint ?? s.start,
+  }))
+  return {
+    startTime: words[0].startTime,
+    endTime: words[words.length - 1].endTime,
+    text: words.map((w) => w.word).join(''),
+    words,
+  }
+}
+
+/** A2 尖括号写法：`<mm:ss.xx>词` 序列 → 词段；标记前的裸文本归到行首时间（少见但存在） */
+function splitAngleWords(src: string, fallbackStart: number): WordSeg[] {
+  const marks = [...src.matchAll(new RegExp(WORD_TIME_TAG.source, 'g'))]
+  const words: WordSeg[] = []
+  const head = src.slice(0, marks[0]?.index ?? src.length).trim()
+  if (head) words.push({ start: fallbackStart, text: head })
+  marks.forEach((m, i) => {
+    const text = src.slice(
+      (m.index ?? 0) + m[0].length,
+      i + 1 < marks.length ? (marks[i + 1].index ?? src.length) : src.length,
+    )
+    if (text) words.push({ start: tagToMs(m), text })
+  })
+  return words
+}
+
 /**
- * 解析「增强版 LRC」（Enhanced LRC / A2 扩展）：行内含 `<mm:ss.xx>` 字级时间戳，
- * 产出与 QRC 同构的逐字数据（毫秒），直接复用现有逐字渲染链路
- * （歌词面板 / 播放条歌词 / 桌面歌词都按 `words[].word` + 起止时间做渐变点亮）。
+ * 逐字歌词解析（一个入口兼容多种字级时间戳写法），产出与 QRC 同构的数据（毫秒），
+ * 直接复用现有逐字渲染链路（歌词面板 / 播放条歌词 / 桌面歌词）。
  *
- * 示例：`[00:12.00]<00:12.00>你<00:12.35>好<00:13.10>世界`
- * - 行级 `[...]` 决定行起始时间（与普通 LRC 相同；同行多标签各产一行，适配重复副歌）
- * - 行内 `<...>` 给每个字/词的起点，终点为下一标记；行末词延伸到下一行起点
- * - 首个 `<...>` 之前的文本（少见）并入行首，起点取行时间
- * - 全曲没有任何 `<...>` 标记时返回 null（交由 parseLrc 按行处理）
+ * 支持的写法：
+ * ① A2 / Enhanced LRC：`[00:12.00]<00:12.00>你<00:12.35>好<00:13.10>世界`
+ * ② 多标签逐字（每段前带同级方括号时间戳，常见于逐字 LRC 导出）：
+ *    `[00:00.000]身[00:00.582]骑[00:01.164]白[00:02.328] [00:02.910]-[00:09.312]`
+ * ③ 混合：同一文件里部分行逐字、部分行整行（整行仍按行显示，不做伪逐字）
+ *
+ * 其它兼容：
+ * - 元数据标签忽略；`[offset:±ms]` 作为整曲时间偏移生效
+ * - 行尾「有标签无文本」（如样本结尾的 `[00:09.312]`）作为该行结束时间，不当成一段
+ * - 行中/行首的空标签（`[00:12][01:20]同一句`）视为重复行：内容整体平移克隆，各产一行
+ * - 全曲无任何可识别字级标记时返回 null（交由 parseLrc 按行处理）
  */
-export function parseEnhancedLrc(raw: string): QrcLine[] | null {
-  if (!raw || !raw.includes('<')) return null
+export function parseWordLrc(raw: string): QrcLine[] | null {
+  if (!raw || !raw.includes('[')) return null
+  const offsetMs = Number(raw.match(/\[offset:\s*([+-]?\d+)\s*\]/i)?.[1] ?? 0) || 0
   const out: QrcLine[] = []
-  let hasWordTag = false
+  let sawWord = false
 
   for (const rawLine of raw.split(/\r?\n/)) {
-    // 每行新建正则实例：模块级 g 正则在 replace/matchAll 交替使用时会互相影响 lastIndex
+    if (META_TAG.test(rawLine)) continue
+    // 每行新建正则实例：模块级 g 正则在 replace/matchAll 交替时会互相影响 lastIndex
     const lineTags = [...rawLine.matchAll(new RegExp(TIME_TAG.source, 'g'))]
     if (!lineTags.length) continue
-    const body = rawLine.replace(new RegExp(TIME_TAG.source, 'g'), '')
+    // 每个时间标签 + 其后文本（到下一个标签前）即一段。注意：逐字格式里空格也是独立一段，
+    // 不 trim，否则会丢掉句读之间的间隔。
+    const segs: WordSeg[] = lineTags.map((m, i) => ({
+      start: tagToMs(m),
+      text: rawLine.slice(
+        (m.index ?? 0) + m[0].length,
+        i + 1 < lineTags.length ? (lineTags[i + 1].index ?? rawLine.length) : rawLine.length,
+      ),
+    }))
+    // 行尾的空文本时间戳 = 行结束标记（多标签逐字格式常见），取出后从段落中移除
+    const tailMs =
+      segs.length > 1 && segs[segs.length - 1].text === '' ? segs[segs.length - 1].start : undefined
+    const body = tailMs === undefined ? segs : segs.slice(0, -1)
+    if (!body.length) continue
 
-    // 词段：{ 起点毫秒, 文本 }；行首无标记文本（少见）先以 0 占位，稍后按行时间填
-    const segs: { start: number; text: string }[] = []
-    const marks = [...body.matchAll(new RegExp(WORD_TIME_TAG.source, 'g'))]
-    if (marks.length) hasWordTag = true
-    const head = body.slice(0, marks[0]?.index ?? body.length).trim()
-    if (head) segs.push({ start: 0, text: head })
-    marks.forEach((m, i) => {
-      const from = (m.index ?? 0) + m[0].length
-      const to = i + 1 < marks.length ? (marks[i + 1].index ?? body.length) : body.length
-      const text = body.slice(from, to)
-      if (text) segs.push({ start: tagToMs(m), text })
-    })
+    // 首个有文本的段之前的空标签 = 「同一句歌词的重复时间点」（`[00:01][00:20]同一句`）。
+    // 内容段作为模板，为每个前导标签各克隆一份（时间整体平移），沿用 parseLrc 的语义。
+    const firstIdx = body.findIndex((s) => s.text !== '')
+    if (firstIdx < 0) {
+      // 整行只有空时间戳（前奏/间奏）：留一个锚点行，保证行下标与逐字数据一一对应
+      out.push({ startTime: body[0].start, endTime: body[0].start, text: '', words: [] })
+      continue
+    }
+    const leads = body.slice(0, firstIdx)
+    const core = body.slice(firstIdx)
 
-    if (!segs.length) {
-      // 纯时间戳行（间奏锚点）：保留空行，保证行下标与滚动定位一致
-      for (const lt of lineTags) {
-        const ms = tagToMs(lt)
-        out.push({ startTime: ms, endTime: ms, text: '', words: [] })
+    // 核心段 → 词段：① A2 尖括号 ② 多段方括号逐字
+    let words: WordSeg[] | null = null
+    let base = core[0].start
+    if (core.length === 1 && core[0].text.includes('<')) {
+      words = splitAngleWords(core[0].text, core[0].start)
+      if (!words.length) words = null
+      // A2 的字级时间戳是相对「行内第一个标签」写的，所以克隆的基准取 body[0] 而非核心段
+      else base = body[0].start
+    } else if (core.length >= 2) {
+      words = core
+    }
+    if (words) sawWord = true
+
+    if (words) {
+      const starts = [...new Set([core[0].start, ...leads.map((l) => l.start)])]
+      for (const st of starts) {
+        const shift = st - base
+        const shifted = shift ? words.map((w) => ({ start: w.start + shift, text: w.text })) : words
+        out.push(toQrcLine(shifted, tailMs === undefined ? undefined : tailMs + shift))
       }
       continue
     }
 
-    for (const lt of lineTags) {
-      const lineMs = tagToMs(lt)
-      // 同行多标签（重复副歌）：整行词时间平移到该行标签起点，否则第二份会沿用
-      // 第一份的绝对词时间，行级滚动与逐字点亮就对不上了
-      const shift = lineMs - (segs[0].start > 0 ? segs[0].start : lineMs)
-      const words: QrcWord[] = segs.map((s) => ({
-        word: s.text,
-        startTime: (s.start > 0 ? s.start : lineMs) + shift,
-        endTime: 0,
-      }))
-      // 每段终点 = 下一段起点；末段先截断到自身，稍后统一修正
-      for (let i = 0; i < words.length; i++) {
-        words[i].endTime = words[i + 1] ? words[i + 1].startTime : words[i].startTime
-      }
+    // 单段纯文本 → 行级（同样是「模板 + 克隆」，只是不带字级时间）
+    for (const s of [core[0], ...leads]) {
       out.push({
-        startTime: words[0].startTime,
-        endTime: words[words.length - 1].endTime,
-        text: words.map((w) => w.word).join(''),
-        words,
+        startTime: s.start,
+        endTime: s.start,
+        text: core[0].text.trim(),
+        words: [{ word: core[0].text.trim(), startTime: s.start, endTime: s.start }],
       })
     }
   }
 
-  if (!hasWordTag || !out.length) return null
+  if (!sawWord || !out.length) return null
   out.sort((a, b) => a.startTime - b.startTime)
 
+  // 与 parseLrc / Rust QRC 同口径：折叠连续间奏占位行（前奏常是一串空时间戳）
+  const collapsed = out.filter((l, i) => !(l.text === '' && out[i - 1]?.text === ''))
+  out.length = 0
+  out.push(...collapsed)
+
+  if (offsetMs) {
+    for (const line of out) {
+      line.startTime += offsetMs
+      line.endTime += offsetMs
+      for (const w of line.words) {
+        w.startTime += offsetMs
+        w.endTime += offsetMs
+      }
+    }
+  }
+
   // 收尾修正终止时间：染色进度按 (now - start) / (end - start) 计算，
-  // 分母为 0 会让整段瞬间点亮，故末段/间奏行都要有合理区间
+  // 分母为 0 会让整段瞬间点亮，故末段与间奏行都要有合理区间
   for (let i = 0; i < out.length; i++) {
     const line = out[i]
     const nextStart = i + 1 < out.length ? out[i + 1].startTime : line.startTime + 4000

@@ -8,7 +8,7 @@ import { api } from '@/api/commands'
 import { useLibraryStore } from '@/stores/library'
 import { toast } from '@/composables/useToast'
 import { t as tr } from '@/i18n/translate'
-import { activeLineIndex, parseEnhancedLrc, parseLrc, plainLines, type LrcLine } from '@/utils/lrc'
+import { activeLineIndex, parseLrc, parseWordLrc, plainLines, type LrcLine } from '@/utils/lrc'
 import { looksBinaryish, looksLikeHexQrc, qrcToLrcLines } from '@/utils/qrc'
 import type { QrcLine } from '@/types'
 import { applyPowerGuard } from '@/composables/usePowerGuard'
@@ -117,9 +117,10 @@ export const usePlayerStore = defineStore('player', () => {
         lyricsLines.value = qrcToLrcLines(qrc)
         return
       }
-      // 增强版 LRC（行内 `<mm:ss.xx>` 字级时间戳）：产出与 QRC 同构的逐字数据，
-      // 复用同一套渲染链路；须放在 parseLrc 之前，否则字级标签会被当普通文本显示
-      const wordLrc = parseEnhancedLrc(raw)
+      // 字级歌词（A2 `<mm:ss.xx>` 写法 与 多标签逐字 `[00:00.000]身[00:00.582]骑` 两种结构）：
+      // 产出与 QRC 同构的逐字数据，复用同一套渲染链路；
+      // 须放在 parseLrc 之前，否则字级时间标签会被当普通文本显示
+      const wordLrc = parseWordLrc(raw)
       if (my !== lyricsSeq || current.value?.id !== trackId) return
       if (wordLrc && wordLrc.length) {
         lyricsWordLines.value = wordLrc
