@@ -310,7 +310,6 @@ SQLite（WAL 模式，外键开启），建表与列迁移见 `src-tauri/src/db.
 | `lm.dialogDrag` | 弹窗可拖动（`'1'` = 开启） |
 | `lm.dialogBlur` | 弹窗背景模糊度 `none\|sm\|md\|lg` |
 | `lm.lyricPriority` | 歌词来源优先级顺序（如 `qrc,lrc,embedded`；同步写 SQLite 供 Rust 读取） |
-| `lm.settingsTab` | 设置页上次浏览的分区（进入时瞬时恢复） |
 | `lm.bgImage` / `lm.bgBlur` | 自定义背景图协议文件名（bg-\<时间戳\>.\<ext\>）与模糊度（px） |
 
 ## 安全设计

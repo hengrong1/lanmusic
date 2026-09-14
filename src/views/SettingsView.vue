@@ -65,20 +65,14 @@ const { enabled: dlEnabled, toggle: dlToggle, config: dlConfig } = useDesktopLyr
 const player = usePlayerStore()
 const { t, locale } = useI18n()
 
-// ---- 锚点目录：六个分类纵向铺开；左侧目录点击滚动跳转，滚动时反向高亮当前分区 ----
+// ---- 锚点目录：六个分类纵向铺开；顶部目录点击滚动跳转，滚动时反向高亮当前分区 ----
 const CATEGORY_IDS = ['library', 'appearance', 'playback', 'search', 'lyrics', 'general'] as const
 type CategoryId = (typeof CATEGORY_IDS)[number]
-const SETTINGS_TAB_KEY = 'lm.settingsTab'
 const SECTION_ID_PREFIX = 'settings-section-'
 
-function readActiveTab(): CategoryId {
-  const saved = localStorage.getItem(SETTINGS_TAB_KEY)
-  return CATEGORY_IDS.includes(saved as CategoryId) ? (saved as CategoryId) : 'library'
-}
-
-/** 当前分区：点击目录即时更新，滚动时由 scroll spy 跟随；持久化便于下次进入时回到原位置 */
-const active = ref<CategoryId>(readActiveTab())
-watch(active, (v) => localStorage.setItem(SETTINGS_TAB_KEY, v))
+/** 当前分区：点击目录即时更新，滚动时由 scroll spy 跟随。
+ * 刻意**不持久化**：设置页每次进入都从顶部开始，不回到上次看的分区/滚动位置 */
+const active = ref<CategoryId>(CATEGORY_IDS[0])
 
 /** 点击目录项：平滑滚动到对应分区（滚动途经的分区会依次高亮，最终停在目标分区） */
 function scrollToSection(id: CategoryId) {
@@ -540,11 +534,9 @@ function updateActiveFromScroll() {
   if (active.value !== current) active.value = current
 }
 
+// 刻意不做位置恢复：组件每次都是新建（App.vue 的视图带 :key），容器 scrollTop 天然为 0，
+// 挂载后只需同步一次高亮（首帧即 library）
 onMounted(() => {
-  // 恢复上次浏览到的分区（瞬时定位，不播滚动动画），并同步一次高亮
-  if (active.value !== 'library') {
-    document.getElementById(SECTION_ID_PREFIX + active.value)?.scrollIntoView({ block: 'start' })
-  }
   spyRaf = requestAnimationFrame(updateActiveFromScroll)
 })
 
