@@ -148,7 +148,6 @@ export default {
     closeActionTray: 'Minimize to Tray', closeActionQuit: 'Quit App',
     rerunOnboarding: 'Run setup guide again',
     rerunOnboardingDesc: 'Show the first-run setup again (language, appearance preset, add music).',
-    startAtLogin: 'Start at Login', startAtLoginDesc: 'Automatically start app on system boot',
     audio: 'Audio', outputDevice: 'Output Device', outputDeviceDefault: 'Default Device',
     volumeNormalization: 'Volume Normalization', volumeNormalizationDesc: 'Automatically adjust volume to appropriate level',
     crossfade: 'Crossfade', crossfadeDesc: 'Smooth transition between tracks',

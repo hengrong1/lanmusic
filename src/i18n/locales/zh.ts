@@ -141,7 +141,6 @@ export default {
     closeActionTray: '最小化到托盘', closeActionQuit: '退出应用',
     rerunOnboarding: '重新运行首次引导',
     rerunOnboardingDesc: '再次显示首次启动的引导流程（语言、外观预设、添加音乐）。',
-    startAtLogin: '开机自启', startAtLoginDesc: '开机时自动启动应用',
     audio: '音频', outputDevice: '输出设备', outputDeviceDefault: '默认设备',
     volumeNormalization: '音量标准化', volumeNormalizationDesc: '自动调整音量至合适水平',
     crossfade: '交叉淡入淡出', crossfadeDesc: '歌曲切换时平滑过渡',
