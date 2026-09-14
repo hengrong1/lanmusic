@@ -94,6 +94,9 @@ pnpm tauri:dev        # 开发模式（首次需编译 Rust，约 2-3 分钟）
 pnpm tauri:build      # 构建发布版可执行文件（前端资源内嵌进 exe，无打包步骤）
 ```
 
+> 开发模式使用**独立的数据目录**（`com.lanmusic.desktop.dev`，见 `src-tauri/tauri.dev.conf.json`），
+> 与安装版的 `com.lanmusic.desktop` 完全隔离：曲库、设置、封面缓存、日志、单实例锁互不干扰，两个版本可同时运行。
+
 ## Windows 安装包（Inno Setup）
 
 `bundle.targets` 在主配置中置空：`pnpm tauri:build` 只产出 `src-tauri/target/release/lanmusic.exe`，Windows 安装包统一由 Inno Setup 编译（输出 `installer/output/LanMusic_<版本>_x64-setup.exe`）：
