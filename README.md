@@ -58,7 +58,7 @@
 - **音质徽标**：播放页显示格式/采样率/位深/码率，≥88.2kHz 或 ≥24bit 标记金色 Hi-Res
 - **封面缓存容量控制**：默认上限 500MB，启动与扫描结束后自动清理（先删哨兵文件，再按修改时间从旧到新删封面；可通过 `covers.max_mb` 设置调整，0 = 不限制）
 - **单实例**：重复启动时唤起已运行实例的主窗口（`tauri-plugin-single-instance`）
-- **应用内更新**（自研，基于 GitHub Releases）：启动时静默检查最新 Release 版本号（`updater.rs`），发现新版本弹出说明；**应用内下载安装包**（带进度，Rust 侧流式下载）→ **SHA-256 校验** → 「安装并重启」静默安装并自动拉起新版。手动检查入口在设置 → 关于；Release 未提供安装包资产时退化为「前往下载页」。Windows 安装包为 Inno Setup（`installer/`），macOS 为 dmg
+- **应用内更新**（自研，基于 GitHub Releases）：启动时静默检查最新 Release（读 `releases.atom` feed，**不受 GitHub API 限流影响**），发现新版本弹出说明；**应用内下载安装包**（带进度，Rust 侧流式下载）→ **SHA-256 校验** → 「安装并重启」静默安装并自动拉起新版。手动检查入口在设置 → 关于；该 Release 未附带约定的安装包资产时退化为「前往下载页」。Windows 安装包为 Inno Setup（`installer/`），macOS 为 dmg
 - **阻止系统休眠**：播放歌曲期间保持系统与屏幕常亮（默认开启），暂停/停止后自动恢复；Windows 走 `SetThreadExecutionState`，其他平台尝试 Web Wake Lock
 - **系统托盘**：点击托盘图标弹出悬浮菜单（圆角玻璃卡片）——顶部显示当前歌曲封面+歌名/歌手，控制栏提供上一首/播放暂停/下一首/喜欢，底部为桌面歌词开关/设置/退出；失焦自动收起
 - **侧栏**：可收起/展开（GSAP 宽度动画 + 文字淡入淡出 + 图标尺寸过渡），歌单显示封面缩略图
@@ -121,7 +121,7 @@ powershell -ExecutionPolicy Bypass -File installer\build.ps1 -SkipBuild  # 跳�
 | macos-latest（M 芯片交叉编译） | `.dmg`（x86_64） | Intel Mac |
 | windows-latest | Inno Setup `LanMusic_<版本>_x64-setup.exe` | `npm run tauri:build` 出 exe 后用 ISCC 打包 |
 
-两个 job 写入同一个 tag 的草稿 Release，检查无误后手动 Publish。发布后旧版本应用即可收到更新提示（应用内检查走 GitHub Releases API，无需额外配置；不再需要 `TAURI_SIGNING_PRIVATE_KEY`）。
+两个 job 写入同一个 tag 的草稿 Release，检查无误后手动 Publish。发布后旧版本应用即可收到更新提示（应用内检查读 `releases.atom`，**无 API 限流**、无需额外配置；不再需要 `TAURI_SIGNING_PRIVATE_KEY`）。
 
 说明：
 
