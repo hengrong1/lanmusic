@@ -298,7 +298,7 @@ export default {
     exportDatabase: 'Export Database', importDatabase: 'Import Database', resetDatabase: 'Reset Database',
     resetDatabaseConfirm: 'Are you sure you want to reset the database? All data will be lost.',
     checkForUpdates: 'Check for Updates', checkingForUpdates: 'Checking...', updateAvailable: 'Update Available',
-    upToDate: 'Up to Date', currentVersion: 'Current Version', latestVersion: 'Latest Version',
+    upToDate: 'Up to Date', currentVersion: 'Current Version',
     downloadUpdate: 'Download Update', downloadingUpdate: 'Downloading...',
     later: 'Later', restart: 'Restart',
     quit: 'Quit', shortcuts: 'Shortcuts', shortcutsDesc: 'Customize global shortcuts',

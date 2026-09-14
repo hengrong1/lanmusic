@@ -290,7 +290,7 @@ export default {
     exportDatabase: '导出数据库', importDatabase: '导入数据库', resetDatabase: '重置数据库',
     resetDatabaseConfirm: '确定要重置数据库吗？所有数据将丢失。',
     checkForUpdates: '检查更新', checkingForUpdates: '检查中...', updateAvailable: '有新版本',
-    upToDate: '已是最新版本', currentVersion: '当前版本', latestVersion: '最新版本',
+    upToDate: '已是最新版本', currentVersion: '当前版本',
     downloadUpdate: '下载更新', downloadingUpdate: '下载中...',
     later: '稍后', restart: '重启',
     quit: '退出', shortcuts: '快捷键', shortcutsDesc: '自定义全局快捷键',
