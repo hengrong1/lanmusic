@@ -251,6 +251,14 @@ async function batchRemoveFromLibrary() {
       </EmptyState>
     </div>
 
+    <!-- 扫描进行中：来源已添加、数据还没入库（扫描在后台异步跑）。
+         不能落到下面的「没有找到匹配的歌曲」——那是搜索语义，此时显示纯属误导 -->
+    <div v-else-if="!library.trackPage.total && library.scanning" class="flex min-h-0 flex-1 flex-col items-center justify-center">
+      <LoaderCircle class="h-6 w-6 animate-spin text-violet-500" />
+      <p class="mt-3 text-sm text-zinc-500 dark:text-zinc-300">{{ $t('empty.scanningTitle') }}</p>
+      <p class="mt-1 text-xs text-zinc-400">{{ $t('empty.scanningHint') }}</p>
+    </div>
+
     <div v-else-if="!library.trackPage.total && library.loading" class="flex min-h-0 flex-1 items-center justify-center">
       <LoaderCircle class="h-6 w-6 animate-spin text-violet-500" />
     </div>
@@ -263,8 +271,14 @@ async function batchRemoveFromLibrary() {
       />
     </div>
 
-    <div v-else-if="!library.trackPage.total" class="min-h-0 flex-1">
+    <!-- 搜索无结果（有搜索词才谈得上「换个关键词」） -->
+    <div v-else-if="nav.current.value.search && !library.trackPage.total" class="min-h-0 flex-1">
       <EmptyState :icon="SearchX" :title="$t('empty.noSongsMatch')" :description="$t('empty.noSongsMatchHint')" />
+    </div>
+
+    <!-- 扫描完成但一首都没有：来源里没有音频文件（与搜索语义分开） -->
+    <div v-else-if="!library.trackPage.total" class="min-h-0 flex-1">
+      <EmptyState :icon="Music" :title="$t('empty.noTracksTitle')" :description="$t('empty.noTracksHint')" />
     </div>
 
     <!-- 曲目表 -->

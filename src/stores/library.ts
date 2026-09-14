@@ -43,6 +43,9 @@ export const useLibraryStore = defineStore('library', () => {
 
   const hasSource = computed(() => sources.value.length > 0)
 
+  /** 是否有来源正在扫描（scan:done / scan:error 都会移除对应条目） */
+  const scanning = computed(() => Object.keys(scanProgress.value).length > 0)
+
   async function loadSources() {
     sources.value = await api.listSources()
   }
@@ -116,13 +119,27 @@ export const useLibraryStore = defineStore('library', () => {
     return idx
   }
 
+  /**
+   * 添加来源成功后先占一个「扫描中」占位：后台扫描要过一会儿才会发出首个进度事件，
+   * 这个空窗里列表是空的，不占位会闪现语义错误的空状态（「没有找到匹配的歌曲」）。
+   * 占位会被 scan:progress 刷新、scan:done / scan:error 移除。
+   */
+  function markScanning(src: Source) {
+    scanProgress.value = {
+      ...scanProgress.value,
+      [src.id]: { sourceId: src.id, phase: 'enumerate', done: 0, total: 0, current: '' },
+    }
+  }
+
   async function addFolder(path: string) {
-    await api.addLocalSource(path)
+    const src = await api.addLocalSource(path)
+    markScanning(src)
     await Promise.all([loadSources(), loadStats()])
   }
 
   async function addWebDav(url: string, username: string, password: string, name?: string) {
-    await api.webdavAddSource(url, username, password, name)
+    const src = await api.webdavAddSource(url, username, password, name)
+    markScanning(src)
     await Promise.all([loadSources(), loadStats()])
   }
 
@@ -235,6 +252,7 @@ export const useLibraryStore = defineStore('library', () => {
     loading,
     query,
     hasSource,
+    scanning,
     loadSources,
     loadStats,
     loadTracks,
