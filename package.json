@@ -2,6 +2,12 @@
   "name": "lanmusic",
   "private": true,
   "version": "0.5.2",
+  "browserslist": [
+    "chrome >= 105",
+    "edge >= 105",
+    "safari >= 15",
+    "firefox >= 110"
+  ],
   "type": "module",
   "packageManager": "pnpm@11.20.0",
   "scripts": {

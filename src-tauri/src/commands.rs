@@ -1406,9 +1406,10 @@ fn image_dimensions_bytes(data: &[u8]) -> Option<(u32, u32)> {
     None
 }
 
-/// 选择的自定义背景图复制到缓存目录 {app_cache_dir}/backgrounds/（文件名带时间戳，
+/// 选择的自定义背景图复制到数据目录 {app_data_dir}/backgrounds/（文件名带时间戳，
 /// 天然防缓存），返回协议访问用的文件名（前端拼 bg://file/{name}）。旧背景文件一并
-/// 清理，不堆积。放缓存目录而非数据目录：副本可再生，清理缓存后前端自愈回默认背景。
+/// 清理，不堆积。放数据目录而非缓存目录：Windows 存储感知/清理工具会清理缓存目录，
+/// 背景图会莫名消失（前端自愈回默认背景并提示），用户数据目录才稳。
 #[tauri::command]
 pub fn set_background_image(app: AppHandle, path: String) -> Result<String, String> {
     let ext = std::path::Path::new(&path)
@@ -1427,7 +1428,7 @@ pub fn set_background_image(app: AppHandle, path: String) -> Result<String, Stri
     }
     let dest_dir = app
         .path()
-        .app_cache_dir()
+        .app_data_dir()
         .map_err(|e| err1(codes::BG_SAVE_FAILED, "error", e))?
         .join("backgrounds");
     std::fs::create_dir_all(&dest_dir).map_err(|e| err1(codes::BG_SAVE_FAILED, "error", e))?;

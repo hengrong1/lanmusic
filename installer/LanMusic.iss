@@ -61,14 +61,31 @@ begin
   Exec(ExpandConstant('{sys}\taskkill.exe'), '/f /im {#MyAppExeName}', '', SW_HIDE, ewWaitUntilTerminated, R);
 end;
 
+{ 询问是否一并删除用户数据（曲库/歌单/设置/背景图）。默认选中「否」 }
+function AskRemoveUserData: Boolean;
+begin
+  Result := MsgBox(
+    '是否一并删除 LanMusic 的用户数据？' + #13#10 + #13#10 +
+    '包括曲库数据库、歌单、偏好设置与背景图（位于 %APPDATA%\com.lanmusic.desktop 与 %LOCALAPPDATA%\com.lanmusic.desktop）。' + #13#10 + #13#10 +
+    '选择「是」：永久删除这些数据，重新安装后从零开始；' + #13#10 +
+    '选择「否」（推荐）：保留数据，重新安装后可直接继续使用。',
+    mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = IDYES;
+end;
+
 { 卸载开始时先结束运行中的实例：LanMusic 关闭窗口默认驻留托盘，卸载时进程通常
   仍在运行并占用 lanmusic.exe 的文件句柄 —— Inno 会跳过被占用的文件却仍然提示
   「卸载完成」，留下需要手动删除的残留。这里在卸载向导出现前强杀，
-  并留出句柄释放时间，保证后续文件删除干净。 }
+  并留出句柄释放时间，保证后续文件删除干净。
+  随后（非静默卸载）询问是否一并清理用户数据，默认保留。 }
 function InitializeUninstall(): Boolean;
 begin
   KillRunningApp;
   Sleep(800);
+  if (not UninstallSilent) and AskRemoveUserData then
+  begin
+    DelTree(ExpandConstant('{userappdata}\com.lanmusic.desktop'), True, True, True);
+    DelTree(ExpandConstant('{localappdata}\com.lanmusic.desktop'), True, True, True);
+  end;
   Result := True;
 end;
 
