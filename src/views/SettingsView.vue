@@ -711,10 +711,11 @@ async function toggleScanSubdirs(s: Source, val?: boolean) {
 // ---- 跳过目录：扫描时忽略的目录名（与内置 NAS 回收站/系统目录合并生效）----
 // 存档沿用逗号分隔字符串（后端 load_skip_dirs 已按逗号/换行拆分），前端以标签数组编辑
 const SKIP_DIRS_KEY = 'scan.skipDirs'
-/** 提示中的示例目录名：经插值参数传入（@/$ 是 vue-i18n 消息语法的特殊字符，不能直接写进文案） */
-const skipDirExamples = computed(() =>
-  ['#recycle', '@eaDir', '$RECYCLE.BIN'].join(t('common.listSep')),
-)
+/**
+ * 内置跳过目录名（来自 Rust `scanner::BUILTIN_SKIP_DIRS`）：这批「关键字」由内置规则始终跳过，
+ * 设置页把它们单独标出来，与用户自己追加的标签区分——否则用户容易以为需要手动添加
+ */
+const builtinSkipDirs = ref<string[]>([])
 const skipDirs = ref<string[]>([])
 /** 最近一次成功保存的值（null = 还没从 SQLite 读到），用于判断标签变化是否需要落库 */
 let skipDirsSaved: string | null = null
@@ -755,6 +756,15 @@ api
   })
   .catch(() => {
     skipDirsSaved = ''
+  })
+
+api
+  .getBuiltinSkipDirs()
+  .then((v) => {
+    builtinSkipDirs.value = v ?? []
+  })
+  .catch(() => {
+    /* 取不到就不显示内置标记，不影响其它功能 */
   })
 
 // ---- 已移除歌曲记录（从曲库移除 / 扫描消失，留底便于找回；列表在弹出窗中查看）----
@@ -1007,9 +1017,22 @@ const showWebdavLimits = computed(() => showWebdav.value || library.sources.some
               <!-- mt-6：与各区块间 space-y-6 同距，避免卡片贴着来源列表与相邻卡片 -->
               <div class="mt-6 rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
                 <p class="text-sm font-semibold text-zinc-800 dark:text-zinc-100">{{ t('settings.skipDirs') }}</p>
-                <p class="mt-1 text-xs leading-relaxed text-zinc-400">
-                  {{ t('settings.skipDirsHint', { examples: skipDirExamples }) }}
-                </p>
+                <p class="mt-1 text-xs leading-relaxed text-zinc-400">{{ t('settings.skipDirsHint') }}</p>
+                <!-- 内置关键字标记：等宽字体 + 浅底做成「标记」样式，并加「内置」徽标与说明气泡，
+                     让用户一眼看出这批目录始终跳过、不必自己添加 -->
+                <div v-if="builtinSkipDirs.length" class="mt-2.5 flex flex-wrap items-center gap-1.5">
+                  <span
+                    class="rounded-md bg-violet-50 px-1.5 py-0.5 text-[11px] font-medium text-violet-600 dark:bg-violet-500/15 dark:text-violet-300"
+                    v-tooltip="t('settings.skipDirsBuiltinHint')"
+                  >
+                    {{ t('settings.skipDirsBuiltinTag') }}
+                  </span>
+                  <code
+                    v-for="d in builtinSkipDirs"
+                    :key="d"
+                    class="rounded-md border border-zinc-200 bg-zinc-50 px-1.5 py-0.5 font-mono text-[11px] text-zinc-500 dark:border-zinc-700 dark:bg-zinc-800/60 dark:text-zinc-400"
+                  >{{ d }}</code>
+                </div>
                 <BaseTagInput
                   v-model="skipDirs"
                   class="mt-3"

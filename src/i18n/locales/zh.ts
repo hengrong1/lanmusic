@@ -165,7 +165,9 @@ export default {
     scanSubdirsOn: '已开启子目录扫描：重新扫描后，来源内所有子目录都会纳入曲库',
     scanSubdirsOff: '已关闭子目录扫描：重新扫描后仅收录根目录下的文件',
     skipDirs: '跳过目录',
-    skipDirsHint: '扫描时忽略这些目录名（不区分大小写，匹配目录名而非路径）。输入后回车添加为标签、点 × 删除。{examples} 等回收站/系统目录始终跳过；修改后对来源重新扫描生效',
+    skipDirsHint: '扫描时忽略这些目录名（不区分大小写，匹配目录名而非路径）。输入后回车添加为标签、点 × 删除；修改后对来源重新扫描生效',
+    skipDirsBuiltinTag: '内置',
+    skipDirsBuiltinHint: '这些目录名（NAS 回收站、系统元数据等）由内置规则始终跳过，无需手动添加',
     skipDirsPlaceholder: '输入目录名后回车添加，如 #tmp',
     skipDirsSaved: '跳过目录已保存，重新扫描后生效',
     // 已移除歌曲

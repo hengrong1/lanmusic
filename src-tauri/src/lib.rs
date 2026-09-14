@@ -360,6 +360,7 @@ pub fn run() {
             commands::favorite_toggle,
             commands::get_setting,
             commands::set_setting,
+            commands::get_builtin_skip_dirs,
             commands::set_background_image,
             commands::get_artist_separators,
             commands::set_artist_separators,

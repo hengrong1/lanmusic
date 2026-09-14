@@ -108,6 +108,8 @@ export const api = {
   // 设置（M2/M3）
   getSetting: (key: string) => invoke<string | null>('get_setting', { key }),
   setSetting: (key: string, value: string) => invoke<void>('set_setting', { key, value }),
+  /** 内置跳过目录名（扫描时始终跳过；设置页用于标出这些关键字） */
+  getBuiltinSkipDirs: () => invoke<string[]>('get_builtin_skip_dirs'),
   setBackgroundImage: (path: string) => invoke<string>('set_background_image', { path }),
 
   // 艺人分隔符（设置后立即按新分隔符重拆曲库，返回受影响曲目的变更列表）

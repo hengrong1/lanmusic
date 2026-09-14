@@ -173,7 +173,9 @@ export default {
     scanSubdirsOn: 'Subfolder scanning enabled: rescan to include all subfolders of this source',
     scanSubdirsOff: 'Subfolder scanning disabled: rescan to index only files in the root folder',
     skipDirs: 'Skipped Folders',
-    skipDirsHint: 'Folder names to ignore while scanning (case-insensitive, matches the folder name at any depth). Press Enter to add a tag, click × to remove. Recycle/system folders like {examples} are always skipped; rescan a source to apply changes',
+    skipDirsHint: 'Folder names to ignore while scanning (case-insensitive, matches the folder name at any depth). Press Enter to add a tag, click × to remove; rescan a source to apply changes',
+    skipDirsBuiltinTag: 'Built-in',
+    skipDirsBuiltinHint: 'These names (NAS recycle bins, system metadata, ...) are always skipped by built-in rules, so there is no need to add them',
     skipDirsPlaceholder: 'Type a folder name and press Enter, e.g. #tmp',
     skipDirsSaved: 'Skipped folders saved — rescan to apply',
     // Removed tracks

@@ -199,12 +199,12 @@ export const usePlayerStore = defineStore('player', () => {
   let errorStreak = 0
 
   // ---------- 淡入淡出 ----------
-  // 开关存 localStorage lm.fade（默认关闭）。淡入：每曲开头 800ms 从 0 升至目标音量；
-  // 淡出：暂停/切歌前 600ms 平滑降至 0，避免突兀截断。
+  // 开关存 localStorage lm.fade（**默认开启**：只有显式存 '0' 才算关闭，键不存在时按开启）。
+  // 淡入：每曲开头 800ms 从 0 升至目标音量；淡出：暂停/切歌前 600ms 平滑降至 0，避免突兀截断。
   const FADE_IN_MS = 800
   const FADE_OUT_MS = 600
   function fadeEnabled(): boolean {
-    return localStorage.getItem('lm.fade') === '1'
+    return localStorage.getItem('lm.fade') !== '0'
   }
   let fadeRaf = 0
   let fadeSeq = 0
@@ -702,9 +702,9 @@ export const usePlayerStore = defineStore('player', () => {
     setVolume,
     toggleMute,
     setFadeEnabled,
-    // 与 fadeEnabled() 同口径（存 '1' 才算开，默认关闭）：否则全新安装时设置页开关显示
-    // 「已开启」而实际行为是关闭，两者对不上
-    isFadeOn: () => localStorage.getItem('lm.fade') === '1',
+    // 与 fadeEnabled() 同源（存 '0' 才算关，默认开启）：否则全新安装时设置页开关显示
+    // 「已关闭」而实际行为是开启，两者对不上
+    isFadeOn: fadeEnabled,
     playNextInQueue,
     enqueue,
     removeFromQueue,

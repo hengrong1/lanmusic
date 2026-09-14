@@ -33,7 +33,7 @@
 - **快速导入**：针对网络目录的开关（本地与 WebDAV 来源通用），仅按文件名/目录结构入库、不读文件内容；本地来源省掉标签解析，WebDAV 来源还会**完全跳过逐文件的头部拉取**（大库首次导入能省下大量请求，也不易触发远端限流）；「完整解析」随时补全标签，且**无视该开关**（一定会真实解析，含已快速导入的歌曲）
 - **`music://` 自定义流协议**：HTTP Range 拖动进度、2MB 分块封顶、本地/WebDAV 统一路由、跨平台适配（macOS `music://` / Windows `http://music.localhost`）
 - **播放**：播放模式（顺序/列表循环/单曲/随机）、队列管理、虚拟滚动列表（10 万级）、专辑/艺人视图、搜索、全局快捷键（空格 / `N` / `P` / `Ctrl+F` / `[` / `]`）
-- **扫描范围**：按目录名跳过——内置 `#recycle` / `#snapshot` / `@eaDir` / `$RECYCLE.BIN` / `System Volume Information` / `lost+found` / `.Trash*` 等 NAS 回收站与系统目录，设置页可按目录名追加（不区分大小写，任何层级命中即整棵剪掉）；每来源可开关「子目录扫描」，关闭后仅扫描根目录下的文件（本地/WebDAV 通用，目录监听模式随之切换）
+- **扫描范围**：按目录名跳过——内置 `#recycle` / `#snapshot` / `@eaDir` / `$RECYCLE.BIN` / `System Volume Information` / `lost+found` / `.Trash*` 等 NAS 回收站与系统目录（共 10 条，见 `scanner.rs::BUILTIN_SKIP_DIRS`），设置页可按目录名追加（不区分大小写，任何层级命中即整棵剪掉）；设置页把内置的这批目录名以「内置」标记单独列出（数据来自 `get_builtin_skip_dirs`，避免用户误以为需要手动添加）；每来源可开关「子目录扫描」，关闭后仅扫描根目录下的文件（本地/WebDAV 通用，目录监听模式随之切换）
 - **目录监听**：本地来源目录接入 notify 监听，文件变化（新增/修改/删除/重命名）自动触发增量扫描（去抖 3s；监听模式跟随来源的「子目录扫描」开关；WebDAV 源无法监听，需手动重扫）
 
 ### M2 库体验
@@ -52,7 +52,7 @@
 - **多选批量操作**：全部歌曲 / 喜欢 / 最近播放 / 专辑 / 艺人 / 搜索结果与歌单页均支持多选（播放 / 加入队列 / 添加到歌单），歌单页可移出歌单，曲库侧可从曲库移除（不删磁盘文件）
 - **已移除歌曲**：手动移除与扫描时文件消失的曲目都会留底（设置 → 已移除歌曲），记录歌名/艺人/专辑/路径与移除原因，便于找回；支持单条或全部还原（确认文件仍在后自动扫描重新入库）；上限 1000 条自动裁剪
 - **艺人合并**：艺人名规整（「陈奕迅（Eason Chan）」→「陈奕迅」）一键归并；设置页展示已合并名单，支持自定义合并（两位名字不同的艺人实为同一人时手动归并）。旧名记为别名（`artist_aliases`），之后扫描遇到旧名仍归到主艺人名下，不会重新建出独立艺人
-- **歌曲淡入淡出**：播放/暂停与切歌时音量平滑过渡（淡入 0.8s、淡出 0.6s），设置页可开关
+- **歌曲淡入淡出**：播放/暂停与切歌时音量平滑过渡（淡入 0.8s、淡出 0.6s），**默认开启**，设置页可关闭
 - **播放倍速**：播放条右侧循环切换 0.5x–2x（`0.5/0.75/1/1.25/1.5/2`），倍速跨切歌延续，持久化到 `lm.rate`；非 1x 时按钮高亮
 - **队列另存为歌单**：队列面板「保存」按钮，把当前队列整体保存为新歌单（按保存时间命名）并跳转
 - **音质徽标**：播放页显示格式/采样率/位深/码率，≥88.2kHz 或 ≥24bit 标记金色 Hi-Res
@@ -246,7 +246,7 @@ src-tauri/                 # Rust 后端
 | 曲库查询 | `query_tracks({view, refId, search, sort, page, pageSize, fields, pinyin})` · `query_albums(search, page, pageSize)` · `query_artists(search, page, pageSize)` · `get_track(id)` · `get_tracks_by_ids(ids)` · `get_stream_url(id)` · `library_stats()` · `reveal_track(id)` · `remove_tracks(ids)`（从曲库移除，不删磁盘文件） · `list_removed_tracks()` / `clear_removed_tracks()`（移除记录） · `restore_removed_tracks(ids)`（还原到曲库） |
 | 歌单 | `playlist_list` · `playlist_create(name)` · `playlist_rename(id, name)` · `playlist_delete(id)` · `playlist_get_items(id)` · `playlist_add_tracks(id, trackIds)` · `playlist_remove_track(id, trackId)` · `playlist_remove_tracks(id, trackIds)` · `playlist_set_description(id, description)` · `playlist_cover(id)` · `playlist_reorder(id, trackIds)` |
 | 播放/歌词/喜欢 | `report_play(id)` · `get_lyrics(id)` · `favorite_toggle(id, fav)` · `set_thumbbar_playing(playing)`（Windows 任务栏缩略图按钮图标同步） · `desktop_lyrics_set(enabled)`（桌面歌词浮窗开关） · `list_system_fonts()`（系统字体列表） · `set_prevent_sleep(prevent)`（播放时阻止系统休眠/锁屏） |
-| 设置 | `get_setting(key)` · `set_setting(key, value)` · `get_artist_separators()` · `set_artist_separators(value)`（保存多艺人分隔符并立即重拆曲库，返回受影响曲目的艺人变更列表） · `normalize_artist_names()`（规整同义艺人名） · `merge_artist(sourceId, targetId)`（自定义合并，旧名记为别名） · `list_artist_aliases()`（已合并名单） |
+| 设置 | `get_setting(key)` · `set_setting(key, value)` · `get_builtin_skip_dirs()`（内置跳过目录名，设置页用于标出这批「内置」关键字） · `get_artist_separators()` · `set_artist_separators(value)`（保存多艺人分隔符并立即重拆曲库，返回受影响曲目的艺人变更列表） · `normalize_artist_names()`（规整同义艺人名） · `merge_artist(sourceId, targetId)`（自定义合并，旧名记为别名） · `list_artist_aliases()`（已合并名单） |
 
 `query_tracks` 支持的 `sort` 值：`title` `-title` `album` `-album` `artist` `-artist` `added` `duration` `-duration` `recent` `none`（`-` 前缀为降序）。
 
@@ -302,8 +302,8 @@ SQLite（WAL 模式，外键开启），建表与列迁移见 `src-tauri/src/db.
 | `sidebar:collapsed` | 侧栏是否收起 |
 | `lm.lrcOffset.<trackId>` | 歌词偏移（秒，按曲目记忆，见「歌词校准」） |
 | `lm.font` | 全局字体（CSS font-family 字符串，空 = 软件默认字体栈） |
-| `lm.deskLyrics` | 桌面歌词 `{enabled, config: {lines, align(left\|center\|right\|split), color, pendingColor, fontSize, bgColor, bgOpacity, outline, outlineColor, bold}}` |
-| `lm.fade` | 歌曲淡入淡出开关（`'1'` = 开启，默认关闭） |
+| `lm.deskLyrics` | 桌面歌词 `{enabled, config: {lines, align(left\|center\|right\|split), color, pendingColor, fontSize, bgColor, bgOpacity, outline, outlineColor, bold}}`；默认 `lines=2` + `align=split`（左右分离），旧存档（v<3）读入时一次性迁移 |
+| `lm.fade` | 歌曲淡入淡出开关（`'0'` = 关闭，默认开启） |
 | `lm.preventSleep` | 播放时阻止系统休眠/锁屏（`'0'` = 关闭，默认开启） |
 | `lm.npStyle` | 播放页布局预设 `side\|stacked`（装扮面板可选） |
 | `lm.themeColor` | 自定义主题色预设 key（Ant 色板 12 选 1，空 = 默认紫） |

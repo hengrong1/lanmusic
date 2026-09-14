@@ -42,7 +42,8 @@ export const EMPTY_LYRIC = '\u00B7\u00B7\u00B7'
 const LS_KEY = 'lm.deskLyrics'
 const DEFAULT_CONFIG: DeskLyricsConfig = {
   lines: 2,
-  align: 'center',
+  /** 默认「左右分离」：双行时当前行左对齐、下一行右对齐 */
+  align: 'split',
   color: '#a78bfa',
   pendingColor: '#22d3ee',
   fontSize: 34,
@@ -53,8 +54,8 @@ const DEFAULT_CONFIG: DeskLyricsConfig = {
   outlineColor: '#808080',
   bold: true,
 }
-/** 存档版本：v1（无版本号）为旧默认（描边开 + 黑色），读入时一次性迁移到当前默认 */
-const CONFIG_VERSION = 2
+/** 存档版本：v1（无版本号）为旧默认（描边开 + 黑色），v2 为「居中 + 无描边」，v3 为「左右分离」 */
+const CONFIG_VERSION = 3
 
 function loadState(): { enabled: boolean; config: DeskLyricsConfig } {
   try {
@@ -66,14 +67,20 @@ function loadState(): { enabled: boolean; config: DeskLyricsConfig } {
         version?: number
       }
       const config = { ...DEFAULT_CONFIG, ...s.config }
-      // 单行不支持「左右分离」：历史存档或手改 localStorage 可能留下非法组合，读取时就收敛，
-      // 避免"只有切换行数时才纠正"导致单行 + split 的错位状态一直存在
-      if (config.lines === 1 && config.align === 'split') config.align = 'center'
-      // 旧版存档迁移：描边收敛到新默认（关闭 + 灰色）；带版本号的存档完全尊重用户改动
+      // 旧版存档迁移（先迁移、后校验，否则迁移可能造出非法组合）：
+      // · v1（无版本号）：描边收敛到新默认（关闭 + 灰色）
+      // · v3：对齐默认由「居中」改为「左右分离」——旧存档里的 'center' 无法区分
+      //   「沿用旧默认」与「用户特意选的居中」，一律按默认迁移（可在设置里改回）
       if (!s.version) {
         config.outline = DEFAULT_CONFIG.outline
         config.outlineColor = DEFAULT_CONFIG.outlineColor
       }
+      if (!s.version || s.version < 3) {
+        if (config.align === 'center') config.align = 'split'
+      }
+      // 单行不支持「左右分离」：历史存档或手改 localStorage 可能留下非法组合，读取时就收敛，
+      // 避免"只有切换行数时才纠正"导致单行 + split 的错位状态一直存在
+      if (config.lines === 1 && config.align === 'split') config.align = 'center'
       return { enabled: !!s.enabled, config }
     }
   } catch {

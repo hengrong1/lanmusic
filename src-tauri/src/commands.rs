@@ -1309,6 +1309,13 @@ pub fn set_setting(state: State<'_, AppState>, key: String, value: String) -> Re
     Ok(())
 }
 
+/// 内置跳过目录名（与用户配置合并生效，见 `scanner::BUILTIN_SKIP_DIRS`）。
+/// 设置页把这批「关键字」单独标出来，避免用户以为需要自己添加。
+#[tauri::command]
+pub fn get_builtin_skip_dirs() -> Vec<String> {
+    scanner::BUILTIN_SKIP_DIRS.iter().map(|s| s.to_string()).collect()
+}
+
 // ---------- 自定义背景 ----------
 
 /// 允许作为背景图的扩展名
