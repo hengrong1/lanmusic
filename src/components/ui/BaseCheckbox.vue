@@ -31,7 +31,7 @@ function toggle() {
   <button
     type="button"
     role="checkbox"
-    class="inline-flex cursor-pointer items-center gap-2 rounded-md select-none focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40"
+    class="group inline-flex cursor-pointer items-center gap-2 rounded-md select-none focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40"
     :class="{ 'cursor-not-allowed opacity-50': disabled }"
     :aria-checked="modelValue"
     :disabled="disabled"

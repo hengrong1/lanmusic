@@ -40,7 +40,7 @@ function toggle() {
   <button
     type="button"
     role="switch"
-    class="inline-flex cursor-pointer items-center gap-2.5 rounded-md select-none focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40"
+    class="group inline-flex cursor-pointer items-center gap-2.5 rounded-md select-none focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40"
     :class="{ 'cursor-not-allowed opacity-50': disabled }"
     :aria-checked="modelValue"
     :disabled="disabled"
@@ -50,7 +50,9 @@ function toggle() {
       class="relative inline-flex shrink-0 rounded-full transition-colors duration-200"
       :class="[
         sizeMap[size].track,
-        modelValue ? 'bg-violet-500' : 'bg-zinc-300 dark:bg-zinc-600',
+        modelValue
+          ? 'bg-violet-500 group-hover:bg-violet-600'
+          : 'bg-zinc-300 group-hover:bg-zinc-400 dark:bg-zinc-600 dark:group-hover:bg-zinc-500',
       ]"
     >
       <span

@@ -3,6 +3,9 @@
  * 复选框指示器：BaseCheckbox 的方框视觉（选中填充 + 圆头对勾），纯展示、不拦截点击。
  * 用于「整行可点、复选框只是状态指示」的场景（TrackPicker / TrackTable 批量模式），
  * 避免在行内嵌套交互按钮；独立使用的复选框请直接用 BaseCheckbox。
+ *
+ * hover 反馈走 `group-hover:`：宿主（BaseCheckbox 的按钮、整行可点的表格行）挂 `.group`
+ * 即可连带高亮方框；宿主没有 `.group` 时无副作用。
  */
 const props = withDefaults(
   defineProps<{
@@ -23,7 +26,9 @@ const sizeMap = {
     class="relative flex shrink-0 items-center justify-center rounded border-2 transition-all duration-150"
     :class="[
       sizeMap[size].box,
-      modelValue ? 'border-violet-500 bg-violet-500' : 'border-zinc-300 bg-transparent dark:border-zinc-600',
+      modelValue
+        ? 'border-violet-500 bg-violet-500 group-hover:border-violet-600 group-hover:bg-violet-600'
+        : 'border-zinc-300 bg-transparent group-hover:border-zinc-400 dark:border-zinc-600 dark:group-hover:border-zinc-500',
     ]"
   >
     <svg

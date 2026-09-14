@@ -96,6 +96,15 @@ html.has-bg .app-surface-blur .border-zinc-200\/70 {
 html.has-bg .app-surface-blur .border-zinc-300 {
   border-color: rgb(255 255 255 / 0.2);
 }
+/* 输入类组件的 hover 描边（Input / Textarea / TagInput / Select 触发器 / 可悬停卡片）：
+   静态 border-zinc-200 在这里是 0.14 白雾，hover 必须再提亮一档才看得出反馈 */
+html.has-bg .app-surface-blur .hover\:border-zinc-300:hover {
+  border-color: rgb(255 255 255 / 0.28);
+}
+/* 勾选控件（CheckboxIndicator / BaseRadio）的 hover 描边：走 group-hover，须带 .group:hover 前缀 */
+html.has-bg .app-surface-blur .group:hover .group-hover\:border-zinc-400 {
+  border-color: rgb(255 255 255 / 0.34);
+}
 /* 浮层（右键/通知/弹窗/多选面板/下拉）用更实的深玻璃：浮层下是主界面内容而非纯背景图，
    近全透会让内容透出来干扰可读。挂 .app-surface-blur 后白字映射与浅底白雾化自动生效 */
 /* 浮层（右键/通知/弹窗/下拉/批量操作条）表面：无背景图 = 实色白/深（原样）；

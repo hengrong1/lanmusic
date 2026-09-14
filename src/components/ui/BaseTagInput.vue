@@ -66,7 +66,7 @@ function onBlur() {
 
 <template>
   <div
-    class="flex w-full flex-wrap items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-2.5 py-1.5 text-sm transition-all duration-150 focus-within:border-violet-500 focus-within:ring-2 focus-within:ring-violet-500/10 dark:border-zinc-700 dark:bg-zinc-800"
+    class="flex w-full flex-wrap items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-2.5 py-1.5 text-sm transition-all duration-150 hover:border-zinc-300 focus-within:border-violet-500 focus-within:ring-2 focus-within:ring-violet-500/10 dark:border-zinc-700 dark:bg-zinc-800 dark:hover:border-zinc-600"
     :class="disabled ? 'cursor-not-allowed opacity-50' : 'cursor-text'"
     @click="focusInput"
   >

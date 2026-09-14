@@ -31,11 +31,11 @@ const indicatorStyle = computed(() => ({
       v-for="tab in items"
       :key="tab.value"
       type="button"
-      class="relative z-10 flex flex-1 cursor-pointer items-center justify-center gap-1.5 px-4 py-2.5 text-sm font-medium transition-colors"
+      class="relative z-10 flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-t-md px-4 py-2.5 text-sm font-medium transition-colors"
       :class="[
         tab.value === modelValue
           ? 'text-violet-600 dark:text-violet-400'
-          : 'text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200',
+          : 'text-zinc-500 hover:bg-zinc-100/70 hover:text-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-700/50 dark:hover:text-zinc-200',
       ]"
       @click="emit('update:modelValue', tab.value)"
     >

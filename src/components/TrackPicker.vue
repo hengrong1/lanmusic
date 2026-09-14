@@ -232,9 +232,11 @@ onBeforeUnmount(() => {
         <button
           v-for="t in visibleItems"
           :key="t.id"
-          class="flex w-full items-center gap-3 px-4 py-2 text-left text-sm transition"
+          class="group flex w-full items-center gap-3 px-4 py-2 text-left text-sm transition"
           :class="[
-            isSelected(t) ? 'bg-violet-50 dark:bg-violet-500/10' : 'hover:bg-zinc-100/80 dark:hover:bg-zinc-800/50',
+            isSelected(t)
+              ? 'bg-violet-50 hover:bg-violet-100 dark:bg-violet-500/10 dark:hover:bg-violet-500/20'
+              : 'hover:bg-zinc-100/80 dark:hover:bg-zinc-800/50',
             existing.has(t.id) ? 'cursor-default opacity-45' : 'cursor-pointer',
           ]"
           @click="toggleTrack(t)"

@@ -58,7 +58,7 @@ function select(item: ButtonGroupItem) {
         sizeClasses[size],
         isActive(item)
           ? 'bg-white text-violet-600 shadow-sm dark:bg-zinc-700 dark:text-violet-400'
-          : 'text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200',
+          : 'text-zinc-500 hover:bg-zinc-200/60 hover:text-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-700/60 dark:hover:text-zinc-200',
       ]"
       :disabled="disabled"
       @click="select(item)"

@@ -34,7 +34,7 @@ function select() {
   <button
     type="button"
     role="radio"
-    class="inline-flex cursor-pointer items-center gap-2 rounded-md select-none focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40"
+    class="group inline-flex cursor-pointer items-center gap-2 rounded-md select-none focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40"
     :class="{ 'cursor-not-allowed opacity-50': disabled }"
     :aria-checked="isChecked"
     :disabled="disabled"
@@ -45,13 +45,16 @@ function select() {
       :class="[
         sizeMap[size].box,
         isChecked
-          ? 'border-violet-500'
-          : 'border-zinc-300 dark:border-zinc-600',
+          ? 'border-violet-500 group-hover:border-violet-600'
+          : 'border-zinc-300 group-hover:border-zinc-400 dark:border-zinc-600 dark:group-hover:border-zinc-500',
       ]"
     >
       <span
         v-if="isChecked"
-        :class="['rounded-full bg-violet-500 transition-transform duration-150', sizeMap[size].dot]"
+        :class="[
+          'rounded-full bg-violet-500 transition-transform duration-150 group-hover:bg-violet-600',
+          sizeMap[size].dot,
+        ]"
       />
     </span>
     <span v-if="label || $slots.default" :class="[sizeMap[size].text, 'text-zinc-700 dark:text-zinc-200']">

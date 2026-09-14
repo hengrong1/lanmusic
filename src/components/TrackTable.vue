@@ -342,7 +342,7 @@ function onDragEnd() {
     >
       <span v-if="props.batchMode" class="flex justify-center">
         <button
-          class="cursor-pointer rounded transition focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40"
+          class="group cursor-pointer rounded transition focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40"
           role="checkbox"
           :aria-checked="allSelected"
           v-tooltip="$t('common.selectAll')"
