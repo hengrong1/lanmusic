@@ -91,8 +91,57 @@ fn version_cmp(a: &str, b: &str) -> std::cmp::Ordering {
     std::cmp::Ordering::Equal
 }
 
+/// 从 feed 条目解析版本号（**三段数字，不带 v 前缀**）。
+///
+/// ⚠️ feed 的 `<title>` 是 **Release 名称**，用户可以任意命名（如「LanMusic v0.5.5」），
+/// 不能当版本号用：一是界面会显示成 `vLanMusic v0.5.5`，二是 `asset_urls` 会拼出
+/// `LanMusic_LanMusic v0.5.5_x64-setup.exe` 这种地址、HEAD 必然 404。
+/// 所以优先取 `<link>` 里的 `releases/tag/<tag>`（与 tag 名同源），
+/// 拿不到再退回「在标题里找第一个 n.n[.n] 片段」。
+fn version_from_entry(title: &str, link: &str) -> Option<String> {
+    if let Some(idx) = link.find("/releases/tag/") {
+        let tag = &link[idx + "/releases/tag/".len()..];
+        let tag = tag.split(['/', '?', '#']).next().unwrap_or_default();
+        let v = tag.trim_start_matches(['v', 'V']).trim();
+        if v.chars().next().is_some_and(|c| c.is_ascii_digit()) {
+            return Some(v.to_string());
+        }
+    }
+    extract_version(title)
+}
+
+/// 在任意文本里找第一个形如 `1.2` / `1.2.3` 的片段（Release 名带前缀时的兜底）。
+/// 只认「数字 + 至少一个点 + 数字」，避免把名称里的孤立数字（如「LanMusic 2」）当版本。
+fn extract_version(s: &str) -> Option<String> {
+    let bytes = s.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if !bytes[i].is_ascii_digit() {
+            i += 1;
+            continue;
+        }
+        let start = i;
+        let mut dots = 0;
+        while i < bytes.len() {
+            if bytes[i].is_ascii_digit() {
+                i += 1;
+            } else if bytes[i] == b'.' && bytes.get(i + 1).is_some_and(u8::is_ascii_digit) {
+                dots += 1;
+                i += 1;
+            } else {
+                break;
+            }
+        }
+        if dots >= 1 {
+            return Some(s[start..i].to_string());
+        }
+    }
+    None
+}
+
 /// 解析 `releases.atom` 取最新一条 release。
-/// 返回 (tag 原文，如 `v0.5.2`；说明 HTML 片段；页面链接)。
+/// 返回 (**Release 名称**（`<title>`，不是版本号，取版本用 `version_from_entry`）；
+/// 说明 HTML 片段；页面链接)。
 fn parse_latest_atom(xml: &str) -> Result<(String, String, String), String> {
     let mut reader = Reader::from_str(xml);
     let mut in_entry = false;
@@ -110,10 +159,14 @@ fn parse_latest_atom(xml: &str) -> Result<(String, String, String), String> {
                 "title" if in_entry => in_title = true,
                 "content" if in_entry => in_content = true,
                 // <link rel="alternate" type="text/html" href="…"/>
+                // 只认 release 页链接（feed 可能还有别的 link，别让后面的覆盖掉）
                 "link" if in_entry => {
                     for attr in e.attributes().flatten() {
                         if attr.key.as_ref() == "href" {
-                            link = attr.value.to_string();
+                            let href = attr.value.to_string();
+                            if link.is_empty() || href.contains("/releases/tag/") {
+                                link = href;
+                            }
                         }
                     }
                 }
@@ -229,8 +282,10 @@ pub fn latest_release(current_version: &str) -> Result<Option<ReleaseInfo>, Stri
         .text()
         .map_err(|e| e.to_string())?;
 
-    let (tag, notes_html, html_url) = parse_latest_atom(&xml)?;
-    let version = tag.trim_start_matches('v').to_string();
+    let (title, notes_html, html_url) = parse_latest_atom(&xml)?;
+    // 版本号不能取 <title>（那是 Release 名称，用户可任意写）——见 version_from_entry
+    let version = version_from_entry(&title, &html_url)
+        .ok_or_else(|| format!("无法从 Release feed 解析版本号（Release 名称：{title}）"))?;
     if version_cmp(&version, current_version) != std::cmp::Ordering::Greater {
         return Ok(None);
     }
@@ -241,6 +296,12 @@ pub fn latest_release(current_version: &str) -> Result<Option<ReleaseInfo>, Stri
     if !has_asset {
         log::warn!("Release v{version} 未找到约定的安装包资产：{exe_url}（前端将退化为前往下载页）");
     }
+    // link 缺失时按 tag 约定补出页面地址（「前往下载页」按钮依赖它，不能是空串）
+    let html_url = if html_url.is_empty() {
+        format!("{REPO_URL}/releases/tag/v{version}")
+    } else {
+        html_url
+    };
     Ok(Some(ReleaseInfo {
         version,
         notes: strip_html(&notes_html),
@@ -379,7 +440,9 @@ pub fn run_installer(path: &str) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{asset_urls, parse_latest_atom, parse_sha256_text, strip_html, version_cmp};
+    use super::{
+        asset_urls, parse_latest_atom, parse_sha256_text, strip_html, version_cmp, version_from_entry,
+    };
     use std::cmp::Ordering;
 
     #[test]
@@ -436,16 +499,58 @@ mod tests {
 
     #[test]
     fn parses_first_atom_entry_only() {
-        let (tag, content, link) = parse_latest_atom(ATOM_FIXTURE).unwrap();
-        assert_eq!(tag, "v0.5.2");
+        let (title, content, link) = parse_latest_atom(ATOM_FIXTURE).unwrap();
+        assert_eq!(title, "v0.5.2");
         assert_eq!(
             link,
             "https://github.com/hengrong1/lanmusic/releases/tag/v0.5.2"
         );
+        // 版本号从 link 里的 tag 取（明文 tag 与 Release 名一致时也走这条路）
+        assert_eq!(version_from_entry(&title, &link).as_deref(), Some("0.5.2"));
         // content 为还原实体后的 HTML 片段
         assert!(content.contains("<p>"), "应为 HTML 片段：{content}");
         assert!(content.contains("&amp;"), "XML 实体应已还原：{content}");
         assert!(!content.contains("v0.5.1"), "不应取到第二条 entry");
+    }
+
+    /// Release 被命名过（如「LanMusic v0.5.5」）时，版本必须来自 tag 而不是名称
+    #[test]
+    fn version_comes_from_tag_not_release_name() {
+        let link = "https://github.com/hengrong1/lanmusic/releases/tag/v0.5.5";
+        assert_eq!(
+            version_from_entry("LanMusic v0.5.5", link).as_deref(),
+            Some("0.5.5")
+        );
+        // 名称里没有可解析版本时，仍以 tag 为准
+        assert_eq!(
+            version_from_entry("第一个正式版", link).as_deref(),
+            Some("0.5.5")
+        );
+        // tag 自带的大写 V 前缀同样要去掉
+        assert_eq!(
+            version_from_entry(
+                "LanMusic",
+                "https://github.com/x/y/releases/tag/V0.6.0"
+            )
+            .as_deref(),
+            Some("0.6.0")
+        );
+    }
+
+    #[test]
+    fn version_falls_back_to_title_without_link() {
+        assert_eq!(
+            version_from_entry("Release v0.5.5", "").as_deref(),
+            Some("0.5.5")
+        );
+        // 名称里的孤立数字不算版本，找「数字.数字」片段
+        assert_eq!(
+            version_from_entry("LanMusic 2 (v0.6.0)", "").as_deref(),
+            Some("0.6.0")
+        );
+        // 完全解析不出 → None（调用方报错，而不是拿错误的版本号去拼资产地址）
+        assert_eq!(version_from_entry("LanMusic", ""), None);
+        assert_eq!(version_from_entry("LanMusic 2", ""), None);
     }
 
     #[test]

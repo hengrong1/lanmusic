@@ -46,24 +46,19 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
               class="flex items-start gap-3"
               :class="dialogDraggable() ? 'cursor-move select-none' : ''"
             >
-            <div class="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-violet-100 text-violet-500 dark:bg-violet-500/15">
-              <ArrowDown class="h-4.5 w-4.5" />
+              <div class="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-violet-100 text-violet-500 dark:bg-violet-500/15">
+                <ArrowDown class="h-4.5 w-4.5" />
+              </div>
+              <div class="min-w-0 flex-1">
+                <h2 class="text-base font-semibold text-zinc-900 dark:text-zinc-50">{{ $t('settings.updateDialogTitle') }}</h2>
+                <p class="mt-1 text-sm text-zinc-500 dark:text-zinc-300">
+                  <template v-if="updater.currentVersion.value">{{ $t('settings.currentVersion') }} v{{ updater.currentVersion.value }} → </template>{{ $t('settings.newVersion') }}
+                  <span class="font-medium text-violet-500">v{{ updater.newVersion.value }}</span>
+                </p>
+              </div>
             </div>
-            <div class="min-w-0 flex-1">
-              <h2 class="text-base font-semibold text-zinc-900 dark:text-zinc-50">{{ $t('settings.updateDialogTitle') }}</h2>
-              <p class="mt-1 text-sm text-zinc-500 dark:text-zinc-300">
-                <template v-if="updater.currentVersion.value">{{ $t('settings.currentVersion') }} v{{ updater.currentVersion.value }} → </template>{{ $t('settings.newVersion') }}
-                <span class="font-medium text-violet-500">v{{ updater.newVersion.value }}</span>
-              </p>
-            </div>
-          </div>
 
-          <!-- 更新版说明 -->
-          <div v-if="updater.releaseNotes.value" class="mt-4 max-h-44 overflow-y-auto rounded-xl bg-zinc-50 p-3 dark:bg-zinc-900/60">
-            <p class="whitespace-pre-wrap text-xs leading-relaxed text-zinc-500 dark:text-zinc-300">{{ updater.releaseNotes.value }}</p>
-          </div>
-
-          <!-- Release 说明 -->
+          <!-- 更新说明：Release 正文（HTML 已由 Rust 侧 strip_html 清洗为纯文本） -->
           <div v-if="updater.releaseNotes.value" class="mt-4 max-h-44 overflow-y-auto rounded-xl bg-zinc-50 p-3 dark:bg-zinc-900/60">
             <p class="whitespace-pre-wrap text-xs leading-relaxed text-zinc-500 dark:text-zinc-300">{{ updater.releaseNotes.value }}</p>
           </div>
