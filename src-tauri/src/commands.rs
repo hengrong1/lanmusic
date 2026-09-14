@@ -263,6 +263,7 @@ pub fn add_local_source(
     .map_err(|e| e.to_string())?;
     let id = conn.last_insert_rowid();
     drop(conn);
+    log::info!("已添加本地来源 {id}: {path}");
 
     spawn_scan(&app, &state, id, false)?;
 
@@ -378,6 +379,8 @@ pub fn remove_source(app: AppHandle, state: State<'_, AppState>, id: i64) -> Res
         Some("local") => crate::watcher::unwatch_source(&app, id),
         _ => {}
     }
+    // 破坏性操作留痕：日志里能看到来源何时被删（曲目、歌单引用随之清除）
+    log::info!("已删除来源 {id}（{}）", kind.as_deref().unwrap_or("未知类型"));
     Ok(())
 }
 
@@ -1232,6 +1235,18 @@ pub fn get_lyrics(app: AppHandle, id: i64) -> Result<Option<String>, String> {
 #[tauri::command]
 pub fn parse_qrc(raw: String) -> Result<Option<Vec<crate::qrc::QrcLine>>, String> {
     Ok(crate::qrc::parse(&raw))
+}
+
+/// 前端错误转发落盘（见 main.ts 的 installErrorGuard / boot 兜底）：release 版
+/// WebView 没有控制台，渲染错误、未捕获的 Promise 拒绝、启动失败只有经由此命令
+/// 才能进日志文件。排查用途，有意不本地化；凭证类内容不得经由此通道打印。
+#[tauri::command]
+pub fn frontend_log(level: String, message: String) {
+    match level.as_str() {
+        "error" => log::error!("[前端] {message}"),
+        "warn" => log::warn!("[前端] {message}"),
+        _ => log::info!("[前端] {message}"),
+    }
 }
 
 // ================================================================ 应用设置（M2/M3）
@@ -2166,6 +2181,8 @@ pub fn webdav_add_source(
     .map_err(|e| e.to_string())?;
     let id = conn.last_insert_rowid();
     if crate::keyring::set_password(id, &auth.password).is_err() {
+        // 安全相关：明文回退必须留痕（日志只记事件，绝不记凭证内容）
+        log::warn!("WebDAV 凭证写入系统钥匙串失败，source {id} 回退明文存库");
         let fallback =
             serde_json::json!({ "username": auth.username, "password": auth.password }).to_string();
         let _ = conn.execute(
@@ -2174,6 +2191,7 @@ pub fn webdav_add_source(
         );
     }
     drop(conn);
+    log::info!("已添加 WebDAV 来源 {id}: {}", base.as_str());
 
     spawn_scan(&app, &state, id, false)?;
     let conn = state.db.lock().map_err(|e| e.to_string())?;

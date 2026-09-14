@@ -112,7 +112,7 @@ pub fn init(app: AppHandle, hwnd: HWND) {
         let taskbar: ITaskbarList3 = match CoCreateInstance(&CLSID_TASKBARLIST, None, CLSCTX_ALL) {
             Ok(t) => t,
             Err(_) => {
-                eprintln!("thumbbar: 创建 ITaskbarList3 失败，任务栏控制按钮不可用");
+                log::warn!("thumbbar: 创建 ITaskbarList3 失败，任务栏控制按钮不可用");
                 return;
             }
         };
@@ -127,7 +127,7 @@ pub fn init(app: AppHandle, hwnd: HWND) {
             make_icon(IconKind::Pause, size, light_ui),
             make_icon(IconKind::Next, size, light_ui),
         ) else {
-            eprintln!("thumbbar: 生成按钮图标失败，任务栏控制按钮不可用");
+            log::warn!("thumbbar: 生成按钮图标失败，任务栏控制按钮不可用");
             return;
         };
 

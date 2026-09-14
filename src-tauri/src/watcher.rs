@@ -50,7 +50,7 @@ pub fn watch_source<R: tauri::Runtime>(
     let mut watcher = match result {
         Ok(w) => w,
         Err(e) => {
-            eprintln!("目录监听不可用（source {source_id}）：{e}");
+            log::warn!("目录监听不可用（source {source_id}）：{e}");
             return;
         }
     };
@@ -60,13 +60,17 @@ pub fn watch_source<R: tauri::Runtime>(
         RecursiveMode::NonRecursive
     };
     if let Err(e) = watcher.watch(Path::new(base_path), mode) {
-        eprintln!("监听目录失败（{base_path}）：{e}");
+        log::warn!("监听目录失败（{base_path}）：{e}");
         return;
     }
     let state = app.state::<AppState>();
     if let Ok(mut w) = state.watcher.lock() {
         w.watchers.insert(source_id, watcher);
     };
+    log::info!(
+        "目录监听已开启 source {source_id}: {base_path}（{}）",
+        if recursive { "递归" } else { "仅根目录" }
+    );
 }
 
 /// 停止监听（remove_source 时调用）
@@ -114,6 +118,8 @@ pub fn init(app: AppHandle) {
             }
             scanning.insert(id);
             drop(scanning);
+            // 去抖结束才真正扫描：日志里出现这条 = 用户改了文件（或软件同步），不是重复扫描
+            log::info!("文件变化去抖结束，触发增量扫描 source {id}");
             let app2 = app.clone();
             std::thread::spawn(move || scanner::scan_source(app2, id, false));
         }

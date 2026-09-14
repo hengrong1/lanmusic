@@ -140,9 +140,12 @@ struct ParsedTrack {
     lyrics_text: Option<String>,
 }
 
-/// 在后台线程中调用（见 commands::add_local_source / rescan_source 等）
+/// 在后台线程中调用（见 commands::add_local_source / rescan_source 等）。
+/// 日志覆盖扫描完整生命周期（开始 / 数量与耗时 / 失败原因），
+/// 「未知艺人」「曲库不动」类问题先看这里的记录。
 pub fn scan_source(app: AppHandle, source_id: i64, full_rescan: bool) {
     let started = Instant::now();
+    log::info!("扫描开始 source {source_id}（{}）", if full_rescan { "完整解析" } else { "增量" });
     let result = load_source(&app, source_id).and_then(|(kind, base_path, base_url, config)| {
         match kind.as_str() {
             "local" => run_local_scan(
@@ -165,6 +168,10 @@ pub fn scan_source(app: AppHandle, source_id: i64, full_rescan: bool) {
 
     match result {
         Ok((added, updated, removed)) => {
+            log::info!(
+                "扫描完成 source {source_id}：新增 {added}，更新 {updated}，移除 {removed}，耗时 {} ms",
+                started.elapsed().as_millis()
+            );
             let _ = app.emit(
                 "scan:done",
                 ScanDone {
@@ -177,6 +184,7 @@ pub fn scan_source(app: AppHandle, source_id: i64, full_rescan: bool) {
             );
         }
         Err(message) => {
+            log::error!("扫描失败 source {source_id}：{message}");
             let _ = app.emit("scan:error", ScanError { source_id, message });
         }
     }
@@ -546,7 +554,9 @@ fn run_webdav_scan(
             }
         }
         let Some(bytes) = bytes else {
-            eprintln!("[webdav] 头部拉取失败 {rel}: {last_err}");
+            // 关键日志：WebDAV「未知艺人」的直接根因（重试后仍拉不到头部字节）。
+            // meta_state=0 会留给下次扫描重试；若同一路径反复出现即上游持续限流/断网。
+            log::warn!("[webdav] 头部拉取失败 {rel}: {last_err}");
             // 一个字节都没拿到：标 0 待补全，下次扫描或「完整解析」会重试
             return Some(fallback_track(&rel, 0, size, false, 0));
         };

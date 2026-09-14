@@ -26,6 +26,10 @@ tauri-plugin-dialog = "2.7.2"
 tauri-plugin-single-instance = "2"
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
+# 落盘日志：初始化见 lib.rs（系统日志目录 + 开发期 stdout），业务代码统一用 log 宏
+tauri-plugin-log = "2"
+# 日志门面（与 tauri 传递依赖同版本 0.4，不额外编译）
+log = "0.4"
 rusqlite = { version = "0.40.2", features = ["bundled"] }
 lofty = "0.25.1"
 # 歌词文件编码识别：QQ 生态歌词常见 GBK/GB18030，按 UTF-8 读会乱码（见 lyrics.rs decode_lyric_bytes）

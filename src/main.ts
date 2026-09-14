@@ -7,6 +7,7 @@ import { installTooltip } from './directives/tooltip'
 import { dragDialog } from './directives/dragDialog'
 import { i18n } from './i18n'
 import { errorText } from './i18n/error'
+import { api } from './api/commands'
 import { toast } from './composables/useToast'
 import './style.css'
 
@@ -18,14 +19,31 @@ function removeSplash() {
   document.getElementById('splash')?.remove()
 }
 
-/** 全局兜底：渲染错误与未捕获的 Promise 拒绝统一 toast（LMERR 信封会被 errorText 解码） */
+/** 错误转日志的统一文本化：Error 优先带堆栈，其余 String 化 */
+function toLogText(e: unknown) {
+  return e instanceof Error ? (e.stack ?? String(e)) : String(e)
+}
+
+/**
+ * 前端错误转发到后端日志文件（release 版 WebView 无控制台，日志文件是唯一排查出口）。
+ * 必须 catch 吞掉转发自身的失败——否则 frontendLog 的 rejection 会再次触发
+ * unhandledrejection → 再次转发，形成错误风暴。
+ */
+function logFrontend(level: 'error' | 'warn' | 'info', message: string) {
+  api.frontendLog(level, message).catch(() => {})
+}
+
+/** 全局兜底：渲染错误与未捕获的 Promise 拒绝统一 toast（LMERR 信封会被 errorText 解码），
+ * 同时原文转发到后端日志（保留堆栈/信封原文，比 toast 文案更利于排查） */
 function installErrorGuard(app: VueApp) {
   app.config.errorHandler = (err) => {
     console.error('[app]', err)
+    logFrontend('error', `[app] ${toLogText(err)}`)
     toast(errorText(err), 'error')
   }
   window.addEventListener('unhandledrejection', (e) => {
     console.error('[unhandledrejection]', e.reason)
+    logFrontend('error', `[unhandledrejection] ${toLogText(e.reason)}`)
     toast(errorText(String(e.reason)), 'error')
   })
 }
@@ -74,6 +92,7 @@ async function boot() {
     // 窗口组件加载失败（包损坏/升级中断）：在闪屏上给出明确错误与重试入口，
     // 而不是让闪屏永远停留（白屏假死）
     console.error('[boot]', e)
+    logFrontend('error', `[boot] ${toLogText(e)}`)
     const splash = document.getElementById('splash')
     if (splash) {
       splash.innerHTML = ''

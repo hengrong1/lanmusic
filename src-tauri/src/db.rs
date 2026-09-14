@@ -152,6 +152,9 @@ pub fn open_conn(path: &Path, init: bool) -> rusqlite::Result<Connection> {
     Ok(conn)
 }
 
+/// 启动迁移：补列 + 一次性数据修复（幂等，重复执行无副作用）。
+/// 仅 UI 主连接（`open`/`open_conn(init=true)`，即启动时）执行；
+/// 扫描线程开独立连接走 `open_conn(init=false)`，不经过这里。
 fn migrate(conn: &Connection) -> rusqlite::Result<()> {
     // has_mv: 是否存在同名视频文件（MV）
     ensure_column(conn, "tracks", "has_mv", "INTEGER NOT NULL DEFAULT 0")?;
@@ -184,6 +187,7 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
     // 并回收因此产生的孤儿专辑/艺人（含仅被专辑引用的归属艺人）
     let lan_removed = conn.execute("DELETE FROM sources WHERE kind = 'lan'", [])?;
     if lan_removed > 0 {
+        log::info!("迁移：清理遗留 LAN 来源 {lan_removed} 个（功能已移除）");
         conn.execute(
             "DELETE FROM albums WHERE id NOT IN (SELECT DISTINCT album_id FROM tracks)",
             [],
@@ -199,6 +203,7 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
     // 多艺人拆分（track_artists）上线：已完整解析过的曲目需重新读标签才能按
     // 分隔符拆出独立艺人。置回 meta_state=0 让下次扫描自动重解析（一次性）。
     if get_setting(conn, "track_artists_migrated").is_none() {
+        log::info!("迁移：多艺人拆分上线，全部已解析曲目置回待补全（meta_state=0），下次扫描自动重解析");
         conn.execute("UPDATE tracks SET meta_state = 0", [])?;
         set_setting(conn, "track_artists_migrated", "1")?;
     }
@@ -206,6 +211,7 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
     // raw_artist（原始艺人标签）上线：没有该值的已解析行需要重新读标签回填，
     // 之后调整艺人分隔符时可直接基于它重拆，无需再读文件（一次性）。
     if get_setting(conn, "raw_artist_migrated").is_none() {
+        log::info!("迁移：raw_artist 上线，已解析行将在下次扫描回填原始艺人标签");
         conn.execute(
             "UPDATE tracks SET meta_state = 0 WHERE raw_artist IS NULL AND meta_state = 1",
             [],
@@ -223,6 +229,8 @@ fn ensure_column(conn: &Connection, table: &str, column: &str, def: &str) -> rus
             &format!("ALTER TABLE {table} ADD COLUMN {column} {def}"),
             [],
         )?;
+        // 真正执行的补列才记日志：迁移历史一目了然（存量库首次升级时会连续出现多条）
+        log::info!("迁移：{table} 新增列 {column}");
     }
     Ok(())
 }

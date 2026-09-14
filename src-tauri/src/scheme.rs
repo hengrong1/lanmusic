@@ -146,7 +146,12 @@ pub(crate) fn route_track<R: Runtime>(
     );
     let (rel, format, size, kind, base_path, base_url, config, source_id) = match row {
         Ok(v) => v,
-        Err(_) => return not_found(),
+        Err(_) => {
+            // 关键日志：播不了的排查起点。DB 查不到该 id = 行已被删（扫描移除/手动移除）
+            // 而前端还持有旧 id（队列快照），或 DB 本身损坏。
+            log::warn!("music:// 曲目 {id} 未在库中，返回 404");
+            return not_found();
+        }
     };
     drop(conn);
 
@@ -180,6 +185,9 @@ pub(crate) fn route_track<R: Runtime>(
                 }
             }
             let Ok(file) = std::fs::File::open(&full) else {
+                // 关键日志：库里有行但文件打不开（被移动/删除/盘未挂载/权限变化），
+                // 是本地曲目「播不了」的最常见根因；顺带记录真实拼接路径便于比对。
+                log::warn!("music:// 本地文件打不开 track {id}: {}", full.display());
                 return not_found();
             };
             // 优先用打开文件的真实长度：扫描后文件变大时，DB 里的 file_size 会让
@@ -422,6 +430,8 @@ pub(crate) fn proxy_response(
         req = req.header(RANGE, cap_open_range(r));
     }
     let Ok(resp) = req.send() else {
+        // 关键日志：远端完全连不上（DNS/超时/连接被掐），WebDAV 曲目播不了时先看这条
+        log::warn!("music:// 远端请求失败（网络错误）: {url}");
         return bad_gateway();
     };
     let status = resp.status();
@@ -430,8 +440,11 @@ pub(crate) fn proxy_response(
         // 5xx = 上游暂时故障。两者都属于「稍后再试」，回 503 而不是 404，
         // 否则播放器会把限流误判成「文件不存在」。
         if status == reqwest::StatusCode::TOO_MANY_REQUESTS || status.is_server_error() {
+            log::warn!("music:// 远端暂时不可用（限流/上游故障）{url}: HTTP {status}");
             return service_unavailable();
         }
+        // 404/403 等：文件确实不在或无权限，播放器按「不可用」处理
+        log::warn!("music:// 远端拒绝请求 {url}: HTTP {status}");
         return not_found();
     }
     let content_range: Option<String> = resp
@@ -505,7 +518,11 @@ fn cover_handle<R: Runtime>(app: AppHandle<R>, req: Request<Vec<u8>>) -> Respons
             Err(_) => not_found(),
         },
         Ok(None) => not_found(),
-        Err(_) => server_error(),
+        Err(e) => {
+            // 提取过程出错（DB 锁不可用等），与「确认无封面」(404) 区分开
+            log::warn!("cover:// 专辑 {id} 封面提取失败: {e}");
+            server_error()
+        }
     }
 }
 

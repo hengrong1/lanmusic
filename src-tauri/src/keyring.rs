@@ -96,6 +96,10 @@ pub fn migrate_plaintext(conn: &Connection) {
                 "UPDATE sources SET config = ?1 WHERE id = ?2",
                 rusqlite::params![v.to_string(), id],
             );
+            log::info!("WebDAV 凭证已从明文迁移到系统钥匙串（source {id}）");
+        } else {
+            // 保持明文原样，下次启动再试；用户应能在日志里看到钥匙串异常
+            log::warn!("钥匙串写入失败，source {id} 凭证暂留明文，下次启动重试迁移");
         }
     }
 }

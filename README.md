@@ -304,6 +304,7 @@ SQLite（WAL 模式，外键开启），建表与列迁移见 `src-tauri/src/db.
 - 数据库：`~/Library/Application Support/com.lanmusic.desktop/library.db`（macOS）；Windows 为 `%APPDATA%\com.lanmusic.desktop\library.db`
 - 封面缓存：同目录 `covers/` 下，按专辑 ID 命名
 - 前端持久化（队列快照/偏好）：WebView localStorage
+- 日志文件（tauri-plugin-log）：Windows `%LOCALAPPDATA%\com.lanmusic.desktop\logs\lanmusic.log`；macOS `~/Library/Logs/com.lanmusic.desktop/lanmusic.log`；Linux `~/.local/share/com.lanmusic.desktop/logs/lanmusic.log`。Info 级起步，单文件约 1MB，超出自动滚动，启动时清理历史滚动文件、保留最近 5 个（含当前文件）；release 版无控制台，日志文件是唯一的排查出口
 
 ## 开发指南
 
@@ -322,13 +323,17 @@ SQLite（WAL 模式，外键开启），建表与列迁移见 `src-tauri/src/db.
 - 例外：`EmptyState` / `BaseModal` / `BaseColorPicker` 的 `title` 是组件 prop（标题文案），不是 tooltip，不要替换
 
 **运行与调试**：
-- `pnpm tauri:dev`（Rust 改动会自动重编译；前端 HMR 端口 1420/1421）
+- `pnpm tauri:dev`（Rust 改动会自动重编译；前端 HMR 端口 1420/1421；Rust 日志在 dev 模式下同步输出到终端）
 - `pnpm test` — `scheme.rs` 中有跨平台 URI 解析的单测，改协议相关代码请补测试
 - 提交前跑 `pnpm verify`（typecheck + cargo test + clippy）
+- 后端日志：业务代码用 `log::info!/warn!/error!`（插件初始化见 `lib.rs`）；新增关键路径（扫描/播放/迁移/凭证）请同步补日志，别用 `println!`（release 版没有控制台，等于没打）。panic 有全局钩子兜底落日志（`lib.rs` setup 开头），不用为单个 expect 手动处理
+- 前端错误：`main.ts` 的 `installErrorGuard`（渲染错误/unhandledrejection）与 boot 兜底已自动经 `api.frontendLog` 转发到日志文件，无需手动打点；新代码里需要主动落日志时用 `api.frontendLog`，必须 `catch(() => {})` 吞掉转发失败，防止错误风暴
 
 **窗口平台差异**：macOS 保留原生红绿灯（透明标题栏）；Windows/Linux 无边框，由前端 `WindowControls` 自绘。自定义协议 URL 形态不同（`music://track/1` vs `http://music.localhost/track/1`），前端统一走 `api/scheme.ts`，不要手拼。
 
 ## 故障排查
+
+排查通用入口：先看日志文件（位置见「数据位置」）。应用启动（版本/数据目录/DB 打开）、数据库迁移（补列/一次性修复）、扫描全生命周期（开始/新增更新移除数量/耗时/失败原因）、音频流关键失败（曲目不在库、本地文件打不开、远端请求失败与 HTTP 状态码）、封面提取失败、钥匙串异常、WebDAV 歌词下载失败、前端渲染错误与启动失败（`frontend_log` 转发）、panic（panic 钩子）均有记录。
 
 | 现象 | 原因与处理 |
 |---|---|

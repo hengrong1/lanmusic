@@ -24,7 +24,39 @@ use tauri::{AppHandle, Manager, PhysicalPosition};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    // 日志目标：落盘为主，开发期额外同步输出到终端。
+    // release 版 windows_subsystem = "windows" 没有控制台，日志文件是唯一排查出口。
+    let mut log_targets = vec![tauri_plugin_log::Target::new(
+        tauri_plugin_log::TargetKind::LogDir {
+            file_name: Some("lanmusic".into()),
+        },
+    )];
+    #[cfg(debug_assertions)]
+    log_targets.push(tauri_plugin_log::Target::new(
+        tauri_plugin_log::TargetKind::Stdout,
+    ));
+
+    // Builder::run 返回 Result：错误时落日志再以非零码退出（release 版无控制台，
+    // 不写日志的话启动崩溃只有系统事件查看器里一行宽泛记录可看）
+    if let Err(e) = tauri::Builder::default()
+        // 日志插件必须最先注册（早于业务 setup），后续插件初始化与启动日志才能被捕获。
+        // - 落盘位置：系统日志目录下 {identifier}/logs/lanmusic.log
+        //   （Windows: %LOCALAPPDATA%\com.lanmusic.desktop\logs\；macOS: ~/Library/Logs/com.lanmusic.desktop/）
+        // - 级别 Info 起步；HTTP 栈（hyper/reqwest 等）啰嗦且无排查价值，压到 Warn
+        // - 单文件 ~1MB，超出自动滚动并保留历史文件（KeepAll），按本地时区记时间戳
+        .plugin(
+            tauri_plugin_log::Builder::new()
+                .targets(log_targets)
+                .level(log::LevelFilter::Info)
+                .level_for("hyper", log::LevelFilter::Warn)
+                .level_for("hyper_util", log::LevelFilter::Warn)
+                .level_for("reqwest", log::LevelFilter::Warn)
+                .level_for("rustls", log::LevelFilter::Warn)
+                .max_file_size(1_024_000)
+                .rotation_strategy(tauri_plugin_log::RotationStrategy::KeepAll)
+                .timezone_strategy(tauri_plugin_log::TimezoneStrategy::UseLocal)
+                .build(),
+        )
         // 单实例：二次启动时唤起已运行实例的主窗口（官方建议此插件最先注册）
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             if let Some(w) = app.get_webview_window("main") {
@@ -39,6 +71,21 @@ pub fn run() {
         // 应用内更新：检查/下载 GitHub Releases 的更新包（签名校验见 tauri.conf.json 的 pubkey）
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
+            // panic 钩子：release 版无控制台，panic 默认只写 stderr = 完全丢失。
+            // 启动路径的 .expect（数据目录 / DB 打开）正是「应用打不开」的高发点，
+            // 没有这条日志就只能看系统事件查看器里一行宽泛记录。此钩子在日志插件
+            // 初始化之后挂上，此后任何线程的 panic 都会落日志；保留默认 hook，
+            // dev 模式终端仍有正常输出。
+            let default_hook = std::panic::take_hook();
+            std::panic::set_hook(Box::new(move |info| {
+                log::error!("panic: {info}");
+                default_hook(info);
+            }));
+
+            // KeepAll 滚动策略会无限堆积 1MB 历史日志，启动时清一次账。
+            // 放在最前：日志插件此时已初始化（当前文件已打开，不受删除影响）。
+            prune_old_logs(app.handle());
+
             // 主窗口：在 Rust 侧按平台创建（官方《窗口自定义》推荐做法）
             // - macOS：保留原生红绿灯，仅透明化标题栏（fullSizeContentView），内容延伸到标题栏下方
             // - Windows/Linux：完全无边框（decorations: false），由前端自绘控制按钮
@@ -105,11 +152,18 @@ pub fn run() {
             }
 
             let data_dir = app.path().app_data_dir().expect("无法获取应用数据目录");
+            // 启动日志：版本 + 数据目录，日志排查的第一条锚点（此后各模块日志以它对齐会话）
+            log::info!(
+                "LanMusic v{} 启动，数据目录 {}",
+                app.package_info().version,
+                data_dir.display()
+            );
             std::fs::create_dir_all(&data_dir)?;
             let covers_dir = data_dir.join("covers");
             std::fs::create_dir_all(&covers_dir)?;
             let db_path = data_dir.join("library.db");
             let conn = db::open(&db_path).expect("无法打开数据库");
+            log::info!("数据库已打开: {}", db_path.display());
 
             // WebDAV 凭证一次性迁移：旧版本明文存于 sources.config，迁入系统钥匙串
             keyring::migrate_plaintext(&conn);
@@ -125,6 +179,7 @@ pub fn run() {
                 )
                 .ok();
             if covers_selfheal.is_none() {
+                log::info!("执行封面缓存一次性自愈（covers.selfheal.v1）：清空 covers/ 待惰性重建");
                 let _ = std::fs::remove_dir_all(&covers_dir);
                 std::fs::create_dir_all(&covers_dir)?;
                 let _ = conn.execute(
@@ -291,6 +346,7 @@ pub fn run() {
             commands::report_play,
             commands::get_lyrics,
             commands::parse_qrc,
+            commands::frontend_log,
             commands::favorite_toggle,
             commands::get_setting,
             commands::set_setting,
@@ -314,7 +370,53 @@ pub fn run() {
             commands::get_mv_url
         ])
         .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+    {
+        // 正常退出也会走到 Ok 分支（事件循环结束），只有出错才进这里
+        log::error!("Tauri 事件循环异常退出: {e}");
+        std::process::exit(1);
+    }
+}
+
+/// 日志文件保留总数（当前 lanmusic.log + 历史滚动文件）。KeepAll 策略每次滚满
+/// 1MB 就新建一个文件且永不删除，长期使用会无限堆积；启动时清理到该数量。
+const LOG_KEEP_FILES: usize = 5;
+
+/// 启动时清理历史日志：按最后修改时间从旧到新删，保留最近 `LOG_KEEP_FILES - 1`
+/// 个滚动文件（当前正在写的 lanmusic.log 恒保留）。清理失败只记 warn，不影响启动。
+fn prune_old_logs(app: &AppHandle) {
+    let Some(dir) = app.path().app_log_dir().ok() else {
+        return;
+    };
+    let Ok(entries) = std::fs::read_dir(&dir) else {
+        return;
+    };
+    // 只认本应用名开头的 .log，且排除当前文件（plugin-log 已打开，删了也会重建，
+    // 但跳过它可以省一次打开/关闭开销）
+    let mut rotated: Vec<(std::time::SystemTime, std::path::PathBuf)> = entries
+        .flatten()
+        .filter_map(|e| {
+            let path = e.path();
+            let name = path.file_name()?.to_str()?;
+            if !name.starts_with("lanmusic") || !name.ends_with(".log") || name == "lanmusic.log" {
+                return None;
+            }
+            let modified = e.metadata().and_then(|m| m.modified()).ok()?;
+            Some((modified, path))
+        })
+        .collect();
+    if rotated.len() + 1 <= LOG_KEEP_FILES {
+        return;
+    }
+    rotated.sort_by(|a, b| b.0.cmp(&a.0)); // 新 → 旧
+    let mut deleted = 0usize;
+    for (_, path) in rotated.drain(LOG_KEEP_FILES - 1..) {
+        if std::fs::remove_file(&path).is_ok() {
+            deleted += 1;
+        }
+    }
+    if deleted > 0 {
+        log::info!("清理历史日志 {deleted} 个（保留最近 {LOG_KEEP_FILES} 个）");
+    }
 }
 
 /// 托盘菜单弹窗逻辑尺寸（物理像素 = 逻辑 × DPI 缩放）

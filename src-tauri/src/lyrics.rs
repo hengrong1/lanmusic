@@ -222,11 +222,18 @@ pub fn fetch(app: &AppHandle, track_id: i64) -> Result<Option<String>, String> {
                         if let Some((k, u)) = &external {
                             if *k == kind {
                                 if let Ok(parsed) = url::Url::parse(u) {
-                                    if let Ok(Some(text)) = crate::network::webdav::download_text(
+                                    match crate::network::webdav::download_text(
                                         &parsed,
                                         auth.as_ref(),
                                     ) {
-                                        return Ok(Some(text));
+                                        Ok(Some(text)) => return Ok(Some(text)),
+                                        // 关键日志：「歌词出不来」的直接证据（下载失败≠无歌词）
+                                        Ok(None) => {
+                                            log::warn!("[webdav] 外挂歌词下载为空 {u}")
+                                        }
+                                        Err(e) => {
+                                            log::warn!("[webdav] 外挂歌词下载失败 {u}: {e}")
+                                        }
                                     }
                                 }
                             }
@@ -250,6 +257,9 @@ pub fn fetch(app: &AppHandle, track_id: i64) -> Result<Option<String>, String> {
                             auth.as_ref(),
                             Some((0, crate::metadata::HEAD_FETCH_SIZE - 1)),
                         ) else {
+                            // 关键日志：内嵌歌词候选存在但头部拉取失败（限流/断网），
+                            // 不是「无歌词」；重试或完整解析可恢复
+                            log::warn!("[webdav] 内嵌歌词头部拉取失败（1MB）: {url}");
                             continue;
                         };
                         if let Some(text) = crate::metadata::read_bytes(&bytes, false)

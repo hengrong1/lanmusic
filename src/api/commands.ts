@@ -51,6 +51,9 @@ export const api = {
 
   // 其他
   revealTrack: (id: number) => invoke<void>('reveal_track', { id }),
+  /** 前端错误转发到后端日志文件（release 版无控制台，日志是唯一排查出口） */
+  frontendLog: (level: 'error' | 'warn' | 'info', message: string) =>
+    invoke<void>('frontend_log', { level, message }),
 
   // 歌单（M2）
   playlistList: () => invoke<Playlist[]>('playlist_list'),
