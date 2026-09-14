@@ -50,7 +50,14 @@ if (-not (Test-Path $Exe)) {
     throw "未找到编译产物：$Exe（请先运行 tauri build）"
 }
 
-& $Iscc (Join-Path $PSScriptRoot "LanMusic.iss")
+# 三段版本号（如 0.5.5）：传给 .iss 作为**安装包文件名**的版本。
+# Windows 文件版本是四段（0.5.5.0），若拿它当文件名，应用内更新按三段拼的资产地址
+# 会 HEAD 404（见 src-tauri/src/updater.rs::asset_urls）。所以以 tauri.conf.json 的
+# version 为唯一来源，与 tag 名、App 内比较用的版本三者保持一致。
+$Ver = (Get-Content (Join-Path $Root "src-tauri\tauri.conf.json") | ConvertFrom-Json).version
+if (-not $Ver) { throw "未能从 src-tauri\tauri.conf.json 读到 version" }
+
+& $Iscc "/DMyAppVersionShort=$Ver" (Join-Path $PSScriptRoot "LanMusic.iss")
 if ($LASTEXITCODE -ne 0) { throw "ISCC 打包失败" }
 
 $Installer = Get-ChildItem (Join-Path $Root "installer\output\*.exe") |

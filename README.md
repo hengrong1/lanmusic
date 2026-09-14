@@ -112,7 +112,9 @@ powershell -ExecutionPolicy Bypass -File installer\build.ps1             # 构�
 powershell -ExecutionPolicy Bypass -File installer\build.ps1 -SkipBuild  # 跳过构建，直接打包
 ```
 
-脚本会自动定位 Inno Setup 6 编译器（环境变量 `ISCC` → PATH → 常见安装位置 → 注册表），并在打包后生成 `LanMusic_<版本>_x64-setup.exe.sha256`（应用内更新下载后校验用）。简体中文语言文件随仓库提供（`installer/languages/ChineseSimplified.isl`，Inno Setup 官方安装包不含该社区翻译），**无需另行安装**。安装包行为：
+脚本会自动定位 Inno Setup 6 编译器（环境变量 `ISCC` → PATH → 常见安装位置 → 注册表），并在打包后生成 `LanMusic_<版本>_x64-setup.exe.sha256`（应用内更新下载后校验用）。简体中文语言文件随仓库提供（`installer/languages/ChineseSimplified.isl`，Inno Setup 官方安装包不含该社区翻译），**无需另行安装**。
+
+> ⚠️ **安装包文件名必须用三段版本**（`LanMusic_0.5.5_x64-setup.exe`，**不是** `0.5.5.0`）：应用内更新按 `LanMusic_<版本>_x64-setup.exe` 拼接资产地址（`updater.rs::asset_urls`），带第四段会让 HEAD 探测 404、更新永远退化为「前往下载页」。`build.ps1` 与 CI 都从 `tauri.conf.json` 读三段版本并以 `ISCC /DMyAppVersionShort=<版本>` 传给 `.iss`（`.iss` 里的 `{#MyAppVersion}` 来自 exe 文件版本，是四段，**只用于向导展示，别拿它做文件名**）。安装包行为：
 
 - 按当前用户安装（`%LOCALAPPDATA%\Programs\LanMusic`），向导中可改为全部用户；
 - 覆盖安装前自动结束正在运行的实例（关闭默认驻留托盘，必须强杀）；

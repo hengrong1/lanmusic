@@ -115,7 +115,12 @@ jobs:
         run: |
           $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
           if (-not (Test-Path $iscc)) { throw "未找到 ISCC.exe" }
-          & $iscc installer/LanMusic.iss
+          # 安装包文件名固定用三段版本（取 tauri.conf.json）：exe 的文件版本是四段
+          # （0.5.5.0），拿它当产物名会让应用内更新按三段拼出的资产地址 HEAD 404
+          # → 永远退化为「前往下载页」（见 src-tauri/src/updater.rs::asset_urls）
+          $v = (Get-Content src-tauri/tauri.conf.json | ConvertFrom-Json).version
+          if (-not $v) { throw "未能从 src-tauri/tauri.conf.json 读到 version" }
+          & $iscc "/DMyAppVersionShort=$v" installer/LanMusic.iss
           if ($LASTEXITCODE -ne 0) { throw "ISCC 打包失败" }
           # 生成 SHA-256 校验文件（应用内更新下载后校验，见 src-tauri/src/updater.rs）
           $setup = Get-ChildItem installer/output/*.exe | Sort-Object LastWriteTime -Descending | Select-Object -First 1

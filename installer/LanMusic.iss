@@ -5,8 +5,19 @@
 
 #define MyAppName "LanMusic"
 #define MyAppExeName "lanmusic.exe"
-; 版本号直接取自编译产物的文件版本，与 tauri.conf.json 保持一致
+; 完整版本号取自编译产物的文件版本（Windows 文件版本是四段，如 0.5.5.0），用于向导展示
+; 与「应用和功能」里的版本号。文件名另用下面的短版本（需构建脚本传入）。
 #define MyAppVersion GetFileVersion("..\src-tauri\target\release\lanmusic.exe")
+; 短版本（三段，如 0.5.5）：**只用于安装包文件名**。
+; 应用内更新按 `LanMusic_<三段版本>_x64-setup.exe` 拼接资产地址
+; （src-tauri/src/updater.rs::asset_urls），文件名多出第四段 ".0" 会让 HEAD 探测 404、
+; 更新退化为「前往下载链接」。构建脚本（installer/build.ps1 与 CI）统一以
+;   ISCC /DMyAppVersionShort=<tauri.conf.json 里的 version>
+; 传入，保证与 App 内比较用的版本、tag 名三者一致。
+; 未传入时（直接手跑 ISCC）回退为完整文件版本——此时产物名会带第四段，仅供本地试编。
+#ifndef MyAppVersionShort
+  #define MyAppVersionShort MyAppVersion
+#endif
 
 [Setup]
 ; 固定 GUID：升级识别键。一旦发布不要再改动，否则旧版本无法被覆盖升级
@@ -18,7 +29,7 @@ AppPublisher={#MyAppName}
 DefaultDirName={autopf}\{#MyAppName}
 DisableProgramGroupPage=yes
 OutputDir=output
-OutputBaseFilename=LanMusic_{#MyAppVersion}_x64-setup
+OutputBaseFilename=LanMusic_{#MyAppVersionShort}_x64-setup
 SetupIconFile=..\src-tauri\icons\icon.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
 Compression=lzma2/max
