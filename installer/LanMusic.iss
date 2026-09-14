@@ -61,6 +61,17 @@ begin
   Exec(ExpandConstant('{sys}\taskkill.exe'), '/f /im {#MyAppExeName}', '', SW_HIDE, ewWaitUntilTerminated, R);
 end;
 
+{ 卸载开始时先结束运行中的实例：LanMusic 关闭窗口默认驻留托盘，卸载时进程通常
+  仍在运行并占用 lanmusic.exe 的文件句柄 —— Inno 会跳过被占用的文件却仍然提示
+  「卸载完成」，留下需要手动删除的残留。这里在卸载向导出现前强杀，
+  并留出句柄释放时间，保证后续文件删除干净。 }
+function InitializeUninstall(): Boolean;
+begin
+  KillRunningApp;
+  Sleep(800);
+  Result := True;
+end;
+
 { 是否执行「启动应用」项：
   - 向导安装（非静默）：显示，由用户勾选；
   - 静默安装：仅当带 /LAUNCH=1（应用内更新流程，见 src-tauri/src/updater.rs）才启动，
