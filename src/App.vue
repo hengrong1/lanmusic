@@ -6,6 +6,7 @@ import TopBar from '@/components/TopBar.vue'
 import PlayerBar from '@/components/PlayerBar.vue'
 import QueuePanel from '@/components/QueuePanel.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import CloseConfirmDialog from '@/components/CloseConfirmDialog.vue'
 import UpdateDialog from '@/components/UpdateDialog.vue'
 import NowPlayingView from '@/components/NowPlayingView.vue'
 import Toast from '@/components/Toast.vue'
@@ -349,6 +350,7 @@ window.addEventListener('keydown', (e) => {
     </Transition>
     <Toast />
     <ConfirmDialog />
+    <CloseConfirmDialog />
     <UpdateDialog />
     <MvPlayer />
     <!-- 播放页环境：全窗渐变（含播放条背后）+ 上滑的内容层。z-15 低于播放条，播放条透明浮于其上 -->

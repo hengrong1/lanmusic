@@ -629,6 +629,16 @@ onMounted(async () => {
 const updater = useUpdater()
 const progressPct = computed(() => (updater.progress.value >= 0 ? Math.round(updater.progress.value * 100) : -1))
 
+/** 重新运行首次启动引导（清 DB 标记后重载，便于回看或演示） */
+async function rerunOnboarding() {
+  try {
+    await api.setSetting('app.onboarded', '0')
+  } catch {
+    // 写失败时重载后仍进主界面，不影响使用
+  }
+  location.reload()
+}
+
 const adding = ref(false)
 async function addFolder() {
   const path = await openDialog({ directory: true, multiple: false })
@@ -1781,6 +1791,13 @@ const showWebdavLimits = computed(() => showWebdav.value || library.sources.some
                       @click="updater.checkForUpdate(false)"
                     >
                       {{ t('settings.checkForUpdates') }}
+                    </BaseButton>
+                  </div>
+                  <!-- 重新运行首次引导（便于回看 / 演示） -->
+                  <div class="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-zinc-100 pt-3 dark:border-zinc-800">
+                    <span class="text-xs text-zinc-400">{{ t('settings.rerunOnboardingDesc') }}</span>
+                    <BaseButton size="sm" variant="outline" @click="rerunOnboarding">
+                      {{ t('settings.rerunOnboarding') }}
                     </BaseButton>
                   </div>
                 </div>

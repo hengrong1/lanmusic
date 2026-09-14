@@ -21,7 +21,7 @@ mod updater;
 mod watcher;
 
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::{AppHandle, Manager, PhysicalPosition};
+use tauri::{AppHandle, Emitter, Manager, PhysicalPosition};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -113,42 +113,50 @@ pub fn run() {
                 ns_window.setBackgroundColor(Some(&NSColor::windowBackgroundColor()));
             }
 
-            // 关闭窗口行为：根据用户设置决定是最小化到托盘还是退出应用
-            // 前端通过 set_setting 存储 lm.closeAction（'tray' 或 'quit'）到 SQLite
+            // 关闭窗口行为：
+            // - 用户已选择过（lm.closeAction = 'tray' | 'quit'）→ 按选择执行；
+            // - 首次（键不存在）→ 不擅自决定，emit 事件交前端弹窗询问
+            //   （见 CloseConfirmDialog.vue；选择后由前端写设置并执行隐藏/退出）。
             {
                 let app_handle = app.handle().clone();
                 let main_window = window.clone();
                 window.on_window_event(move |event| {
                     if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                        // 读取用户设置：默认最小化到托盘。
-                        // 读取失败（数据库锁被污染/被占用）时同样按「最小化到托盘」处理，
+                        // 读取用户设置（None = 首次未选择）。
+                        // 读取失败（数据库锁被污染/被占用）时按「最小化到托盘」处理，
                         // 不能退回默认行为——默认行为只销毁主窗口，进程不会退出。
-                        let should_quit = match app_handle.state::<crate::state::AppState>().db.lock() {
-                            Ok(guard) => {
-                                crate::db::get_setting(&guard, "lm.closeAction").as_deref()
-                                    == Some("quit")
+                        let action: Option<String> =
+                            match app_handle.state::<crate::state::AppState>().db.lock() {
+                                Ok(guard) => crate::db::get_setting(&guard, "lm.closeAction"),
+                                Err(_) => Some("tray".to_string()),
+                            };
+
+                        match action.as_deref() {
+                            // 首次：交给前端询问（弹窗提供「记住我的选择」）
+                            None => {
+                                api.prevent_close();
+                                log::info!("首次关闭：通知前端询问关闭行为");
+                                let _ = app_handle.emit("close-confirm-needed", ());
                             }
-                            Err(_) => false,
-                        };
-
-                        if should_quit {
-                            // 用户选择关闭时退出应用。
-                            // 注意：不能直接依赖默认行为（销毁主窗口）——托盘菜单窗口 tray
-                            // 是常驻的隐藏窗口，桌面歌词窗口也可能开着，只要还有窗口存活
-                            // Tauri 就不会退出进程，托盘图标会残留在系统托盘区。
-                            // 因此这里必须显式 exit；放到子线程执行，避免在窗口事件回调
-                            // 中重入事件循环造成死锁。
-                            api.prevent_close();
-                            let handle = app_handle.clone();
-                            std::thread::spawn(move || {
-                                handle.exit(0);
-                            });
-                            return;
+                            Some("quit") => {
+                                // 用户选择关闭时退出应用。
+                                // 注意：不能直接依赖默认行为（销毁主窗口）——托盘菜单窗口 tray
+                                // 是常驻的隐藏窗口，桌面歌词窗口也可能开着，只要还有窗口存活
+                                // Tauri 就不会退出进程，托盘图标会残留在系统托盘区。
+                                // 因此这里必须显式 exit；放到子线程执行，避免在窗口事件回调
+                                // 中重入事件循环造成死锁。
+                                api.prevent_close();
+                                let handle = app_handle.clone();
+                                std::thread::spawn(move || {
+                                    handle.exit(0);
+                                });
+                            }
+                            // 默认（'tray' 及未知值）：隐藏窗口到托盘，不退出
+                            _ => {
+                                api.prevent_close();
+                                let _ = main_window.hide();
+                            }
                         }
-
-                        // 默认行为：隐藏窗口到托盘，不退出
-                        api.prevent_close();
-                        let _ = main_window.hide();
                     }
                 });
             }

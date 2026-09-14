@@ -33,6 +33,18 @@ function logFrontend(level: 'error' | 'warn' | 'info', message: string) {
   api.frontendLog(level, message).catch(() => {})
 }
 
+/**
+ * 是否首次启动：读 DB 的 `app.onboarded` 标记（引导完成或跳过时写入，见 OnboardingView）。
+ * 读取失败按「非首次」处理 —— 引导缺失不应阻断正常启动。
+ */
+async function isFirstRun(): Promise<boolean> {
+  try {
+    return (await api.getSetting('app.onboarded')) !== '1'
+  } catch {
+    return false
+  }
+}
+
 /** 全局兜底：渲染错误与未捕获的 Promise 拒绝统一 toast（LMERR 信封会被 errorText 解码），
  * 同时原文转发到后端日志（保留堆栈/信封原文，比 toast 文案更利于排查） */
 function installErrorGuard(app: VueApp) {
@@ -82,7 +94,13 @@ async function boot() {
       removeSplash()
       return
     }
-    const app = createApp(App).use(createPinia()).use(i18n)
+    // 首次启动渲染引导页（见 views/OnboardingView.vue）；已完成引导则正常进主界面。
+    // 引导页不依赖 pinia store，按需动态加载，主界面 bundle 不背它的体积。
+    const firstRun = await isFirstRun()
+    const Root = firstRun ? (await import('./views/OnboardingView.vue')).default : App
+    const app = createApp(Root)
+    if (!firstRun) app.use(createPinia())
+    app.use(i18n)
     installTooltip(app)
     app.directive('drag-dialog', dragDialog)
     installErrorGuard(app)
