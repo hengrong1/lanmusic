@@ -58,7 +58,7 @@
 - **音质徽标**：播放页显示格式/采样率/位深/码率，≥88.2kHz 或 ≥24bit 标记金色 Hi-Res
 - **封面缓存容量控制**：默认上限 500MB，启动与扫描结束后自动清理（先删哨兵文件，再按修改时间从旧到新删封面；可通过 `covers.max_mb` 设置调整，0 = 不限制）
 - **单实例**：重复启动时唤起已运行实例的主窗口（`tauri-plugin-single-instance`）
-- **应用内更新**：启动时静默检查 GitHub Releases 的 `latest.json`，设置 → 关于可手动检查；发现新版本显示版说明与下载进度，下载完成后重启安装；更新包经 Tauri minisign 密钥校验（免费本地签名，非 OS 代码签名）
+- **应用内更新**（自研，基于 GitHub Releases）：启动时静默检查最新 Release 版本号（`updater.rs`），发现新版本弹出说明；**应用内下载安装包**（带进度，Rust 侧流式下载）→ **SHA-256 校验** → 「安装并重启」静默安装并自动拉起新版。手动检查入口在设置 → 关于；Release 未提供安装包资产时退化为「前往下载页」。Windows 安装包为 Inno Setup（`installer/`），macOS 为 dmg
 - **阻止系统休眠**：播放歌曲期间保持系统与屏幕常亮（默认开启），暂停/停止后自动恢复；Windows 走 `SetThreadExecutionState`，其他平台尝试 Web Wake Lock
 - **系统托盘**：点击托盘图标弹出悬浮菜单（圆角玻璃卡片）——顶部显示当前歌曲封面+歌名/歌手，控制栏提供上一首/播放暂停/下一首/喜欢，底部为桌面歌词开关/设置/退出；失焦自动收起
 - **侧栏**：可收起/展开（GSAP 宽度动画 + 文字淡入淡出 + 图标尺寸过渡），歌单显示封面缩略图
@@ -91,34 +91,42 @@
 ```bash
 pnpm install          # 前端依赖
 pnpm tauri:dev        # 开发模式（首次需编译 Rust，约 2-3 分钟）
-pnpm tauri:build      # 打包安装程序
+pnpm tauri:build      # 构建发布版可执行文件（前端资源内嵌进 exe，无打包步骤）
 ```
+
+## Windows 安装包（Inno Setup）
+
+`bundle.targets` 在主配置中置空：`pnpm tauri:build` 只产出 `src-tauri/target/release/lanmusic.exe`，Windows 安装包统一由 Inno Setup 编译（输出 `installer/output/LanMusic_<版本>_x64-setup.exe`）：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File installer\build.ps1             # 构建产物 + 打包
+powershell -ExecutionPolicy Bypass -File installer\build.ps1 -SkipBuild  # 跳过构建，直接打包
+```
+
+脚本会自动定位 Inno Setup 6 编译器（环境变量 `ISCC` → PATH → 常见安装位置 → 注册表），并在打包后生成 `LanMusic_<版本>_x64-setup.exe.sha256`（应用内更新下载后校验用）。安装包行为：
+
+- 按当前用户安装（`%LOCALAPPDATA%\Programs\LanMusic`），向导中可改为全部用户；
+- 覆盖安装前自动结束正在运行的实例（关闭默认驻留托盘，必须强杀）；
+- 未检测到 WebView2 运行时会在安装前弹窗引导到微软官方下载页；
+- 简体中文向导、可选桌面图标、压缩率 LZMA2/max；
+- 静默安装支持 `/SILENT`；带 `/LAUNCH=1` 时装完自动启动应用（应用内更新流程使用），不带则不启动（部署脚本中性）
 
 ## GitHub Actions 打包
 
-`.github/workflows/build.yml` 提供云端打包，矩阵产出 4 类安装包：
+`.github/workflows/build.yml` 提供云端打包（推 `v*` 标签或手动 Run workflow），产出上传到**草稿 Release**：
 
-| Runner | Target | 产物 | 覆盖硬件 |
-|---|---|---|---|
-| macos-latest（M 芯片） | `aarch64-apple-darwin` | `.dmg` / `.app` | Apple Silicon（M1-M4） |
-| macos-latest（M 芯片交叉编译） | `x86_64-apple-darwin` | `.dmg` / `.app` | Intel Mac |
-| windows-latest | `x86_64-pc-windows-msvc` | NSIS `.exe` / `.msi` | Intel 与 AMD 桌面 CPU（同为 x86_64，一个包通用） |
+| Runner | 产物 | 说明 |
+|---|---|---|
+| macos-latest（M 芯片） | `.dmg`（aarch64） | Apple Silicon（M1-M4），`tauri.macos.conf.json` 提供 targets |
+| macos-latest（M 芯片交叉编译） | `.dmg`（x86_64） | Intel Mac |
+| windows-latest | Inno Setup `LanMusic_<版本>_x64-setup.exe` | `npm run tauri:build` 出 exe 后用 ISCC 打包 |
 
-使用方式：
-
-1. 把仓库推到 GitHub（当前远端为内网 Git，可在 GitHub 建仓后添加远端推送）；
-2. **配置应用内更新**（一次性）：
-   - 仓库 → Settings → Secrets and variables → Actions → New repository secret，添加 `TAURI_SIGNING_PRIVATE_KEY`，值为私钥文件 `~/.tauri/lanmusic.key` 的**全文**（私钥无密码，`TAURI_SIGNING_PRIVATE_KEY_PASSWORD` 无需配置）；
-   - 全局替换 `src-tauri/tauri.conf.json` 中 updater 端点的 `YOUR_GITHUB_USERNAME` 为你的 GitHub 用户名/组织名，端点形如 `https://github.com/<owner>/<repo>/releases/latest/download/latest.json`；
-3. 触发构建二选一：
-   - Actions 页面手动 **Run workflow**（`workflow_dispatch`）；
-   - 打标签自动触发：`git tag v0.1.0 && git push origin v0.1.0`；
-4. 构建完成后在 **Releases** 中会出现**草稿 Release**，检查无误后手动 Publish（发布后 `latest.json` 生效，旧版本应用即可收到更新提示）。
+两个 job 写入同一个 tag 的草稿 Release，检查无误后手动 Publish。发布后旧版本应用即可收到更新提示（应用内检查走 GitHub Releases API，无需额外配置；不再需要 `TAURI_SIGNING_PRIVATE_KEY`）。
 
 说明：
 
-- Release 版本号取自 `src-tauri/tauri.conf.json` 的 `version`，打 tag 时保持与之一致（如 `v0.1.0`）；**发新版记得同步更新该 version**，应用内更新靠版本号对比判定；
-- `tauri-action` 会随安装包一起上传 `latest.json` 与各包的 `.sig` 签名文件（`createUpdaterArtifacts: true` + `includeUpdaterJson: true`）；
+- Release 版本号取自 `src-tauri/tauri.conf.json` 的 `version`，打 tag 时保持与之一致（如 `v0.4.1`）；**发新版记得同步更新该 version**，应用内更新靠版本号对比判定；
+- 应用内更新要求 Release 资产包含对应平台的安装包（Windows 为 Inno Setup exe），tag 形如 `v0.4.1`（`v` 前缀可省略）；
 - 安装包均**未做 OS 代码签名**：macOS 首次打开需右键 → 打开（或 `xattr -cr /Applications/LanMusic.app`）；Windows SmartScreen 提示选择「仍要运行」；
 - 若需要 macOS 通用二进制（一个包同时跑两种架构），把两个 macOS 条目的 `target` 都改为 `universal-apple-darwin` 即可（包体积约增大一倍）。
 
@@ -129,7 +137,7 @@ pnpm tauri:build      # 打包安装程序
 |---|---|
 | `pnpm dev` | 仅启动 Vite 前端（浏览器调试，无 Tauri 壳） |
 | `pnpm tauri:dev` | 桌面应用开发模式 |
-| `pnpm tauri:build` | 打包各平台安装程序 |
+| `pnpm tauri:build` | 构建发布版可执行文件（Windows 安装包另走 `installer/build.ps1`） |
 | `pnpm typecheck` | 前端 TypeScript 类型检查（`vue-tsc --noEmit`） |
 | `pnpm test` | 运行 Rust 单元测试（`cargo test`） |
 | `pnpm clippy` | Rust lint 检查 |
@@ -171,6 +179,7 @@ src-tauri/                 # Rust 后端
     ├── fonts.rs           # Windows 系统字体枚举（DirectWrite）
     ├── keyring.rs         # WebDAV 凭证读写系统钥匙串
     ├── network.rs         # WebDAV 客户端（PROPFIND / 下载）
+    ├── updater.rs         # 应用内更新：GitHub Release 版本检查（自研，Inno Setup 打包配套）
     └── state.rs           # AppState（DB 连接、扫描去重、共享句柄等）
 ```
 
@@ -240,6 +249,7 @@ src-tauri/                 # Rust 后端
 |---|---|---|
 | `scan:progress` | `{sourceId, phase: "enumerate"\|"parse", done, total, current}` | 扫描进度（enumerate 阶段 total 未知） |
 | `scan:done` | `{sourceId, added, updated, removed, ms}` | 扫描完成统计 |
+| `update:download-progress` | `{downloaded, total}` | 更新包下载进度（Rust 侧 200ms 节流；total 为 0 表示总量未知） |
 | `scan:error` | `{sourceId, message}` | 扫描失败 |
 | `tray` | `"toggle"` \| `"prev"` \| `"next"` \| `"fav"` | 系统托盘菜单操作 / Windows 任务栏缩略图控制按钮 |
 

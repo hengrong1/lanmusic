@@ -17,6 +17,7 @@ mod state;
 mod thumbbar;
 #[cfg(target_os = "macos")]
 mod transcode;
+mod updater;
 mod watcher;
 
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
@@ -26,6 +27,9 @@ use tauri::{AppHandle, Manager, PhysicalPosition};
 pub fn run() {
     // 日志目标：落盘为主，开发期额外同步输出到终端。
     // release 版 windows_subsystem = "windows" 没有控制台，日志文件是唯一排查出口。
+    // mut 仅 debug 需要（下面 push Stdout）；release 下该 cfg 分支被剔除，
+    // 因此按 profile 精准放行 unused_mut，而不是删掉 mut（那会让 debug 构建编译不过）
+    #[cfg_attr(not(debug_assertions), allow(unused_mut))]
     let mut log_targets = vec![tauri_plugin_log::Target::new(
         tauri_plugin_log::TargetKind::LogDir {
             file_name: Some("lanmusic".into()),
@@ -68,8 +72,6 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_process::init())
-        // 应用内更新：检查/下载 GitHub Releases 的更新包（签名校验见 tauri.conf.json 的 pubkey）
-        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             // panic 钩子：release 版无控制台，panic 默认只写 stderr = 完全丢失。
             // 启动路径的 .expect（数据目录 / DB 打开）正是「应用打不开」的高发点，
@@ -367,6 +369,9 @@ pub fn run() {
             commands::clear_removed_tracks,
             commands::restore_removed_tracks,
             commands::webdav_add_source,
+            commands::check_github_update,
+            commands::download_update_installer,
+            commands::install_update_and_restart,
             commands::get_mv_url
         ])
         .run(tauri::generate_context!())

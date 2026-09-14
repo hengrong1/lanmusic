@@ -10,6 +10,7 @@ import type {
   Page,
   Playlist,
   QrcLine,
+  ReleaseInfo,
   RemovedRestoreResult,
   RemovedTrack,
   Source,
@@ -54,6 +55,14 @@ export const api = {
   /** 前端错误转发到后端日志文件（release 版无控制台，日志是唯一排查出口） */
   frontendLog: (level: 'error' | 'warn' | 'info', message: string) =>
     invoke<void>('frontend_log', { level, message }),
+  /** 检查 GitHub 最新 Release（Rust 侧比较版本，见 src-tauri/src/updater.rs）；无更新返回 null */
+  checkGithubUpdate: () => invoke<ReleaseInfo | null>('check_github_update'),
+  /** 下载更新安装包（SHA-256 校验；进度见 update:download-progress 事件），返回落地路径 */
+  downloadUpdateInstaller: (url: string, sha256Url: string | null, size: number | null) =>
+    invoke<string>('download_update_installer', { url, sha256Url, size }),
+  /** 运行已下载的安装包（静默安装 + 装完自动重启），随后应用退出 */
+  installUpdateAndRestart: (path: string) =>
+    invoke<void>('install_update_and_restart', { path }),
 
   // 歌单（M2）
   playlistList: () => invoke<Playlist[]>('playlist_list'),

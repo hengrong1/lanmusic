@@ -288,9 +288,8 @@ export default {
     resetDatabaseConfirm: '确定要重置数据库吗？所有数据将丢失。',
     checkForUpdates: '检查更新', checkingForUpdates: '检查中...', updateAvailable: '有新版本',
     upToDate: '已是最新版本', currentVersion: '当前版本', latestVersion: '最新版本',
-    downloadUpdate: '下载更新', downloadingUpdate: '下载中...', installUpdate: '安装更新',
-    updateDownloaded: '更新已下载', restartToUpdate: '重启完成更新', updateError: '更新出错',
-    updateNotes: '更新说明', neverAskAgain: '不再询问', later: '稍后', restart: '重启',
+    downloadUpdate: '下载更新', downloadingUpdate: '下载中...',
+    later: '稍后', restart: '重启',
     quit: '退出', shortcuts: '快捷键', shortcutsDesc: '自定义全局快捷键',
     shortcutAction: '动作', shortcutKey: '快捷键', shortcutReset: '重置',
     shortcutRecord: '录制', shortcutStop: '停止', shortcutPlayPause: '播放/暂停',
@@ -302,8 +301,9 @@ export default {
     shortcutSkinSettings: '装扮设置', shortcutDesktopLyrics: '桌面歌词开关',
     shortcutSettings: '设置', shortcutQuit: '退出',
     updateDialogTitle: '发现新版本', newVersion: '新版本',
-    updateDownloadedHint: '更新已下载完成，重启应用后生效。',
-    updateNow: '立即更新', restartApp: '重启应用', downloadingShort: '正在下载…',
+    goRelease: '前往下载', goReleaseHint: '将打开 GitHub Releases 页面，下载并运行安装包即可完成更新。',
+    updateDownloadedHint: '下载完成并已通过校验，点击「安装并重启」完成更新。',
+    installAndRestart: '安装并重启',
   },
 
 

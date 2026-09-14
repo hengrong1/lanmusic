@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted } from 'vue'
 import { AltArrowDownIcon as ArrowDown } from '@solar-icons/vue/linear/alt-arrow-down'
+import { LinkMinimalisticIcon as LinkIcon } from '@solar-icons/vue/linear/link-minimalistic'
 import { RefreshIcon as LoaderCircle } from '@solar-icons/vue/linear/refresh'
 import { RestartIcon as RotateCcw } from '@solar-icons/vue/linear/restart'
 import { BaseButton } from '@/components/ui'
@@ -9,21 +10,16 @@ import { dialogOverlayClass, dialogPanelTransition, dialogDraggable } from '@/co
 
 const updater = useUpdater()
 
-/** 下载进度百分比（total 未知时为 -1，显示不定进度） */
+/** 下载进度百分比（总量未知时为 -1，显示不定进度） */
 const progressPct = computed(() =>
   updater.status.value === 'downloading' && updater.progress.value >= 0
     ? Math.round(updater.progress.value * 100)
     : -1,
 )
 
-/** 下载中禁止关闭弹窗（避免误触关闭后丢失进度提示；进度仍在后台继续） */
-function dismiss(): void {
-  if (updater.status.value !== 'downloading') updater.closeUpdateDialog()
-}
-
 function onKey(e: KeyboardEvent) {
   if (!updater.dialogOpen.value) return
-  if (e.key === 'Escape') dismiss()
+  if (e.key === 'Escape') updater.closeUpdateDialog()
 }
 onMounted(() => window.addEventListener('keydown', onKey))
 onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
@@ -38,7 +34,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
       leave-active-class="transition duration-100 ease-in"
       leave-to-class="opacity-0"
     >
-      <div v-if="updater.dialogOpen.value" :class="dialogOverlayClass()" @click.self="dismiss">
+      <div v-if="updater.dialogOpen.value" :class="dialogOverlayClass()" @click.self="updater.closeUpdateDialog()">
         <Transition v-bind="dialogPanelTransition">
           <div
             v-if="updater.dialogOpen.value"
@@ -67,7 +63,11 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
             <p class="whitespace-pre-wrap text-xs leading-relaxed text-zinc-500 dark:text-zinc-300">{{ updater.releaseNotes.value }}</p>
           </div>
 
-          <!-- 下载进度条（total 未知时显示不定进度动画） -->
+          <!-- Release 说明 -->
+          <div v-if="updater.releaseNotes.value" class="mt-4 max-h-44 overflow-y-auto rounded-xl bg-zinc-50 p-3 dark:bg-zinc-900/60">
+            <p class="whitespace-pre-wrap text-xs leading-relaxed text-zinc-500 dark:text-zinc-300">{{ updater.releaseNotes.value }}</p>
+          </div>
+          <!-- 下载进度条（总量未知时显示不定进度动画） -->
           <div v-if="updater.status.value === 'downloading'" class="mt-4 flex items-center gap-2">
             <div class="h-1.5 flex-1 overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-800">
               <div
@@ -81,40 +81,41 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
               {{ progressPct >= 0 ? `${progressPct}%` : `${updater.downloadedMb.value.toFixed(1)}MB` }}
             </span>
           </div>
-          <p v-if="updater.status.value === 'ready'" class="mt-4 text-xs text-zinc-400">{{ $t('settings.updateDownloadedHint') }}</p>
+          <p v-else-if="updater.status.value === 'ready'" class="mt-3 text-xs leading-relaxed text-zinc-400">{{ $t('settings.updateDownloadedHint') }}</p>
+          <p v-else class="mt-3 text-xs leading-relaxed text-zinc-400">{{ $t('settings.goReleaseHint') }}</p>
 
           <div class="mt-5 flex justify-end gap-2">
             <BaseButton
               v-if="updater.status.value !== 'downloading'"
               variant="ghost"
               size="sm"
-              @click="dismiss"
+              @click="updater.closeUpdateDialog()"
             >
               {{ $t('settings.later') }}
             </BaseButton>
             <BaseButton
-              v-if="updater.status.value === 'available'"
-              size="sm"
-              :icon="ArrowDown"
-              @click="updater.downloadAndInstall()"
-            >
-              {{ $t('settings.updateNow') }}
-            </BaseButton>
-            <BaseButton
-              v-else-if="updater.status.value === 'downloading'"
+              v-if="updater.status.value === 'downloading'"
               size="sm"
               :icon="LoaderCircle"
               loading
             >
-              {{ $t('settings.downloadingShort') }}
+              {{ $t('settings.downloadingUpdate') }}
             </BaseButton>
             <BaseButton
               v-else-if="updater.status.value === 'ready'"
               size="sm"
               :icon="RotateCcw"
-              @click="updater.restartToUpdate()"
+              @click="updater.installAndRestart()"
             >
-              {{ $t('settings.restartApp') }}
+              {{ $t('settings.installAndRestart') }}
+            </BaseButton>
+            <BaseButton
+              v-else-if="updater.status.value === 'available'"
+              size="sm"
+              :icon="updater.canAutoUpdate() ? ArrowDown : LinkIcon"
+              @click="updater.canAutoUpdate() ? updater.downloadUpdate() : updater.openReleasePage()"
+            >
+              {{ updater.canAutoUpdate() ? $t('settings.downloadUpdate') : $t('settings.goRelease') }}
             </BaseButton>
           </div>
         </div>

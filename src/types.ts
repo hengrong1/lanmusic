@@ -179,3 +179,17 @@ export interface QrcLine {
   text: string
   words: QrcWord[]
 }
+
+/** GitHub 最新 Release（应用内更新检查，Rust 侧已比较版本，见 src-tauri/src/updater.rs） */
+export interface ReleaseInfo {
+  version: string
+  notes: string
+  htmlUrl: string
+  /** 安装包下载地址（`*_x64-setup.exe` 资产）；为 null 时退化为「前往下载页」 */
+  assetUrl: string | null
+  assetName: string | null
+  /** 安装包字节数（0 表示未知） */
+  assetSize: number | null
+  /** SHA-256 校验文件地址；为 null 时跳过校验（Rust 侧只记 warn） */
+  sha256Url: string | null
+}

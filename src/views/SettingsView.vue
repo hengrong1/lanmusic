@@ -1744,33 +1744,39 @@ const showWebdavLimits = computed(() => showWebdav.value || library.sources.some
                   <span>{{ t('settings.versionLine', { version: appVersion }) }}</span>
                   <!-- 更新操作区：按状态切换 -->
                   <div class="flex items-center gap-2">
-                    <template v-if="updater.status.value === 'available' || updater.status.value === 'downloading'">
-                      <BaseButton
-                        size="sm"
-                        :loading="updater.status.value === 'downloading'"
-                        :icon="updater.status.value === 'downloading' ? undefined : RefreshCw"
-                        @click="updater.downloadAndInstall()"
-                      >
-                        {{
-                          updater.status.value === 'downloading'
-                            ? t('settings.downloadingUpdate')
-                            : t('settings.updateTo', { version: updater.newVersion.value })
-                        }}
-                      </BaseButton>
-                    </template>
+                    <BaseButton
+                      v-if="updater.status.value === 'available'"
+                      size="sm"
+                      :icon="updater.canAutoUpdate() ? RefreshCw : undefined"
+                      @click="updater.canAutoUpdate() ? updater.downloadUpdate() : updater.openReleasePage()"
+                    >
+                      {{
+                        updater.canAutoUpdate()
+                          ? t('settings.downloadUpdate')
+                          : t('settings.updateTo', { version: updater.newVersion.value })
+                      }}
+                    </BaseButton>
+                    <BaseButton
+                      v-else-if="updater.status.value === 'downloading'"
+                      size="sm"
+                      :icon="RefreshCw"
+                      loading
+                    >
+                      {{ t('settings.downloadingUpdate') }}
+                    </BaseButton>
                     <BaseButton
                       v-else-if="updater.status.value === 'ready'"
                       size="sm"
-                      @click="updater.restartToUpdate()"
+                      @click="updater.installAndRestart()"
                     >
-                      {{ t('settings.restartToUpdate') }}
+                      {{ t('settings.installAndRestart') }}
                     </BaseButton>
                     <span v-if="updater.status.value === 'uptodate'" class="text-xs text-zinc-400">{{ t('settings.upToDateShort') }}</span>
                     <BaseButton
                       size="sm"
                       variant="outline"
                       :loading="updater.status.value === 'checking'"
-                      :disabled="updater.status.value === 'checking'"
+                      :disabled="updater.status.value === 'checking' || updater.status.value === 'downloading'"
                       :icon="updater.status.value === 'checking' ? undefined : RefreshCw"
                       @click="updater.checkForUpdate(false)"
                     >
@@ -1784,7 +1790,7 @@ const showWebdavLimits = computed(() => showWebdav.value || library.sources.some
                     {{ t('settings.updateFound', { version: updater.newVersion.value }) }}
                   </p>
                   <p v-if="updater.releaseNotes.value" class="mt-1 line-clamp-4 whitespace-pre-wrap text-xs leading-relaxed">{{ updater.releaseNotes.value }}</p>
-                  <!-- 下载进度条（total 未知时显示不定进度动画） -->
+                  <!-- 下载进度条（总量未知时显示不定进度动画） -->
                   <div v-if="updater.status.value === 'downloading'" class="mt-2 flex items-center gap-2">
                     <div class="h-1.5 flex-1 overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-800">
                       <div
@@ -1798,7 +1804,8 @@ const showWebdavLimits = computed(() => showWebdav.value || library.sources.some
                       {{ progressPct >= 0 ? `${progressPct}%` : `${updater.downloadedMb.value.toFixed(1)}MB` }}
                     </span>
                   </div>
-                  <p v-if="updater.status.value === 'ready'" class="text-xs font-medium text-violet-500">{{ t('settings.updateReadyHint') }}</p>
+                  <p v-if="updater.status.value === 'ready'" class="text-xs font-medium text-violet-500">{{ t('settings.updateDownloadedHint') }}</p>
+                  <p v-else-if="updater.status.value === 'available' && !updater.canAutoUpdate()" class="mt-1 text-xs text-zinc-400">{{ t('settings.goReleaseHint') }}</p>
                 </div>
               </div>
             </section>
