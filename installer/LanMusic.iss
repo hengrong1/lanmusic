@@ -1,6 +1,6 @@
 ; LanMusic Windows 安装包脚本（Inno Setup 6）
 ; 一键打包: powershell -ExecutionPolicy Bypass -File installer\build.ps1
-;          （等价于: npm run tauri:build → 本脚本编译）
+;          （等价于: npm run desktop → 本脚本编译）
 ; 输出: installer\output\LanMusic_<版本>_x64-setup.exe
 
 #define MyAppName "LanMusic"

@@ -111,7 +111,7 @@ jobs:
 
       # bundle.targets 为空：只产出 target/release/lanmusic.exe，不做 bundle
       - name: Build exe
-        run: npm run tauri:build
+        run: npm run desktop
 
       - name: Install Inno Setup
         run: choco install innosetup -y --no-progress

@@ -96,8 +96,8 @@
 
 ```bash
 pnpm install          # 前端依赖
-pnpm tauri:dev        # 开发模式（首次需编译 Rust，约 2-3 分钟）
-pnpm tauri:build      # 构建发布版可执行文件（前端资源内嵌进 exe，无打包步骤）
+pnpm start            # 启动桌面应用开发模式（首次需编译 Rust，约 2-3 分钟）
+pnpm desktop          # 构建发布版可执行文件（前端资源内嵌进 exe，无打包步骤）
 ```
 
 > 开发模式使用**独立的数据目录**（`com.lanmusic.desktop.dev`，见 `src-tauri/tauri.dev.conf.json`），
@@ -105,7 +105,7 @@ pnpm tauri:build      # 构建发布版可执行文件（前端资源内嵌进 e
 
 ## Windows 安装包（Inno Setup）
 
-`bundle.targets` 在主配置中置空：`pnpm tauri:build` 只产出 `src-tauri/target/release/lanmusic.exe`，Windows 安装包统一由 Inno Setup 编译（输出 `installer/output/LanMusic_<版本>_x64-setup.exe`）：
+`bundle.targets` 在主配置中置空：`pnpm desktop` 只产出 `src-tauri/target/release/lanmusic.exe`，Windows 安装包统一由 Inno Setup 编译（输出 `installer/output/LanMusic_<版本>_x64-setup.exe`）：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File installer\build.ps1             # 构建产物 + 打包
@@ -130,7 +130,7 @@ powershell -ExecutionPolicy Bypass -File installer\build.ps1 -SkipBuild  # 跳�
 |---|---|---|
 | macos-latest（M 芯片） | `.dmg`（aarch64） | Apple Silicon（M1-M4），`tauri.macos.conf.json` 提供 targets |
 | macos-latest（M 芯片交叉编译） | `.dmg`（x86_64） | Intel Mac |
-| windows-latest | Inno Setup `LanMusic_<版本>_x64-setup.exe` | `npm run tauri:build` 出 exe 后用 ISCC 打包 |
+| windows-latest | Inno Setup `LanMusic_<版本>_x64-setup.exe` | `npm run desktop` 出 exe 后用 ISCC 打包 |
 
 两个 job 写入同一个 tag 的草稿 Release，检查无误后手动 Publish。发布后旧版本应用即可收到更新提示（应用内检查读 `releases.atom`，**无 API 限流**、无需额外配置；不再需要 `TAURI_SIGNING_PRIVATE_KEY`）。
 
@@ -146,9 +146,9 @@ powershell -ExecutionPolicy Bypass -File installer\build.ps1 -SkipBuild  # 跳�
 
 | 命令 | 说明 |
 |---|---|
+| `pnpm start` | 桌面应用开发模式（= `tauri dev` + dev 隔离配置） |
 | `pnpm dev` | 仅启动 Vite 前端（浏览器调试，无 Tauri 壳） |
-| `pnpm tauri:dev` | 桌面应用开发模式 |
-| `pnpm tauri:build` | 构建发布版可执行文件（Windows 安装包另走 `installer/build.ps1`） |
+| `pnpm desktop` | 构建发布版可执行文件（Windows 安装包另走 `installer/build.ps1`） |
 | `pnpm typecheck` | 前端 TypeScript 类型检查（`vue-tsc --noEmit`） |
 | `pnpm test` | 运行 Rust 单元测试（`cargo test`） |
 | `pnpm clippy` | Rust lint 检查 |
@@ -343,7 +343,7 @@ SQLite（WAL 模式，外键开启），建表与列迁移见 `src-tauri/src/db.
 - 例外：`EmptyState` / `BaseModal` / `BaseColorPicker` 的 `title` 是组件 prop（标题文案），不是 tooltip，不要替换
 
 **运行与调试**：
-- `pnpm tauri:dev`（Rust 改动会自动重编译；前端 HMR 端口 1420/1421；Rust 日志在 dev 模式下同步输出到终端）
+- `pnpm start`（Rust 改动会自动重编译；前端 HMR 端口 1420/1421；Rust 日志在 dev 模式下同步输出到终端）
 - `pnpm test` — `scheme.rs` 中有跨平台 URI 解析的单测，改协议相关代码请补测试
 - 提交前跑 `pnpm verify`（typecheck + cargo test + clippy）
 - 后端日志：业务代码用 `log::info!/warn!/error!`（插件初始化见 `lib.rs`）；新增关键路径（扫描/播放/迁移/凭证）请同步补日志，别用 `println!`（release 版没有控制台，等于没打）。panic 有全局钩子兜底落日志（`lib.rs` setup 开头），不用为单个 expect 手动处理

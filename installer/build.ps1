@@ -41,7 +41,7 @@ $Iscc = Find-Iscc
 if (-not $SkipBuild) {
     Set-Location $Root
     # bundle.targets 为空：tauri build 只产出 exe，打包统一走 Inno Setup
-    npm run tauri:build
+    npm run desktop
     if ($LASTEXITCODE -ne 0) { throw "tauri build 失败" }
 }
 
