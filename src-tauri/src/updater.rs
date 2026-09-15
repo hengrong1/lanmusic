@@ -418,12 +418,16 @@ pub fn latest_release(current_version: &str) -> Result<Option<ReleaseInfo>, Stri
     if version_cmp(&version, current_version) != std::cmp::Ordering::Greater {
         return Ok(None);
     }
-    // feed 不含资产列表：按发布约定拼接 + HEAD 探测存在性
-    // （该 Release 未附带安装包时，前端退化为「前往下载页」）
+    // feed 不含资产列表：按发布约定拼接 + HEAD 探测存在性。
+    // ⚠️ releases.atom 连**草稿** Release 也会列出（tag 一推 CI 建草稿就出现），
+    // 此时资产对匿名下载不开放（HEAD 404）→ 提示出来只会得到一个「前往下载页」死链
+    // （草稿 release 页对未登录也是 404）。所以资产探测不到一律视为「发布未完成」，
+    // 当作没有更新处理（宁可不提示，不误导）。副作用：真发布忘传资产时也收不到提示
+    // （本来也升不了级），日志有留痕；HEAD 偶发网络错误同样落此分支，重新检查即可。
     let (name, exe_url, sha_url) = asset_urls(&version);
-    let has_asset = asset_exists(&client, &exe_url);
-    if !has_asset {
-        log::warn!("Release v{version} 未找到约定的安装包资产：{exe_url}（前端将退化为前往下载页）");
+    if !asset_exists(&client, &exe_url) {
+        log::warn!("Release v{version} 未找到可下载的安装包资产：{exe_url}（视为发布未完成/草稿，不提示更新）");
+        return Ok(None);
     }
     // link 缺失时按 tag 约定补出页面地址（「前往下载页」按钮依赖它，不能是空串）
     let html_url = if html_url.is_empty() {
@@ -436,11 +440,11 @@ pub fn latest_release(current_version: &str) -> Result<Option<ReleaseInfo>, Stri
         notes: strip_html(&notes_html),
         notes_html: sanitize_html(&notes_html),
         html_url,
-        asset_name: has_asset.then(|| name.clone()),
-        asset_url: has_asset.then(|| exe_url.clone()),
+        asset_name: Some(name),
+        asset_url: Some(exe_url),
         // feed 不含资产大小 → 前端显示不定进度
         asset_size: None,
-        sha256_url: has_asset.then(|| sha_url.clone()),
+        sha256_url: Some(sha_url),
     }))
 }
 
