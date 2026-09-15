@@ -1251,47 +1251,67 @@ pub fn frontend_log(level: String, message: String) {
 
 /// 检查 GitHub 最新 Release（见 updater.rs）：远端版本更高才返回 Some。
 /// 失败返回 Err（网络/限流），由前端决定提示方式（启动静默检查不弹框）。
+///
+/// 必须 async + spawn_blocking：Tauri 2 的同步 command 在**主线程**执行，
+/// blocking HTTP 请求会把 UI 消息泵整个卡住（Windows 报「未响应」）。
 #[tauri::command]
-pub fn check_github_update(
+pub async fn check_github_update(
     app: AppHandle,
 ) -> Result<Option<crate::updater::ReleaseInfo>, String> {
     let current = app.package_info().version.to_string();
-    let result = crate::updater::latest_release(&current);
-    match &result {
-        Ok(Some(info)) => log::info!(
-            "检查更新：发现新版本 {}（当前 {}）",
-            info.version,
-            current
-        ),
-        Ok(None) => log::info!("检查更新：已是最新（{current}）"),
-        Err(e) => log::warn!("检查更新失败：{e}"),
-    }
-    result
+    tauri::async_runtime::spawn_blocking(move || {
+        let result = crate::updater::latest_release(&current);
+        match &result {
+            Ok(Some(info)) => log::info!(
+                "检查更新：发现新版本 {}（当前 {}）",
+                info.version,
+                current
+            ),
+            Ok(None) => log::info!("检查更新：已是最新（{current}）"),
+            Err(e) => log::warn!("检查更新失败：{e}"),
+        }
+        result
+    })
+    .await
+    .map_err(|e| format!("检查更新任务异常退出: {e}"))?
 }
 
 /// 下载更新安装包并做 SHA-256 校验（进度经 update:download-progress 事件回传），
 /// 返回落地路径，供 install_update_and_restart 使用。
+///
+/// 必须 async + spawn_blocking：同步 command 跑在主线程，整个下载（十几 MB +
+/// 校验文件 + SHA-256）会把 UI 卡死到下载结束（v0.5.7 实测「未响应」）。
 #[tauri::command]
-pub fn download_update_installer(
+pub async fn download_update_installer(
     app: AppHandle,
     url: String,
     sha256_url: Option<String>,
     size: Option<u64>,
 ) -> Result<String, String> {
-    let path = crate::updater::download_installer(&app, &url, sha256_url.as_deref(), size)?;
-    Ok(path.to_string_lossy().to_string())
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::updater::download_installer(&app, &url, sha256_url.as_deref(), size)
+            .map(|p| p.to_string_lossy().to_string())
+    })
+    .await
+    .map_err(|e| format!("下载任务异常退出: {e}"))?
 }
 
 /// 运行已下载的安装包（静默安装 + 装完自动启动新版，见 installer 的 /LAUNCH 约定），
 /// 随后退出当前进程。
+///
+/// 必须 async + spawn_blocking：同步 command 跑在主线程，静默安装期间 UI 冻结。
 #[tauri::command]
-pub fn install_update_and_restart(app: AppHandle, path: String) -> Result<(), String> {
-    crate::updater::run_installer(&path)?;
-    // 留出安装器自解压初始化的时间，再退出当前实例
-    std::thread::sleep(std::time::Duration::from_millis(500));
-    log::info!("退出应用以完成更新安装");
-    app.exit(0);
-    Ok(())
+pub async fn install_update_and_restart(app: AppHandle, path: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::updater::run_installer(&path)?;
+        // 留出安装器自解压初始化的时间，再退出当前实例
+        std::thread::sleep(std::time::Duration::from_millis(500));
+        log::info!("退出应用以完成更新安装");
+        app.exit(0);
+        Ok(())
+    })
+    .await
+    .map_err(|e| format!("安装任务异常退出: {e}"))?
 }
 
 // ================================================================ 应用设置（M2/M3）
