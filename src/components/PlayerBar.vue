@@ -465,6 +465,8 @@ const theme = computed(() =>
         artist: 'text-white/50',
         iconBtn: 'text-white/70 hover:bg-white/10 hover:text-[var(--accent)]',
         plainBtn: 'text-white/80 hover:bg-white/10 hover:text-[var(--accent)]',
+        // 喜欢按钮刻意不跟随主题色：悬停/选中固定红色（未选中常态仍走中性色）
+        favBtn: 'text-white/80 hover:bg-red-500/10 hover:text-red-500',
         playBtn: 'bg-violet-500 text-white hover:bg-violet-400',
         trackRow: '',
       }
@@ -477,6 +479,9 @@ const theme = computed(() =>
           'text-zinc-500 hover:bg-zinc-200/70 hover:text-violet-600 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-violet-300',
         plainBtn:
           'text-zinc-600 hover:bg-zinc-200/70 hover:text-violet-600 dark:text-zinc-300 dark:hover:bg-zinc-800 dark:hover:text-violet-300',
+        // 喜欢按钮：红色系悬停（亮/暗同色相，暗色背景用 red-400 提亮可读性）
+        favBtn:
+          'text-zinc-600 hover:bg-red-500/10 hover:text-red-500 dark:text-zinc-300 dark:hover:bg-zinc-800 dark:hover:text-red-400',
         playBtn: 'bg-violet-500 text-white hover:bg-violet-400',
         trackRow: '',
       },
@@ -621,7 +626,7 @@ const theme = computed(() =>
         </button>
         <button
           class="relative flex h-9 w-9 cursor-pointer items-center justify-center rounded-full transition-colors duration-500 hover:duration-200 disabled:cursor-not-allowed"
-          :class="player.current?.fav ? 'text-red-500 hover:bg-red-500/10' : theme.plainBtn"
+          :class="player.current?.fav ? 'text-red-500 hover:bg-red-500/10' : theme.favBtn"
           v-tooltip="player.current?.fav ? $t('library.unlike') : $t('library.like')"
           :disabled="!player.current"
           @click="player.toggleFav()"

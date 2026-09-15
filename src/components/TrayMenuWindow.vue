@@ -306,6 +306,10 @@ function action(a: 'show' | 'lyrics' | 'settings' | 'quit') {
 .ctrl.play:hover {
   background: rgba(255, 255, 255, 0.2);
 }
+/* 喜欢键：悬停也走红色（与选中态一致，刻意不跟随主题色） */
+.ctrl.heart:hover {
+  color: #fb2c5c;
+}
 .ctrl.heart.active {
   color: #fb2c5c;
 }

@@ -141,15 +141,29 @@ interface NavEntry {
   /** 选中态使用的 bold 图标（与 icon 同形不同粗细） */
   iconActive: typeof MusicBold
   count?: () => number
+  /** 喜欢入口：图标悬停/选中固定红色系，不跟随主题色 */
+  heart?: boolean
 }
 
 const entries = computed<NavEntry[]>(() => [
   { route: { view: 'tracks' }, label: t('library.allTracks'), icon: Music, iconActive: MusicBold, count: () => library.stats.tracks },
-  { route: { view: 'tracks', favorites: true }, label: t('library.myFavorites'), icon: Heart, iconActive: HeartBold, count: () => library.stats.favorites },
+  { route: { view: 'tracks', favorites: true }, label: t('library.myFavorites'), icon: Heart, iconActive: HeartBold, count: () => library.stats.favorites, heart: true },
   { route: { view: 'albums' }, label: t('library.albums'), icon: Disc3, iconActive: Disc3Bold, count: () => library.stats.albums },
   { route: { view: 'artists' }, label: t('library.artists'), icon: Mic, iconActive: MicBold, count: () => library.stats.artists },
   { route: { view: 'tracks', recent: true }, label: t('nav.recent'), icon: History, iconActive: HistoryBold },
 ])
+
+/** 导航图标配色：默认跟随主题色（violet），喜欢入口固定红色系（悬停/选中红，未选中中性灰） */
+function navIconClass(e: NavEntry): string {
+  if (e.heart) {
+    return isActive(e)
+      ? 'text-red-500'
+      : 'text-zinc-400 group-hover:text-red-500 dark:group-hover:text-red-400'
+  }
+  return isActive(e)
+    ? 'text-violet-500'
+    : 'text-zinc-400 group-hover:text-violet-500 dark:group-hover:text-violet-400'
+}
 
 function isActive(e: NavEntry) {
   const r = current.value
@@ -281,7 +295,7 @@ function openPlaylistMenu(e: MouseEvent, p: { id: number; name: string }) {
         <component
           :is="isActive(e) ? e.iconActive : e.icon"
           class="nav-icon h-4 w-4 shrink-0 transition-colors duration-150"
-          :class="isActive(e) ? 'text-violet-500' : 'text-zinc-400 group-hover:text-violet-500 dark:group-hover:text-violet-400'"
+          :class="navIconClass(e)"
         />
         <span v-if="showText" class="sidebar-fade flex-1 text-left">{{ e.label }}</span>
         <span v-if="showText && e.count" class="sidebar-fade text-xs tabular-nums text-zinc-400">{{ e.count() }}</span>

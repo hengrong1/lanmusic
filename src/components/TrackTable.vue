@@ -201,6 +201,7 @@ const menuItems = computed<MenuItem[]>(() => {
     {
       label: t.fav ? tr('library.unlike') : tr('library.like'),
       icon: Heart,
+      iconClass: 'text-red-500',
       action: () =>
         api
           .favoriteToggle(t.id, !t.fav)
