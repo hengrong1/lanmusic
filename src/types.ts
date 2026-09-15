@@ -184,6 +184,8 @@ export interface QrcLine {
 export interface ReleaseInfo {
   version: string
   notes: string
+  /** Release 说明（GitHub 渲染的 HTML 经 Rust 侧净化，富文本渲染用；null 回退纯文本 notes） */
+  notesHtml: string | null
   htmlUrl: string
   /** 安装包下载地址（`*_x64-setup.exe` 资产）；为 null 时退化为「前往下载页」 */
   assetUrl: string | null

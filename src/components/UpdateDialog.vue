@@ -7,8 +7,20 @@ import { RestartIcon as RotateCcw } from '@solar-icons/vue/linear/restart'
 import { BaseButton } from '@/components/ui'
 import { useUpdater } from '@/composables/useUpdater'
 import { dialogOverlayClass, dialogPanelTransition, dialogDraggable } from '@/composables/useDialogPrefs'
+import { openUrl } from '@tauri-apps/plugin-opener'
 
 const updater = useUpdater()
+
+/** 说明里的链接不放行 webview 导航：拦截后交系统浏览器打开（仅 http/https） */
+async function onNotesClick(e: MouseEvent) {
+  const anchor = (e.target as HTMLElement).closest('a')
+  if (!anchor) return
+  e.preventDefault()
+  const href = anchor.getAttribute('href') ?? ''
+  if (/^https?:\/\//i.test(href)) {
+    await openUrl(href).catch(() => {})
+  }
+}
 
 /** 下载进度百分比（总量未知时为 -1，显示不定进度） */
 const progressPct = computed(() =>
@@ -58,8 +70,15 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
               </div>
             </div>
 
-          <!-- 更新说明：Release 正文（HTML 已由 Rust 侧 strip_html 清洗为纯文本） -->
-          <div v-if="updater.releaseNotes.value" class="mt-4 max-h-44 overflow-y-auto rounded-xl bg-zinc-50 p-3 dark:bg-zinc-900/60">
+          <!-- 更新说明：优先富文本（GitHub 渲染的 HTML，Rust 侧已净化；样式见 style.css .release-notes），
+               旧后端无该字段时回退纯文本 -->
+          <div
+            v-if="updater.releaseNotesHtml.value"
+            class="release-notes mt-4 max-h-44 overflow-y-auto rounded-xl bg-zinc-50 p-3 text-xs dark:bg-zinc-900/60"
+            v-html="updater.releaseNotesHtml.value"
+            @click="onNotesClick"
+          ></div>
+          <div v-else-if="updater.releaseNotes.value" class="mt-4 max-h-44 overflow-y-auto rounded-xl bg-zinc-50 p-3 dark:bg-zinc-900/60">
             <p class="whitespace-pre-wrap text-xs leading-relaxed text-zinc-500 dark:text-zinc-300">{{ updater.releaseNotes.value }}</p>
           </div>
           <!-- 下载进度条（总量未知时显示不定进度动画） -->

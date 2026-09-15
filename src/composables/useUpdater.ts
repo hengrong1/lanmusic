@@ -35,8 +35,10 @@ const dialogOpen = ref(false)
 const currentVersion = ref('')
 /** 新版本号 */
 const newVersion = ref('')
-/** 新版说明（Release body） */
+/** 新版说明（Release body 剥离后的纯文本，无结构；富文本字段为空时回退展示） */
 const releaseNotes = ref('')
+/** 新版说明（GitHub 渲染的 HTML，Rust 侧 sanitize 净化；空串 = 无富文本，回退纯文本） */
+const releaseNotesHtml = ref('')
 /** Release 页面地址（无安装包资产或用户想手动下载时打开） */
 const releaseUrl = ref('')
 /** 安装包下载地址（有值时可用应用内下载） */
@@ -98,6 +100,7 @@ async function checkForUpdate(silent = false): Promise<boolean> {
     if (release) {
       newVersion.value = release.version
       releaseNotes.value = release.notes
+      releaseNotesHtml.value = release.notesHtml ?? ''
       releaseUrl.value = release.htmlUrl
       assetUrl.value = release.assetUrl ?? ''
       assetName.value = release.assetName ?? ''
@@ -178,6 +181,7 @@ export function useUpdater() {
     currentVersion,
     newVersion,
     releaseNotes,
+    releaseNotesHtml,
     releaseUrl,
     assetName,
     installerPath,

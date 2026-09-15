@@ -36,8 +36,11 @@ pub const PROGRESS_EVENT: &str = "update:download-progress";
 pub struct ReleaseInfo {
     /// 版本号（tag 去 v 前缀，如 `0.4.1`）
     pub version: String,
-    /// Release 说明（markdown 原文，前端按纯文本渲染）
+    /// Release 说明（GitHub 渲染 HTML 剥离后的纯文本，无结构；富文本展示用 notesHtml）
     pub notes: String,
+    /// Release 说明（GitHub 渲染的 HTML 经 `sanitize_html` 净化，前端 v-html 富文本渲染；
+    /// None = feed 无内容或净化后为空，前端回退纯文本 notes）
+    pub notes_html: Option<String>,
     /// Release 页面地址（浏览器打开即下载入口）
     pub html_url: String,
     /// 安装包下载地址（`*_x64-setup.exe` 资产）；缺失时前端退化为「前往下载页」
@@ -248,6 +251,132 @@ fn strip_html(html: &str) -> String {
         .join("\n")
 }
 
+/// 轻量净化 GitHub 渲染的 Release HTML（供前端 v-html 富文本渲染）。
+/// 纵深防御：GitHub 渲染管线本身已消毒（script/iframe/on* 在源头就不存在），
+/// 此处兜底防 feed 被劫持或渲染策略变化。策略：
+/// - `<script>` `<style>` `<iframe>` `<object>` `<embed>` `<svg>` `<math>` `<form>` `<button>` 整元素剔除
+///   （含内部内容；找不到闭合标签则丢弃到结尾）
+/// - `<img>` `<input>` `<video>` `<audio>` `<source>` `<track>` `<picture>` 标签剔除
+///   （外链图片在本应用 CSP 的 img-src 白名单外，必然裂图；弹窗里也无展示价值）
+/// - 标签属性剔除 `on*` 事件属性与 `javascript:`/`vbscript:` 协议 URL
+/// - 其余标签与文本原样保留；纯 ASCII 结构扫描，多字节字符不受影响
+fn sanitize_html(html: &str) -> Option<String> {
+    if html.trim().is_empty() {
+        return None;
+    }
+    let lower = html.to_ascii_lowercase();
+    let mut out = String::with_capacity(html.len());
+    let mut i = 0;
+    while i < html.len() {
+        let Some(rel) = lower[i..].find('<') else {
+            out.push_str(&html[i..]);
+            break;
+        };
+        let lt = i + rel;
+        out.push_str(&html[i..lt]);
+        let Some(gt_rel) = lower[lt..].find('>') else {
+            out.push_str(&html[lt..]); // 残缺标签按文本透传
+            break;
+        };
+        let gt = lt + gt_rel;
+        let inner_raw = &html[lt + 1..gt]; // 原文（保留大小写）
+        let inner_low = &lower[lt + 1..gt];
+        let is_close = inner_low.starts_with('/');
+        let name = inner_low
+            .trim_start_matches('/')
+            .split(|c: char| !(c.is_ascii_alphanumeric() || c == '-' || c == ':'))
+            .next()
+            .unwrap_or("");
+        if !is_close && matches!(name, "script" | "style" | "iframe" | "object" | "embed" | "svg" | "math" | "form" | "button") {
+            // 整元素剔除：跳到对应闭合标签之后（找不到闭合则丢弃余下全部）
+            let close = format!("</{name}");
+            let base = gt + 1;
+            if let Some(cr) = lower[base..].find(&close) {
+                let after_close = base + cr + close.len();
+                i = lower[after_close..]
+                    .find('>')
+                    .map_or(html.len(), |p| after_close + p + 1);
+            } else {
+                i = html.len();
+            }
+            continue;
+        }
+        if !is_close && matches!(name, "img" | "input" | "video" | "audio" | "source" | "track" | "picture") {
+            i = gt + 1;
+            continue;
+        }
+        // 闭合标签的属性被浏览器忽略，透传即可；开放标签重建并过滤属性
+        out.push('<');
+        if !is_close {
+            out.push_str(&sanitize_attrs(inner_raw));
+        } else {
+            out.push_str(inner_raw);
+        }
+        out.push('>');
+        i = gt + 1;
+    }
+    Some(out)
+}
+
+/// 重建标签的属性区（`inner` 含标签名与属性）：剔除 `on*` 事件属性，
+/// 以及 `href`/`src` 等取值为 `javascript:`/`vbscript:` 协议的属性；其余原样保留。
+fn sanitize_attrs(inner: &str) -> String {
+    let name_end = inner
+        .find(|c: char| c.is_ascii_whitespace())
+        .unwrap_or(inner.len());
+    let mut out = String::from(&inner[..name_end]);
+    let rest = &inner[name_end..];
+    let bytes = rest.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+            i += 1;
+        }
+        if i >= bytes.len() {
+            break;
+        }
+        let start = i;
+        while i < bytes.len() && !bytes[i].is_ascii_whitespace() && bytes[i] != b'=' {
+            i += 1;
+        }
+        let attr_name = rest[start..i].to_ascii_lowercase();
+        let mut seg_end = i;
+        if i < bytes.len() && bytes[i] == b'=' {
+            i += 1;
+            if i < bytes.len() && (bytes[i] == b'"' || bytes[i] == b'\'') {
+                let quote = bytes[i];
+                i += 1;
+                while i < bytes.len() && bytes[i] != quote {
+                    i += 1;
+                }
+                if i < bytes.len() {
+                    i += 1;
+                }
+            } else {
+                while i < bytes.len() && !bytes[i].is_ascii_whitespace() {
+                    i += 1;
+                }
+            }
+            seg_end = i;
+        }
+        let seg = &rest[start..seg_end];
+        let url_dropped = matches!(attr_name.as_str(), "href" | "src" | "xlink:href" | "action" | "formaction")
+            && seg
+                .split_once('=')
+                .is_none_or(|(_, v)| {
+                    // 先去引号再 trim：值形如 `" javascript:…"` 时引号内可能有前导空白
+                    let v = v.trim().trim_matches(['"', '\'']).trim();
+                    let v = v.to_ascii_lowercase();
+                    v.starts_with("javascript:") || v.starts_with("vbscript:")
+                });
+        if !attr_name.starts_with("on") && !url_dropped {
+            out.push(' ');
+            out.push_str(seg);
+        }
+    }
+    out
+}
+
 /// 按发布约定拼接资产地址（feed 不含资产列表）。
 /// 返回 (文件名, 安装包 URL, 校验文件 URL)。
 fn asset_urls(version: &str) -> (String, String, String) {
@@ -305,6 +434,7 @@ pub fn latest_release(current_version: &str) -> Result<Option<ReleaseInfo>, Stri
     Ok(Some(ReleaseInfo {
         version,
         notes: strip_html(&notes_html),
+        notes_html: sanitize_html(&notes_html),
         html_url,
         asset_name: has_asset.then(|| name.clone()),
         asset_url: has_asset.then(|| exe_url.clone()),
@@ -441,7 +571,8 @@ pub fn run_installer(path: &str) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        asset_urls, parse_latest_atom, parse_sha256_text, strip_html, version_cmp, version_from_entry,
+        asset_urls, parse_latest_atom, parse_sha256_text, sanitize_html, strip_html, version_cmp,
+        version_from_entry,
     };
     use std::cmp::Ordering;
 
@@ -561,6 +692,54 @@ mod tests {
         );
         assert_eq!(strip_html("<p>a &amp; b</p>"), "a & b");
         assert_eq!(strip_html(""), "");
+    }
+
+    #[test]
+    fn sanitize_keeps_safe_markup() {
+        let s = sanitize_html(
+            r#"<p>修复 <strong>限流</strong> 问题</p><ul><li>项一</li><li>项二</li></ul><a href="https://github.com/x" target="_blank">链接</a>"#,
+        )
+        .unwrap();
+        assert!(s.contains("<p>修复 <strong>限流</strong> 问题</p>"));
+        assert!(s.contains("<ul><li>项一</li><li>项二</li></ul>"));
+        assert!(s.contains(r#"href="https://github.com/x""#));
+        assert!(s.contains(r#"target="_blank""#));
+    }
+
+    #[test]
+    fn sanitize_drops_dangerous_elements() {
+        let s = sanitize_html(
+            r#"<p>前</p><script>alert(1)</script><p>中</p><style>.x{color:red}</style><iframe src="https://evil.example"></iframe><img src="https://github.com/a.png" onerror="alert(1)"><p>后</p>"#,
+        )
+        .unwrap();
+        assert!(!s.contains("alert"));
+        assert!(!s.contains("<script") && !s.contains("</script"));
+        assert!(!s.contains(".x") && !s.contains("<style"));
+        assert!(!s.contains("iframe") && !s.contains("evil.example"));
+        assert!(!s.contains("<img") && !s.contains("onerror"));
+        assert!(s.contains("前") && s.contains("中") && s.contains("后"), "安全内容应保留：{s}");
+    }
+
+    #[test]
+    fn sanitize_drops_event_handlers_and_js_urls() {
+        let s = sanitize_html(
+            r#"<p onclick="alert(1)" title="ok">x</p><a href=" javascript:alert(1)">y</a>"#,
+        )
+        .unwrap();
+        assert!(!s.contains("onclick"), "{s}");
+        assert!(s.contains(r#"title="ok""#), "{s}");
+        assert!(!s.to_ascii_lowercase().contains("javascript:"), "{s}");
+        assert!(s.contains("<p title=\"ok\">x</p>"), "{s}");
+    }
+
+    #[test]
+    fn sanitize_handles_unclosed_and_empty() {
+        // 无闭合 script：丢弃到结尾
+        assert_eq!(sanitize_html("<p>说明</p><script>bad").unwrap(), "<p>说明</p>");
+        // 纯空白 → None（前端回退纯文本）
+        assert_eq!(sanitize_html("   "), None);
+        // 残缺标签按文本透传
+        assert_eq!(sanitize_html("a < b").unwrap(), "a < b");
     }
 
     #[test]
