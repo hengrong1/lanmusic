@@ -204,8 +204,8 @@ watch(
       <aside
         v-if="open && player.queue.length"
         ref="panel"
-        class="fixed right-2 bottom-[88px] z-50 flex h-[calc(100vh-120px)] w-80 origin-bottom-right flex-col overflow-hidden rounded-xl border shadow-2xl"
-        :class="themed ? 'border-white/10' : 'app-surface-blur border-white/15 bg-transparent'"
+        class="queue-panel fixed right-2 bottom-[88px] z-50 flex h-[calc(100vh-120px)] w-80 origin-bottom-right flex-col overflow-hidden rounded-xl border shadow-2xl"
+        :class="themed ? 'border-white/10' : 'app-surface-blur border-white/15 bg-(--app-surface)'"
         :style="themed ? { background: panelBg } : undefined"
       >
         <header

@@ -19,6 +19,12 @@ html.has-bg {
      亮暗同配方（用户定稿：开背景图后亮暗观感一致，暗色不再有专属分支） */
   --app-surface: transparent;
 }
+/* 播放队列面板（QueuePanel）深色微调：无背景图时用浮层色（zinc-800）而非主表面色
+   （zinc-900）——面板悬浮在同色主界面上，低一档才有「浮起」的对比，太深会糊成一团。
+   只覆盖面板元素上的变量；has-bg 不匹配此规则，仍走透明深玻璃 */
+html.dark:not(.has-bg) .queue-panel {
+  --app-surface: #27272a;
+}
 /* 深色玻璃的毛玻璃补偿：压暗透出图，白字对比充足。
    注意：构建期 lightningcss 会把「标准 + -webkit- 前缀」的同值双写精简成只留前缀，
    而前缀是 Safari 专用、Chromium/WebView2 只认标准属性 → 玻璃会在安装版失效（dev 正常）。
