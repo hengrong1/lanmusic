@@ -240,7 +240,7 @@ defineExpose({ focusSearch })
       >
         <div
           v-if="showRecent"
-          class="absolute top-full z-50 mt-2 w-full overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-xl dark:border-zinc-700 dark:bg-zinc-800"
+          class="search-pop absolute top-full z-50 mt-2 w-full overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-xl dark:border-zinc-700 dark:bg-zinc-800"
         >
           <div class="flex items-center justify-between px-3 py-2">
             <span class="flex items-center gap-1.5 text-xs font-medium text-zinc-400">
@@ -282,7 +282,7 @@ defineExpose({ focusSearch })
       >
         <div
           v-if="showResults && (results.length || searching)"
-          class="absolute top-full z-50 mt-2 w-full overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-xl dark:border-zinc-700 dark:bg-zinc-800"
+          class="search-pop absolute top-full z-50 mt-2 w-full overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-xl dark:border-zinc-700 dark:bg-zinc-800"
         >
           <!-- 搜索中提示 -->
           <div v-if="searching && !results.length" class="flex items-center justify-center px-3 py-6 text-sm text-zinc-400">

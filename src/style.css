@@ -209,6 +209,27 @@ html.has-bg .app-surface-blur .group:hover .group-hover\:bg-zinc-200\/80 {
 html.has-bg .app-surface-blur .focus\:bg-white:focus {
   background-color: rgb(255 255 255 / 0.14);
 }
+/* 顶栏搜索框三态专属映射（用户反馈 has-bg 下「透背景」）：类映射的 0.1 白雾 +
+   0.12/0.14 三态几乎全透。id 特异性 (1,x,x) 压过所有类映射（含 hover/focus 变体），
+   三态提为可辨识的实底，亮暗同配方 */
+html.has-bg .app-surface-blur #search-input {
+  background-color: rgb(255 255 255 / 0.22);
+}
+html.has-bg .app-surface-blur #search-input:hover {
+  background-color: rgb(255 255 255 / 0.28);
+}
+html.has-bg .app-surface-blur #search-input:focus {
+  background-color: rgb(255 255 255 / 0.32);
+}
+/* 顶栏搜索下拉（最近搜索 / 搜索结果弹层）：无 Teleport，挂在 TopBar 深玻璃子树内
+   → bg-white 被映射成 0.06 白雾，而弹层背后是主界面内容（非纯背景图），全透不可读。
+   给弹层自身配深玻璃（压暗 + 模糊）+ 暗雾底，弹层内文字继续走白字映射 */
+html.has-bg .app-surface-blur .search-pop {
+  --glass-pop: blur(16px) saturate(1.1) brightness(0.8);
+  -webkit-backdrop-filter: var(--glass-pop);
+  backdrop-filter: var(--glass-pop);
+  background-color: rgb(24 24 27 / 0.5);
+}
 /* 输入框 placeholder 走 ::placeholder 伪元素，.text-zinc-400 类映射不命中 → 单独提亮 */
 html.has-bg .app-surface-blur .placeholder\:text-zinc-400::placeholder {
   color: rgb(255 255 255 / 0.5);
