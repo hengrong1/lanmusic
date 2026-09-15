@@ -50,6 +50,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
         <Transition v-bind="dialogPanelTransition">
           <div
             v-if="updater.dialogOpen.value"
+            v-focus-trap
             data-dialog-panel
             class="app-surface-blur w-[420px] rounded-2xl border border-white/15 bg-(--app-surface) p-5 shadow-2xl"
           >
@@ -95,12 +96,16 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
               {{ progressPct >= 0 ? `${progressPct}%` : `${updater.downloadedMb.value.toFixed(1)}MB` }}
             </span>
           </div>
+          <!-- 下载中提示：关闭弹窗不中断下载 -->
+          <p v-if="updater.status.value === 'downloading'" class="mt-2 text-xs leading-relaxed text-zinc-400">
+            {{ $t('settings.downloadBgHint') }}
+          </p>
           <p v-else-if="updater.status.value === 'ready'" class="mt-3 text-xs leading-relaxed text-zinc-400">{{ $t('settings.updateDownloadedHint') }}</p>
           <p v-else class="mt-3 text-xs leading-relaxed text-zinc-400">{{ $t('settings.goReleaseHint') }}</p>
 
           <div class="mt-5 flex justify-end gap-2">
+            <!-- 下载中也可关闭：后端继续下载（不中断），进度见「设置 → 关于」 -->
             <BaseButton
-              v-if="updater.status.value !== 'downloading'"
               variant="ghost"
               size="sm"
               @click="updater.closeUpdateDialog()"

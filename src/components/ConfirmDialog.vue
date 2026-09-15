@@ -30,6 +30,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
         <Transition v-bind="dialogPanelTransition">
           <div
             v-if="state.open"
+            v-focus-trap
             data-dialog-panel
             class="app-surface-blur w-[380px] rounded-2xl border border-white/15 bg-(--app-surface) p-5 shadow-2xl"
           >

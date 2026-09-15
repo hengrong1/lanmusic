@@ -5,6 +5,7 @@ import App from './App.vue'
 import { applyStoredFont } from './composables/useAppFont'
 import { installTooltip } from './directives/tooltip'
 import { dragDialog } from './directives/dragDialog'
+import { focusTrap } from './directives/focusTrap'
 import { i18n } from './i18n'
 import { errorText } from './i18n/error'
 import { api } from './api/commands'
@@ -70,6 +71,7 @@ async function boot() {
       const app = createApp(Comp).use(i18n)
       installTooltip(app)
       app.directive('drag-dialog', dragDialog)
+      app.directive('focus-trap', focusTrap)
       installErrorGuard(app)
       app.mount('#app')
       removeSplash()
@@ -89,6 +91,7 @@ async function boot() {
       const app = createApp(Comp).use(i18n)
       installTooltip(app)
       app.directive('drag-dialog', dragDialog)
+      app.directive('focus-trap', focusTrap)
       installErrorGuard(app)
       app.mount('#app')
       removeSplash()
@@ -103,6 +106,7 @@ async function boot() {
     app.use(i18n)
     installTooltip(app)
     app.directive('drag-dialog', dragDialog)
+    app.directive('focus-trap', focusTrap)
     installErrorGuard(app)
     app.mount('#app')
     removeSplash()

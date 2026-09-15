@@ -74,6 +74,7 @@ watch(
         >
           <div
             v-if="open"
+            v-focus-trap
             ref="panelEl"
             data-dialog-panel
             class="app-surface-blur w-full rounded-2xl border border-white/15 bg-(--app-surface) shadow-2xl"

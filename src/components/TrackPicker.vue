@@ -170,6 +170,7 @@ onBeforeUnmount(() => {
   <div :class="[dialogOverlayClass('z-50'), 'p-6']" @click.self="emit('close')">
     <Transition v-bind="dialogPanelTransition" appear>
     <div
+      v-focus-trap
       data-dialog-panel
       class="app-surface-blur flex h-[600px] max-h-full w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-white/15 bg-(--app-surface) shadow-2xl"
     >

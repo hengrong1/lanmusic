@@ -281,6 +281,9 @@ window.addEventListener('keydown', (e) => {
   const typing = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable
   // MV 播放层打开时让位：快捷键交给播放器（Esc 关闭由 MvPlayer 处理）
   if (mv.opened.value) return
+  // 任意弹窗打开时让位：快捷键不穿透弹窗操作背景（空格/搜索/切歌等），
+  // Esc 也交由弹窗自己处理（各弹窗均有自己的 Esc 关闭逻辑）
+  if (document.querySelector('[data-dialog-panel]')) return
   if (e.key === 'Escape' && nowPlaying.value) {
     nowPlaying.value = false
     return

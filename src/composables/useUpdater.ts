@@ -73,7 +73,13 @@ function ensureProgressListener(): void {
     const { downloaded, total } = e.payload
     downloadedMb.value = downloaded / 1024 / 1024
     totalMb.value = total / 1024 / 1024
-    progress.value = total > 0 ? Math.min(1, downloaded / total) : -1
+    if (total > 0) {
+      const pct = Math.min(1, downloaded / total)
+      // 单调钳制：分片重试/事件乱序时进度可能瞬时回退，进度条不允许往回走
+      progress.value = progress.value < 0 ? pct : Math.max(progress.value, pct)
+    } else {
+      progress.value = -1
+    }
   }).catch(() => {
     // 注册失败（极少数情况）允许下次进入下载流程时重试
     progressListening = false
@@ -168,9 +174,12 @@ async function openReleasePage(): Promise<void> {
   }
 }
 
-/** 关闭更新弹窗（下载中禁止关闭，避免误触后丢失进度提示） */
+/**
+ * 关闭更新弹窗。下载中同样允许关闭：下载在后端继续进行（见
+ * commands.rs::download_update_installer 的 spawn_blocking），关闭只是收起界面，
+ * 完成后仍会 toast 提醒；进度与「安装并重启」入口在「设置 → 关于」常驻可见。
+ */
 function closeUpdateDialog(): void {
-  if (status.value === 'downloading') return
   dialogOpen.value = false
 }
 

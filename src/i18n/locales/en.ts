@@ -314,6 +314,7 @@ export default {
     updateDialogTitle: 'New Version Available', newVersion: 'New version',
     goRelease: 'Open Download Page', goReleaseHint: 'Opens the GitHub Releases page — download and run the installer to update.',
     updateDownloadedHint: 'Downloaded and verified — click "Install & Restart" to finish updating.',
+    downloadBgHint: 'The download keeps running in the background — closing this dialog won\'t interrupt it. Check progress and install later under Settings → About.',
     installAndRestart: 'Install & Restart',
   },
   search: {

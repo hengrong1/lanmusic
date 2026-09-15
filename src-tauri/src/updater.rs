@@ -18,8 +18,10 @@
 use quick_xml::{events::Event, Reader};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
-use std::io::{Read, Write};
+use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter};
 
 /// Release feed 仓库基址（拼接页面/资产地址用）
@@ -61,12 +63,91 @@ struct DownloadProgress {
     total: u64,
 }
 
+/// 连接超时（建连阶段；下载体不设总超时——慢速网络下载 >120s 会被总超时杀掉，
+/// 用户重下时进度条从 0 重来，表现为「进度往回跳」，v0.5.7 实测）
+const CONNECT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+/// 下载体读空闲超时（两次收到数据之间的最大间隔，防连接假死后永久挂起）
+const READ_IDLE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// 小请求（atom feed / HEAD 探测 / sha256 文件）专用总超时：这些请求体量小，
+/// 给个总超时防挂死即可，与下载路径的长耗时无关
+const SMALL_REQ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// Windows 系统代理（IE/WinINET 设置，Clash/v2rayN 等写注册表的那份）。
+/// reqwest 默认只认环境变量代理，GUI 代理软件设置的「系统代理」读不到，
+/// 导致 GitHub 资产直连下载极慢——这里补读注册表。PAC（AutoConfigURL）不支持，忽略。
+#[cfg(windows)]
+fn system_proxy() -> Option<reqwest::Proxy> {
+    use winreg::enums::HKEY_CURRENT_USER;
+    use winreg::RegKey;
+    let key = RegKey::predef(HKEY_CURRENT_USER)
+        .open_subkey("Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings")
+        .ok()?;
+    let enabled: u32 = key.get_value("ProxyEnable").ok()?;
+    if enabled != 1 {
+        return None;
+    }
+    let server: String = key.get_value("ProxyServer").ok()?;
+    // 两种格式：`127.0.0.1:7890`（全协议同一地址）或
+    // `http=…;https=…;ftp=…;socks=…`（按协议区分）。https 流量优先取 https 代理，
+    // 其次 http 代理（本地代理软件两者通常同端口）；socks 条目跳过（未启用 socks 特性）
+    let url = if server.contains('=') {
+        let (mut https_one, mut http_one) = (None, None);
+        for kv in server.split(';') {
+            let Some((k, v)) = kv.split_once('=') else { continue };
+            match k.trim() {
+                "https" => https_one = Some(v.trim().to_string()),
+                "http" => http_one = Some(v.trim().to_string()),
+                _ => {}
+            }
+        }
+        https_one.or(http_one)?
+    } else {
+        server.trim().to_string()
+    };
+    if url.is_empty() {
+        return None;
+    }
+    let full = if url.contains("://") { url } else { format!("http://{url}") };
+    match reqwest::Proxy::all(&full) {
+        Ok(p) => {
+            log::info!("更新通道使用系统代理：{full}");
+            Some(p)
+        }
+        Err(e) => {
+            log::warn!("系统代理地址无法解析（{full}）：{e}");
+            None
+        }
+    }
+}
+
+#[cfg(not(windows))]
+fn system_proxy() -> Option<reqwest::Proxy> {
+    None
+}
+
+/// 小请求客户端（atom / HEAD / sha256）：无总超时（总超时由各请求自带），带系统代理
 fn http_client() -> Result<reqwest::blocking::Client, String> {
-    reqwest::blocking::Client::builder()
+    let mut builder = reqwest::blocking::Client::builder()
         .user_agent(USER_AGENT)
-        .timeout(std::time::Duration::from_secs(120))
-        .build()
-        .map_err(|e| e.to_string())
+        .connect_timeout(CONNECT_TIMEOUT);
+    if let Some(p) = system_proxy() {
+        builder = builder.proxy(p);
+    }
+    builder.build().map_err(|e| e.to_string())
+}
+
+/// 下载客户端（异步）：不设总超时（慢速网络下载可能远超任何固定值），
+/// 只限建连与读空闲，配合 Range 断点续传把「卡死/中断」转成续传而非重下
+fn download_client() -> Result<reqwest::Client, String> {
+    let mut builder = reqwest::Client::builder()
+        .user_agent(USER_AGENT)
+        .connect_timeout(CONNECT_TIMEOUT)
+        .read_timeout(READ_IDLE_TIMEOUT);
+    if let Some(p) = system_proxy() {
+        builder = builder.proxy(p);
+    }
+    builder.build().map_err(|e| e.to_string())
 }
 
 /// 语义化版本比较（三段数字，非数字段/缺段按 0 补齐：0.4 == 0.4.0）。
@@ -392,6 +473,7 @@ fn asset_urls(version: &str) -> (String, String, String) {
 fn asset_exists(client: &reqwest::blocking::Client, url: &str) -> bool {
     client
         .head(url)
+        .timeout(SMALL_REQ_TIMEOUT)
         .send()
         .map(|r| r.status().is_success())
         .unwrap_or(false)
@@ -403,6 +485,7 @@ pub fn latest_release(current_version: &str) -> Result<Option<ReleaseInfo>, Stri
     let client = http_client()?;
     let xml = client
         .get(RELEASES_ATOM)
+        .timeout(SMALL_REQ_TIMEOUT)
         .header("Accept", "application/atom+xml")
         .send()
         .map_err(|e| e.to_string())?
@@ -460,6 +543,7 @@ fn parse_sha256_text(text: &str) -> Result<String, String> {
 fn fetch_sha256(client: &reqwest::blocking::Client, url: &str) -> Result<String, String> {
     let text = client
         .get(url)
+        .timeout(SMALL_REQ_TIMEOUT)
         .send()
         .map_err(|e| format!("校验文件下载失败：{e}"))?
         .error_for_status()
@@ -469,8 +553,285 @@ fn fetch_sha256(client: &reqwest::blocking::Client, url: &str) -> Result<String,
     parse_sha256_text(&text)
 }
 
+/// 分片并发数：GitHub 对单连接限速明显（国内直连尤其如此），多连接分片下载
+/// 是绕开单连接限速的有效手段；走系统代理时同样适用
+const SEGMENT_CONNECTIONS: usize = 8;
+/// 单分片最大重试次数（重试带 Range 续传，不从头来）
+const SEGMENT_RETRIES: usize = 4;
+/// 单流整段重试次数（服务器不支持 Range 时的兜底路径）
+const SINGLE_RETRIES: usize = 3;
+/// 总大小低于该值不分片（分片收益覆盖不了开销），直接单流下载
+const SEGMENT_MIN_TOTAL: u64 = 2 * 1024 * 1024;
+/// 总大小超过该值不分片（分片收在内存里组装，防超大资产吃内存；安装包远小于此）
+const SEGMENT_MAX_TOTAL: u64 = 256 * 1024 * 1024;
+
+/// 解析 Content-Range 头的总大小：`bytes 0-0/12345` → 12345；`bytes 0-0/*` → None
+fn content_range_total(value: &str) -> Option<u64> {
+    value.rsplit('/').next()?.trim().parse::<u64>().ok()
+}
+
+/// 进度回传：200ms 节流。分片并发时多个下载任务共享同一份节流时钟与总量
+struct ProgressEmit {
+    app: AppHandle,
+    total: u64,
+    last: Mutex<std::time::Instant>,
+}
+
+impl ProgressEmit {
+    fn emit(&self, downloaded: u64) {
+        // try_lock：拿不到锁说明另一分片刚发过，跳过本次即可（200ms 节奏不受影响）
+        if let Ok(mut last) = self.last.try_lock() {
+            if last.elapsed() >= std::time::Duration::from_millis(200) {
+                let _ = self.app.emit(
+                    PROGRESS_EVENT,
+                    DownloadProgress { downloaded, total: self.total },
+                );
+                *last = std::time::Instant::now();
+            }
+        }
+    }
+
+    /// 收尾事件：必定发送，总量未知（0）时用实际字节数补齐
+    fn emit_final(&self, downloaded: u64) {
+        let total = if self.total == 0 { downloaded } else { self.total };
+        let _ = self
+            .app
+            .emit(PROGRESS_EVENT, DownloadProgress { downloaded, total });
+    }
+}
+
+/// 重试间隔（线性退避）。阻塞 sleep 会短暂占用一个 runtime 工作线程——
+/// 分片重试是低频路径，多线程 runtime 下可接受（避免为此引入 tokio 直接依赖）
+fn retry_wait(attempt: usize) {
+    std::thread::sleep(std::time::Duration::from_millis(300 * attempt as u64));
+}
+
+/// 探测服务器是否支持 Range 断点续传，并顺带取文件总大小（Content-Range 的 total）
+async fn probe_range(client: &reqwest::Client, url: &str) -> (bool, Option<u64>) {
+    match client
+        .get(url)
+        .header("Range", "bytes=0-0")
+        .timeout(SMALL_REQ_TIMEOUT)
+        .send()
+        .await
+    {
+        Ok(resp) if resp.status() == reqwest::StatusCode::PARTIAL_CONTENT => {
+            let total = resp
+                .headers()
+                .get(reqwest::header::CONTENT_RANGE)
+                .and_then(|v| v.to_str().ok())
+                .and_then(content_range_total);
+            (true, total)
+        }
+        Ok(resp) => {
+            log::info!("服务器不支持 Range（HTTP {}），走单流下载", resp.status());
+            (false, None)
+        }
+        Err(e) => {
+            log::warn!("Range 探测失败（退化为单流下载）：{e}");
+            (false, None)
+        }
+    }
+}
+
+/// 单分片下载：[start, end] 闭区间；buf 保留已收字节做断点续传。
+/// 全局进度计数由多个分片共享（Arc<AtomicU64>），分片内重试不倒退——
+/// 除非服务器无视 Range 回 200，此时该分片清零重收（进度同步回退，
+/// 前端有单调钳制兜底，进度条不往回走）。
+async fn download_segment(
+    client: &reqwest::Client,
+    url: &str,
+    start: u64,
+    end: u64,
+    buf: &mut Vec<u8>,
+    progress: &Arc<AtomicU64>,
+    emit: &Arc<ProgressEmit>,
+) -> Result<(), String> {
+    let expected = (end - start + 1) as usize;
+    for attempt in 1..=SEGMENT_RETRIES {
+        if attempt > 1 {
+            retry_wait(attempt - 1);
+        }
+        let got = buf.len() as u64;
+        let range = format!("bytes={}-{}", start + got, end);
+        let send = client.get(url).header("Range", &range).send().await;
+        // 服务器必须回 206（Partial Content）；200 意味着 Range 被无视，
+        // 读下去会是整段内容而非剩余段，只能清零重收
+        let status_ok =
+            matches!(&send, Ok(r) if r.status() == reqwest::StatusCode::PARTIAL_CONTENT);
+        if !status_ok {
+            if got > 0 {
+                progress.fetch_sub(got, Ordering::Relaxed);
+                buf.clear();
+            }
+            let reason = match &send {
+                Ok(r) => format!("HTTP {}", r.status()),
+                Err(e) => e.to_string(),
+            };
+            log::warn!("分片 {range} 未按续传返回（{reason}，第 {attempt} 次）");
+            continue;
+        }
+        let mut resp = send.unwrap();
+        loop {
+            match resp.chunk().await {
+                Ok(Some(chunk)) => {
+                    buf.extend_from_slice(&chunk);
+                    progress.fetch_add(chunk.len() as u64, Ordering::Relaxed);
+                    emit.emit(progress.load(Ordering::Relaxed));
+                }
+                Ok(None) => break,
+                Err(e) => {
+                    // 读空闲超时 / 连接被重置：保留已收字节，续传重试
+                    log::warn!("分片 {range} 读取中断（第 {attempt} 次）：{e}");
+                    break;
+                }
+            }
+        }
+        if buf.len() >= expected {
+            buf.truncate(expected);
+            return Ok(());
+        }
+        // 连接提前关闭或中途出错 → 循环顶部退避后续传
+    }
+    Err(format!(
+        "分片 {}-{} 下载失败（已重试 {SEGMENT_RETRIES} 次，已收 {} 字节）",
+        start + buf.len() as u64,
+        end,
+        buf.len()
+    ))
+}
+
+/// 分片并发下载：均切 {SEGMENT_CONNECTIONS} 片，各自带续传重试；
+/// 全部完成后按偏移组装到 dest。返回总字节数（= total）。
+async fn download_segmented(
+    client: &reqwest::Client,
+    url: &str,
+    total: u64,
+    dest: &Path,
+    progress: &Arc<AtomicU64>,
+    emit: &Arc<ProgressEmit>,
+) -> Result<u64, String> {
+    let seg = total / SEGMENT_CONNECTIONS as u64;
+    let mut ranges: Vec<(u64, u64)> = Vec::with_capacity(SEGMENT_CONNECTIONS);
+    let mut start = 0u64;
+    for i in 0..SEGMENT_CONNECTIONS {
+        let end = if i == SEGMENT_CONNECTIONS - 1 {
+            total - 1
+        } else {
+            start + seg - 1
+        };
+        ranges.push((start, end));
+        start = end + 1;
+    }
+
+    let mut handles = Vec::with_capacity(SEGMENT_CONNECTIONS);
+    for (s, e) in ranges {
+        let client = client.clone();
+        let url = url.to_string();
+        let progress = Arc::clone(progress);
+        let emit = Arc::clone(emit);
+        handles.push(tauri::async_runtime::spawn(async move {
+            let mut buf = Vec::with_capacity((e - s + 1) as usize);
+            download_segment(&client, &url, s, e, &mut buf, &progress, &emit).await?;
+            Ok::<_, String>((s, buf))
+        }));
+    }
+
+    let mut parts = Vec::with_capacity(handles.len());
+    for h in handles {
+        match h.await {
+            Ok(Ok(part)) => parts.push(part),
+            Ok(Err(e)) => return Err(e),
+            Err(e) => return Err(format!("下载任务异常退出: {e}")),
+        }
+    }
+    parts.sort_by_key(|(s, _)| *s);
+
+    let mut file = std::fs::File::create(dest).map_err(|e| format!("无法创建下载文件：{e}"))?;
+    for (offset, buf) in &parts {
+        file.seek(SeekFrom::Start(*offset))
+            .map_err(|e| format!("写入失败：{e}"))?;
+        file.write_all(buf).map_err(|e| format!("写入失败：{e}"))?;
+    }
+    file.flush().map_err(|e| format!("写入失败：{e}"))?;
+    Ok(total)
+}
+
+/// 单流下载兜底（无 Range 支持或文件太小）：整段下载，失败从头重试。
+/// 服务器不回 content-length 时以「读到流末尾」为完成标志（完整性由 SHA-256 终审）。
+async fn download_single_stream(
+    client: &reqwest::Client,
+    url: &str,
+    dest: &Path,
+    progress: &Arc<AtomicU64>,
+    emit: &Arc<ProgressEmit>,
+) -> Result<u64, String> {
+    for attempt in 1..=SINGLE_RETRIES {
+        if attempt > 1 {
+            retry_wait(attempt - 1);
+        }
+        progress.store(0, Ordering::Relaxed); // 无续传能力，只能整段重来
+        let mut resp = match client.get(url).send().await {
+            Ok(r) => match r.error_for_status() {
+                Ok(r) => r,
+                Err(e) => return Err(format!("下载失败：HTTP {e}")),
+            },
+            Err(e) => {
+                log::warn!("下载请求失败（第 {attempt} 次）：{e}");
+                continue;
+            }
+        };
+        let expected = resp.content_length();
+        let mut file = std::fs::File::create(dest).map_err(|e| format!("无法创建下载文件：{e}"))?;
+        let mut downloaded = 0u64;
+        loop {
+            match resp.chunk().await {
+                Ok(Some(chunk)) => {
+                    file.write_all(&chunk).map_err(|e| format!("写入失败：{e}"))?;
+                    downloaded += chunk.len() as u64;
+                    progress.store(downloaded, Ordering::Relaxed);
+                    emit.emit(downloaded);
+                }
+                Ok(None) => break,
+                Err(e) => {
+                    log::warn!("下载读取中断（第 {attempt} 次）：{e}");
+                    downloaded = 0;
+                    break;
+                }
+            }
+        }
+        let complete = match expected {
+            Some(len) => downloaded == len,
+            None => downloaded > 0,
+        };
+        if complete {
+            file.flush().map_err(|e| format!("写入失败：{e}"))?;
+            return Ok(downloaded);
+        }
+    }
+    Err("下载失败（已重试 3 次）".into())
+}
+
+/// 流式计算文件 SHA-256（分片下载组装完的整包文件）
+fn sha256_file(path: &Path) -> Result<String, String> {
+    let mut file = std::fs::File::open(path).map_err(|e| format!("无法打开下载文件：{e}"))?;
+    let mut hasher = Sha256::new();
+    let mut buf = [0u8; 256 * 1024];
+    loop {
+        let n = file.read(&mut buf).map_err(|e| format!("读取下载文件失败：{e}"))?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buf[..n]);
+    }
+    Ok(format!("{:x}", hasher.finalize()))
+}
+
 /// 下载更新安装包到系统临时目录并做 SHA-256 校验，返回落地路径。
 /// 进度经 `update:download-progress` 事件回传（200ms 节流）。
+/// 下载策略：支持 Range 且文件大小合适时分片并发（含断点续传），否则单流整段重试。
+/// 旧实现给客户端设了 120s 总超时：慢速网络下下载必被杀掉、用户重下进度从 0 重来
+/// （「进度条往回跳」的根源），现已改为只限建连/读空闲，不限总时长。
 /// 校验失败会删除文件并返回 Err（绝不安装未通过校验的包）。
 pub fn download_installer(
     app: &AppHandle,
@@ -488,47 +849,40 @@ pub fn download_installer(
         .to_string();
     let dest = std::env::temp_dir().join(&file_name);
 
-    let client = http_client()?;
-    let mut resp = client
-        .get(url)
-        .send()
-        .map_err(|e| format!("下载失败：{e}"))?
-        .error_for_status()
-        .map_err(|e| format!("下载失败：HTTP {e}"))?;
-    let total = resp.content_length().or(size_hint).unwrap_or(0);
-
-    log::info!("开始下载更新包 {file_name}（{total} 字节）");
+    let client = download_client()?;
     let started = std::time::Instant::now();
-    let mut file = std::fs::File::create(&dest).map_err(|e| format!("无法创建下载文件：{e}"))?;
-    let mut hasher = Sha256::new();
-    let mut buf = [0u8; 64 * 1024];
-    let mut downloaded = 0u64;
-    let mut last_emit = std::time::Instant::now();
-    loop {
-        let n = resp.read(&mut buf).map_err(|e| format!("下载中断：{e}"))?;
-        if n == 0 {
-            break;
-        }
-        file.write_all(&buf[..n]).map_err(|e| format!("写入失败：{e}"))?;
-        hasher.update(&buf[..n]);
-        downloaded += n as u64;
-        if last_emit.elapsed() >= std::time::Duration::from_millis(200) {
-            let _ = app.emit(PROGRESS_EVENT, DownloadProgress { downloaded, total });
-            last_emit = std::time::Instant::now();
-        }
-    }
-    drop(file);
-    // 收尾事件把总量补齐（部分服务端不返回 content-length）
-    let _ = app.emit(
-        PROGRESS_EVENT,
-        DownloadProgress {
-            downloaded,
-            total: if total == 0 { downloaded } else { total },
-        },
-    );
-    let actual = format!("{:x}", hasher.finalize());
+    log::info!("开始下载更新包 {file_name}");
+
+    // 下载体不设总超时，卡死由读空闲超时兜底；block_on 挂在 spawn_blocking
+    // 线程上（见 commands.rs），不占 UI 线程
+    let downloaded = tauri::async_runtime::block_on(async {
+        let (range_ok, probed_total) = probe_range(&client, url).await;
+        let total = probed_total.or(size_hint).unwrap_or(0);
+        let progress = Arc::new(AtomicU64::new(0));
+        let emit = Arc::new(ProgressEmit {
+            app: app.clone(),
+            total,
+            last: Mutex::new(std::time::Instant::now()),
+        });
+
+        let bytes = if range_ok && total >= SEGMENT_MIN_TOTAL && total <= SEGMENT_MAX_TOTAL {
+            log::info!("服务器支持断点续传，分 {SEGMENT_CONNECTIONS} 片并发下载（{total} 字节）");
+            download_segmented(&client, url, total, &dest, &progress, &emit).await?
+        } else {
+            if range_ok && total > SEGMENT_MAX_TOTAL {
+                log::warn!("文件 {total} 字节超出分片上限，走单流下载");
+            }
+            download_single_stream(&client, url, &dest, &progress, &emit).await?
+        };
+        // 收尾事件把总量补齐（部分服务端不返回 content-length）
+        emit.emit_final(bytes);
+        Ok::<u64, String>(bytes)
+    })?;
+
+    let actual = sha256_file(&dest)?;
 
     if let Some(sha_url) = sha256_url {
+        let client = http_client()?;
         let expected = fetch_sha256(&client, sha_url)?;
         if expected != actual {
             let _ = std::fs::remove_file(&dest);
@@ -539,11 +893,13 @@ pub fn download_installer(
     } else {
         log::warn!("更新包缺少 .sha256 校验资产，已跳过校验（建议补齐发布流程）");
     }
+    let secs = started.elapsed().as_secs_f64().max(0.001);
     log::info!(
-        "更新包已就绪：{}（{} 字节，耗时 {} ms）",
+        "更新包已就绪：{}（{} 字节，{:.1}s，平均 {:.2} MB/s）",
         dest.display(),
         downloaded,
-        started.elapsed().as_millis()
+        secs,
+        downloaded as f64 / 1024.0 / 1024.0 / secs
     );
     Ok(dest)
 }
@@ -602,6 +958,14 @@ mod tests {
     fn malformed_segments_fall_back_to_zero() {
         assert_eq!(version_cmp("0.4.x", "0.4.0"), Ordering::Equal);
         assert_eq!(version_cmp("", "0.0.0"), Ordering::Equal);
+    }
+
+    #[test]
+    fn content_range_total_parses_header() {
+        assert_eq!(super::content_range_total("bytes 0-0/12345"), Some(12345));
+        assert_eq!(super::content_range_total("bytes 0-0/*"), None);
+        assert_eq!(super::content_range_total("bytes 0-0/"), None);
+        assert_eq!(super::content_range_total("garbage"), None);
     }
 
     #[test]

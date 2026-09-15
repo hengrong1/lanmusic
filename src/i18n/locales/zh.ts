@@ -306,6 +306,7 @@ export default {
     updateDialogTitle: '发现新版本', newVersion: '新版本',
     goRelease: '前往下载', goReleaseHint: '将打开 GitHub Releases 页面，下载并运行安装包即可完成更新。',
     updateDownloadedHint: '下载完成并已通过校验，点击「安装并重启」完成更新。',
+    downloadBgHint: '下载在后台继续，关闭弹窗不会中断；可稍后在「设置 → 关于」查看进度与安装。',
     installAndRestart: '安装并重启',
   },
 
