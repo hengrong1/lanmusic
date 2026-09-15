@@ -22,10 +22,13 @@ function normalizeMode(v: unknown): PlayMode {
   return PLAY_MODES.includes(v as PlayMode) ? (v as PlayMode) : 'order'
 }
 
-/** 音量归一化：存档损坏（NaN/越界）时回退 1，避免 audio.volume = NaN 抛 TypeError */
+/** 音量默认值：50%（仅首次启动/存档损坏时生效，已存档用户保持自己调过的音量） */
+const DEFAULT_VOLUME = 0.5
+
+/** 音量归一化：存档损坏（NaN/越界）时回退默认值，避免 audio.volume = NaN 抛 TypeError */
 function normalizeVolume(v: unknown): number {
   const n = Number(v)
-  if (!Number.isFinite(n)) return 1
+  if (!Number.isFinite(n)) return DEFAULT_VOLUME
   return Math.min(1, Math.max(0, n))
 }
 
@@ -71,7 +74,7 @@ export const usePlayerStore = defineStore('player', () => {
   const position = ref(0)
   const duration = ref(0)
   const mode = ref<PlayMode>(normalizeMode(localStorage.getItem(LS.mode)))
-  const volume = ref(normalizeVolume(localStorage.getItem(LS.volume) ?? 1))
+  const volume = ref(normalizeVolume(localStorage.getItem(LS.volume) ?? DEFAULT_VOLUME))
   const muted = ref(localStorage.getItem(LS.muted) === '1')
   /** 播放倍速：持久化；换歌加载新 src 时由 defaultPlaybackRate 延续 */
   const rate = ref(normalizeRate(Number(localStorage.getItem(LS.rate) ?? 1)))
