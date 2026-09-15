@@ -12,14 +12,19 @@ import { errorText } from '@/i18n/error'
 import { dialogOverlayClass, dialogPanelTransition, dialogDraggable } from '@/composables/useDialogPrefs'
 
 /**
- * 编辑歌单弹层：集中修改名称、简介；只读展示创建时间 / 歌曲数 / 封面；删除歌单。
- * 保存时只提交有变化的字段；删除成功后 emit('deleted') 由上层负责跳转。
+ * 歌单弹层（新建 / 编辑双模式）：集中修改名称、简介；只读展示创建时间 / 歌曲数 / 封面；删除歌单。
+ * 不传 playlistId = 新建模式：只有名称输入，隐藏元信息 / 简介与删除按钮（见「注意：新建无删除」），
+ * 保存时创建并 emit('created') 由上层跳转；编辑模式保存只提交有变化的字段，
+ * 删除成功后 emit('deleted') 由上层负责跳转。
  */
-const props = defineProps<{ playlistId: number }>()
-const emit = defineEmits<{ close: []; saved: [name?: string]; deleted: [] }>()
+const props = defineProps<{ playlistId?: number }>()
+const emit = defineEmits<{ close: []; saved: [name?: string]; created: [{ id: number; name: string }]; deleted: [] }>()
 
 const { t, locale } = useI18n()
 const library = useLibraryStore()
+
+/** 新建模式：无 playlistId */
+const isCreate = computed(() => props.playlistId == null)
 
 const meta = computed(() => library.playlists.find((p) => p.id === props.playlistId) ?? null)
 const metaDesc = computed(() => meta.value?.description ?? '')
@@ -44,6 +49,11 @@ const saving = ref(false)
 const nameInput = ref<InstanceType<typeof BaseInput> | null>(null)
 
 function resetDrafts() {
+  if (isCreate.value) {
+    nameDraft.value = ''
+    descDraft.value = ''
+    return
+  }
   nameDraft.value = meta.value?.name ?? ''
   descDraft.value = metaDesc.value
 }
@@ -70,17 +80,25 @@ async function save() {
     toast(t('toast.playlistNameRequired'), 'error')
     return
   }
-  const nameChanged = name !== (meta.value?.name ?? '')
-  const descChanged = descDraft.value.trim() !== metaDesc.value
-  if (!nameChanged && !descChanged) {
-    emit('close')
-    return
-  }
   saving.value = true
   try {
+    if (isCreate.value) {
+      // 新建：只带名称（简介留待编辑弹窗补充），成功后由上层跳转到新歌单
+      const p = await library.createPlaylist(name)
+      toast(t('toast.playlistSaved'))
+      emit('created', { id: p.id, name: p.name })
+      emit('close')
+      return
+    }
+    const nameChanged = name !== (meta.value?.name ?? '')
+    const descChanged = descDraft.value.trim() !== metaDesc.value
+    if (!nameChanged && !descChanged) {
+      emit('close')
+      return
+    }
     syncing = true
-    if (nameChanged) await library.renamePlaylist(props.playlistId, name)
-    if (descChanged) await library.setPlaylistDescription(props.playlistId, descDraft.value.trim())
+    if (nameChanged) await library.renamePlaylist(props.playlistId!, name)
+    if (descChanged) await library.setPlaylistDescription(props.playlistId!, descDraft.value.trim())
     syncing = false
     toast(t('toast.playlistSaved'))
     emit('saved', nameChanged ? name : undefined)
@@ -102,7 +120,7 @@ async function remove() {
   })
   if (!ok) return
   try {
-    await library.deletePlaylist(props.playlistId)
+    await library.deletePlaylist(props.playlistId!)
     emit('deleted')
     emit('close')
   } catch (e) {
@@ -132,14 +150,14 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
           class="flex shrink-0 items-center justify-between border-b border-zinc-200 px-5 py-4 dark:border-zinc-800"
           :class="dialogDraggable() ? 'cursor-move select-none' : ''"
         >
-          <h2 class="text-base font-semibold text-zinc-900 dark:text-zinc-50">{{ $t('playlist.edit') }}</h2>
+          <h2 class="text-base font-semibold text-zinc-900 dark:text-zinc-50">{{ isCreate ? $t('playlist.createNew') : $t('playlist.edit') }}</h2>
           <BaseButton variant="ghost" size="xs" :icon="X" data-no-drag v-tooltip="$t('common.close')" :aria-label="$t('common.close')" @click="emit('close')" />
         </div>
 
       <!-- 表单 -->
       <div class="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
-        <!-- 封面 + 元信息 -->
-        <div class="flex items-center gap-4">
+        <!-- 封面 + 元信息（新建模式无此区块） -->
+        <div v-if="!isCreate" class="flex items-center gap-4">
           <CoverImg :album-id="meta?.coverAlbumId ?? null" rounded="h-16 w-16 shrink-0 rounded-lg" />
           <div class="min-w-0 text-xs text-zinc-500 dark:text-zinc-400">
             <p>{{ createdLabel }}</p>
@@ -158,7 +176,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
           />
         </div>
 
-        <div>
+        <div v-if="!isCreate">
           <label class="mb-1 block text-xs font-medium text-zinc-500 dark:text-zinc-400">{{ $t('common.description') }}</label>
           <BaseTextarea
             v-model="descDraft"
@@ -168,7 +186,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
           />
         </div>
 
-        <div class="border-t border-zinc-100 pt-3 dark:border-zinc-800">
+        <!-- 删除歌单：仅编辑模式（新建无可删之物） -->
+        <div v-if="!isCreate" class="border-t border-zinc-100 pt-3 dark:border-zinc-800">
           <BaseButton variant="ghost" tone="danger" size="xs" :icon="Trash2" @click="remove">
             {{ $t('playlist.delete') }}
           </BaseButton>
@@ -179,7 +198,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
       <div class="flex shrink-0 items-center justify-end gap-2 border-t border-zinc-200 px-5 py-3 dark:border-zinc-800">
         <BaseButton variant="ghost" size="sm" @click="emit('close')">{{ $t('common.cancel') }}</BaseButton>
         <BaseButton variant="primary" size="sm" :loading="saving" :disabled="!nameDraft.trim()" @click="save">
-          {{ $t('common.save') }}
+          {{ isCreate ? $t('playlist.create') : $t('common.save') }}
         </BaseButton>
       </div>
     </div>

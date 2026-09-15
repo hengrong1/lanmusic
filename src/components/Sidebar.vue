@@ -23,6 +23,7 @@ import { confirmDialog } from '@/composables/useConfirm'
 import { IS_WIN } from '@/utils/platform'
 import ContextMenu from '@/components/ContextMenu.vue'
 import CoverImg from '@/components/CoverImg.vue'
+import PlaylistEditDialog from '@/components/PlaylistEditDialog.vue'
 import type { MenuItem } from '@/components/ContextMenu.vue'
 import type { NavRoute } from '@/types'
 import { errorText } from '@/i18n/error'
@@ -170,16 +171,14 @@ function isActive(e: NavEntry) {
   return false
 }
 
-// ---- 歌单：新建 / 重命名 / 删除 ----
-const editing = ref<{ id?: number; value: string } | null>(null)
+// ---- 歌单：新建（弹窗）/ 重命名（内联输入行）/ 删除 ----
+const editing = ref<{ id: number; value: string } | null>(null)
+/** 新建歌单弹窗（与编辑弹窗同款 PlaylistEditDialog，新建模式不带删除按钮） */
+const createOpen = ref(false)
 const inputEl = ref<HTMLInputElement | null>(null)
 /** 提交进行中：防止回车提交后的失焦再触发一次（await 期间输入框尚未卸载） */
 const committing = ref(false)
 
-function startCreate() {
-  editing.value = { value: '' }
-  void nextTick(() => inputEl.value?.focus())
-}
 function startRename(id: number, name: string) {
   editing.value = { id, value: name }
   void nextTick(() => inputEl.value?.focus())
@@ -194,13 +193,10 @@ async function confirmEdit() {
   committing.value = true
   try {
     // 回车 / 点击输入框以外（失焦）都会提交；没输入则用「未命名 + 日期」
-    const name = e.value.trim() || defaultName()
-    if (e.id != null) {
-      await library.renamePlaylist(e.id, name)
-      if (current.value.playlistId === e.id) current.value = { ...current.value, playlistName: name }
-    } else {
-      const p = await library.createPlaylist(name)
-      go({ view: 'playlist', playlistId: p.id, playlistName: p.name })
+    await library.renamePlaylist(e.id, e.value.trim() || defaultName())
+    if (current.value.playlistId === e.id) {
+      const name = e.value.trim() || defaultName()
+      current.value = { ...current.value, playlistName: name }
     }
   } catch (err) {
     toast(errorText(err), 'error')
@@ -208,6 +204,10 @@ async function confirmEdit() {
     committing.value = false
     editing.value = null
   }
+}
+/** 新建成功：跳转到新歌单（与原内联新建行为一致） */
+function onCreated(p: { id: number; name: string }) {
+  go({ view: 'playlist', playlistId: p.id, playlistName: p.name })
 }
 
 const playlistMenu = ref<{ x: number; y: number; id: number; name: string } | null>(null)
@@ -296,13 +296,13 @@ function openPlaylistMenu(e: MouseEvent, p: { id: number; name: string }) {
           class="transition-colors duration-150 sidebar-fade flex h-5 w-5 cursor-pointer items-center justify-center rounded-lg text-zinc-400 hover:bg-zinc-200 hover:text-zinc-600 disabled:cursor-default dark:hover:bg-zinc-700 dark:hover:text-zinc-300"
           v-tooltip="$t('playlist.createNew')"
           :disabled="collapsed"
-          @click="startCreate"
+          @click="createOpen = true"
         >
           <Plus class="h-3.5 w-3.5" />
         </button>
       </div>
 
-      <!-- 新建/重命名输入行（随 editing 常驻，避免收起结束时高度增减推挤下方歌单项）：
+      <!-- 重命名输入行（新建已改为弹窗，此行仅供右键菜单重命名使用）：
            回车或点击输入框以外（失焦）提交，Esc / ✕ 取消（✕ 用 mousedown.prevent 防止先触发失焦提交） -->
       <div
         v-if="editing"
@@ -368,6 +368,9 @@ function openPlaylistMenu(e: MouseEvent, p: { id: number; name: string }) {
       :items="playlistMenuItems"
       @close="playlistMenu = null"
     />
+
+    <!-- 新建歌单弹窗：与「编辑歌单」同款（PlaylistEditDialog 新建模式，无删除按钮） -->
+    <PlaylistEditDialog v-if="createOpen" @close="createOpen = false" @created="onCreated" />
   </nav>
 </template>
 
