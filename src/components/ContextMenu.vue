@@ -6,6 +6,8 @@ import type { Component } from 'vue'
 export interface MenuItem {
   label: string
   icon?: Component
+  /** 图标附加色类（如喜欢项固定红心：text-red-500）；缺省跟随菜单文字色 */
+  iconClass?: string
   danger?: boolean
   disabled?: boolean
   action?: () => void
@@ -73,7 +75,7 @@ function run(item: MenuItem) {
             class="transition-colors duration-150 flex w-full cursor-pointer items-center gap-2.5 px-3 py-1.5 text-left text-sm text-zinc-700 hover:bg-violet-500/10 disabled:opacity-40 dark:text-zinc-200"
             @click.stop
           >
-            <component :is="item.icon" v-if="item.icon" class="h-4 w-4 opacity-70" />
+            <component :is="item.icon" v-if="item.icon" class="h-4 w-4 opacity-70" :class="item.iconClass" />
             <span class="flex-1">{{ item.label }}</span>
             <ChevronRight class="h-3.5 w-3.5 opacity-50" />
           </button>
@@ -91,15 +93,19 @@ function run(item: MenuItem) {
             </button>
           </div>
         </div>
-        <!-- 普通项 -->
+        <!-- 普通项。⚠️ 危险项的 text/hover 色必须与默认色互斥地写进 :class——
+             若与静态 text-zinc-700/hover:bg-violet-500/10 并存，同特异性下
+             按样式表顺序后者（zinc/violet）会压过 red，danger 红色静默失效 -->
         <button
           v-else
-          class="transition-colors duration-150 flex w-full cursor-pointer items-center gap-2.5 px-3 py-1.5 text-left text-sm text-zinc-700 hover:bg-violet-500/10 disabled:opacity-40 dark:text-zinc-200"
-          :class="item.danger ? 'text-red-600 dark:text-red-400' : ''"
+          class="transition-colors duration-150 flex w-full cursor-pointer items-center gap-2.5 px-3 py-1.5 text-left text-sm disabled:opacity-40"
+          :class="item.danger
+            ? 'text-red-600 hover:bg-red-500/10 dark:text-red-400'
+            : 'text-zinc-700 hover:bg-violet-500/10 dark:text-zinc-200'"
           :disabled="item.disabled"
           @click.stop="run(item)"
         >
-          <component :is="item.icon" v-if="item.icon" class="h-4 w-4 opacity-70" />
+          <component :is="item.icon" v-if="item.icon" class="h-4 w-4 opacity-70" :class="item.iconClass" />
           {{ item.label }}
         </button>
       </template>
