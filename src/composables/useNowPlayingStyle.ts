@@ -21,3 +21,24 @@ watch(npStyle, (v) => localStorage.setItem(LS_KEY, v))
 export function useNowPlayingStyle() {
   return npStyle
 }
+
+/**
+ * 播放页主题色来源（装扮面板可切）：
+ * auto = 自动跟随封面主色（默认，原行为）；theme = 跟随软件主题色
+ * （useThemeColor 选中的主题色，经 themeAmbientPalette 派生整套环境色）。
+ */
+export type NpAccentMode = 'auto' | 'theme'
+
+const ACCENT_LS_KEY = 'lm.npAccentMode'
+
+function loadAccentMode(): NpAccentMode {
+  return localStorage.getItem(ACCENT_LS_KEY) === 'theme' ? 'theme' : 'auto'
+}
+
+// 模块级单例：useAmbient 据此切换环境色来源，装扮面板写入
+export const npAccentMode = ref<NpAccentMode>(loadAccentMode())
+watch(npAccentMode, (v) => localStorage.setItem(ACCENT_LS_KEY, v))
+
+export function useNpAccentMode() {
+  return npAccentMode
+}

@@ -342,6 +342,7 @@ export default {
     focusModeDesc: '播放中鼠标 5 秒无操作自动隐藏顶栏与播放条',
     spectrumStyle: '频谱样式', skinParticlesRound: '圆形粒子', skinTreeShape: '树状', spectrumNone: '无',
     layoutStyle: '布局', layoutSide: '经典', layoutStacked: '上下',
+    accentStyle: '主题色', accentAuto: '自动（跟随封面）', accentTheme: '跟随软件主题色',
     sampleTitle: '示例歌曲', sampleArtist: '示例艺人', sampleLyricPrev: '上一句歌词', sampleLyricNow: '当前句歌词', sampleLyricNext: '下一句歌词',
   },
   mv: {

@@ -26,7 +26,7 @@ import { useNav } from '@/composables/useNav'
 import { useAmbient } from '@/composables/useAmbient'
 import { themeAmbientPalette } from '@/composables/useThemeColor'
 import { useSkin, useSkinOpen, useSpectrumMode } from '@/composables/useSkin'
-import { useNowPlayingStyle } from '@/composables/useNowPlayingStyle'
+import { useNowPlayingStyle, useNpAccentMode } from '@/composables/useNowPlayingStyle'
 import { CloseIcon as X } from '@solar-icons/vue/linear/close'
 import { ensureAnalyser, readSpectrum } from '@/composables/useSpectrum'
 import { activeLineIndex } from '@/utils/lrc'
@@ -66,6 +66,8 @@ const skin = useSkin()
 const skinOpen = useSkinOpen()
 // 播放页布局预设：装扮面板里先可选可存，NowPlayingView 应用布局待下一步接入
 const npStyle = useNowPlayingStyle()
+// 播放页主题色来源：自动（跟随封面）/ 跟随软件主题色（useAmbient 据此切换环境色）
+const npAccentMode = useNpAccentMode()
 // 频谱三态：无 / 圆形粒子 / 树状（写回 skin.on + skin.style）
 const spectrumMode = useSpectrumMode()
 
@@ -781,6 +783,26 @@ const theme = computed(() =>
                       :style="{ background: skinAccent }"
                     ></span>
                   </span>
+                </button>
+              </div>
+              <!-- 主题色：自动（跟随封面主色）/ 跟随软件主题色（整体环境色切换，见 useAmbient） -->
+              <p class="px-1 pt-4 pb-2 text-[11px] font-medium text-white/40">{{ $t('nowPlaying.accentStyle') }}</p>
+              <div class="grid grid-cols-2 gap-1.5">
+                <button
+                  class="cursor-pointer rounded-lg px-2 py-2 text-xs transition"
+                  :class="npAccentMode === 'auto' ? 'font-medium' : 'text-white/60 hover:bg-white/10'"
+                  :style="skinActiveStyle(npAccentMode === 'auto')"
+                  @click="npAccentMode = 'auto'"
+                >
+                  {{ $t('nowPlaying.accentAuto') }}
+                </button>
+                <button
+                  class="cursor-pointer rounded-lg px-2 py-2 text-xs transition"
+                  :class="npAccentMode === 'theme' ? 'font-medium' : 'text-white/60 hover:bg-white/10'"
+                  :style="skinActiveStyle(npAccentMode === 'theme')"
+                  @click="npAccentMode = 'theme'"
+                >
+                  {{ $t('nowPlaying.accentTheme') }}
                 </button>
               </div>
               <!-- 频谱样式：无 / 圆形粒子 / 树状 三选一 -->

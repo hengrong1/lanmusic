@@ -348,6 +348,7 @@ export default {
     focusModeDesc: 'Auto-hide top bar and player bar after 5 seconds of mouse inactivity during playback',
     spectrumStyle: 'Spectrum Style', skinParticlesRound: 'Round Particles', skinTreeShape: 'Tree', spectrumNone: 'None',
     layoutStyle: 'Layout', layoutSide: 'Classic', layoutStacked: 'Stacked',
+    accentStyle: 'Accent Color', accentAuto: 'Auto (cover)', accentTheme: 'App theme color',
     sampleTitle: 'Sample Song', sampleArtist: 'Sample Artist', sampleLyricPrev: 'Previous line', sampleLyricNow: 'Current line', sampleLyricNext: 'Next line',
   },
   mv: {

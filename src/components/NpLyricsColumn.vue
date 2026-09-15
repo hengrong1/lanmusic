@@ -63,6 +63,10 @@ const lyricForwardTip = computed(() => tr('player.lyricForwardHint') + offsetTip
 const lyricResetTip = computed(() =>
   player.lyricOffset ? tr('player.lyricResetHint') + offsetTip.value : tr('player.lyricCurrentHint'),
 )
+
+/** 校准按钮悬停态：底色与图标跟随播放页主题色（--np-accent 由 App 随环境色下发） */
+const calibHover =
+  'hover:bg-[color-mix(in_srgb,var(--np-accent,#a78bfa)_18%,transparent)] hover:text-[var(--np-accent,#a78bfa)]'
 </script>
 
 <template>
@@ -115,7 +119,8 @@ const lyricResetTip = computed(() =>
       class="absolute right-0 bottom-2 z-10 flex flex-col items-center gap-1 rounded-2xl bg-black/40 px-1.5 py-2 backdrop-blur-sm"
     >
       <button
-        class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-white/60 transition hover:bg-white/10 hover:text-white"
+        class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-white/60 transition"
+        :class="calibHover"
         v-tooltip="lyricBackTip"
         @click="player.setLyricOffset(0.5)"
       >
@@ -123,14 +128,15 @@ const lyricResetTip = computed(() =>
       </button>
       <button
         class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg transition"
-        :class="player.lyricOffset ? 'text-white/60 hover:bg-white/10 hover:text-white' : 'text-white/25'"
+        :class="player.lyricOffset ? `text-white/60 ${calibHover}` : 'text-white/25'"
         v-tooltip="lyricResetTip"
         @click="player.setLyricOffset(-player.lyricOffset)"
       >
         <RotateCcw class="h-4.5 w-4.5" />
       </button>
       <button
-        class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-white/60 transition hover:bg-white/10 hover:text-white"
+        class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-white/60 transition"
+        :class="calibHover"
         v-tooltip="lyricForwardTip"
         @click="player.setLyricOffset(-0.5)"
       >
