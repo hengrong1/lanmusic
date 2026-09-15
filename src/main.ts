@@ -10,10 +10,65 @@ import { i18n } from './i18n'
 import { errorText } from './i18n/error'
 import { api } from './api/commands'
 import { toast } from './composables/useToast'
+import { IS_TAURI } from './utils/platform'
 import './style.css'
 
 // 应用全局字体（设置 → 外观 → 字体，各窗口共用同一份 localStorage）
 applyStoredFont()
+
+/**
+ * 屏蔽 WebView2 默认行为，让应用接近原生客户端：
+ * - 默认右键菜单：全局拦掉，右键统一交给应用内自定义菜单（各触发处自带
+ *   preventDefault，此处兜底；歌词窗/托盘窗无自定义菜单，右键从此无响应）
+ * - 浏览器加速键：刷新(F5/Ctrl+R)、打印(Ctrl+P)、另存为(Ctrl+S)、查看源码(Ctrl+U)、
+ *   收藏(Ctrl+D)、查找下一个(F3/Ctrl+G)、开新标签/窗口(Ctrl+W/T/N)、缩放(Ctrl+=/-/0)、
+ *   前进后退(Alt+←/→)、全屏(F11)、Ctrl+滚轮缩放——全部 preventDefault 抑制
+ * - F12 / Ctrl+Shift+I 不拦：debug 构建保留 DevTools 便于调试，release 构建
+ *   tauri 未启用 devtools 特性，本来就无法打开
+ */
+function blockBrowserDefaults() {
+  window.addEventListener('contextmenu', (e) => e.preventDefault())
+  window.addEventListener(
+    'keydown',
+    (e) => {
+      const k = e.key
+      const mod = e.ctrlKey || e.metaKey
+      if (
+        k === 'F5' ||
+        k === 'F11' ||
+        k === 'F3' ||
+        (mod &&
+          ((k === 'r' || k === 'R') || // 刷新
+            k === 'p' || // 打印
+            k === 's' || // 另存为
+            k === 'u' || // 查看源码
+            k === 'd' || // 收藏
+            k === 'g' || // 查找下一个
+            k === 'w' || // 关闭标签
+            k === 't' || // 新建标签
+            k === 'n' || // 新建窗口
+            k === '=' ||
+            k === '+' ||
+            k === '-' ||
+            k === '0')) || // 缩放
+        (e.altKey && (k === 'ArrowLeft' || k === 'ArrowRight')) // 历史前进后退
+      ) {
+        e.preventDefault()
+      }
+    },
+    true,
+  )
+  // Ctrl+滚轮缩放（passive 必须为 false 才能 preventDefault）
+  window.addEventListener(
+    'wheel',
+    (e) => {
+      if (e.ctrlKey) e.preventDefault()
+    },
+    { passive: false },
+  )
+}
+// 仅桌面 WebView 内生效：纯 vite 浏览器调试保留原生右键/快捷键（检查元素、刷新等）
+if (IS_TAURI) blockBrowserDefaults()
 
 /** 挂载完成后移除启动闪屏（index.html 内联，避免首帧白屏） */
 function removeSplash() {
