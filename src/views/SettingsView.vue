@@ -115,13 +115,14 @@ const fadeOn = ref(player.isFadeOn())
 function onFadeToggle(val: boolean) {
   fadeOn.value = val
   player.setFadeEnabled(val)
-  toast(val ? t('settings.fadeOn') : t('settings.fadeOff'))
+  // key 去重：同一开关反复切换只替换本条提示，不叠加新气泡
+  toast(val ? t('settings.fadeOn') : t('settings.fadeOff'), 'info', 'settings.fade')
 }
 const preventSleepOn = ref(getPreventSleep())
 function onPreventSleepToggle(val: boolean) {
   preventSleepOn.value = val
   setPreventSleepSetting(val, player.playing)
-  toast(val ? t('settings.preventSleepOn') : t('settings.preventSleepOff'))
+  toast(val ? t('settings.preventSleepOn') : t('settings.preventSleepOff'), 'info', 'settings.preventSleep')
 }
 
 // ---- 窗口关闭行为 ----
@@ -136,7 +137,7 @@ function setCloseAction(action: string | number) {
   localStorage.setItem('lm.closeAction', v)
   // 同步到 SQLite，供 Rust 侧关闭事件使用
   api.setSetting('lm.closeAction', v).catch(() => {})
-  toast(v === 'tray' ? t('settings.closeToTray') : t('settings.closeToQuit'))
+  toast(v === 'tray' ? t('settings.closeToTray') : t('settings.closeToQuit'), 'info', 'settings.closeAction')
 }
 const closeAction = ref(getCloseAction())
 let closeActionTouched = false

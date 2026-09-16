@@ -12,6 +12,18 @@ const toasts = ref<ToastItem[]>([])
 let seq = 0
 const timers = new Map<number, ReturnType<typeof setTimeout>>()
 
+/** 同屏上限：连续操作（如连改多个设置）时新提示不排队，立刻收掉最旧的，气泡不再堆积 */
+const MAX_VISIBLE = 3
+
+/** 移除最旧的一条（连同它的计时器）；TransitionGroup 的 leave 动画自动接管退场 */
+function dropOldest() {
+  const oldest = toasts.value.shift()
+  if (!oldest) return
+  const timer = timers.get(oldest.id)
+  if (timer) clearTimeout(timer)
+  timers.delete(oldest.id)
+}
+
 function scheduleRemove(id: number) {
   timers.set(
     id,
@@ -37,6 +49,7 @@ export function toast(text: string, kind: 'info' | 'error' = 'info', key?: strin
   const id = ++seq
   toasts.value.push({ id, text, kind, key })
   scheduleRemove(id)
+  while (toasts.value.length > MAX_VISIBLE) dropOldest()
 }
 
 export function useToast() {
