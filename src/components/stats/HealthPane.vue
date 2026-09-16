@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import VChart from 'vue-echarts'
+import { init as echartsInit } from 'echarts/core'
 import {
   ClockCircleIcon as ClockCircle,
   DatabaseIcon as Database,
@@ -26,7 +26,7 @@ const scans = ref<ScanHistoryItem[]>([])
 const loading = ref(true)
 
 const emit = defineEmits<{ loaded: [] }>()
-/** 图表挂载门控：数据就绪后等两帧布局稳定再挂 VChart（避免容器宽度未稳定时 init） */
+/** 图表挂载门控：数据就绪后等两帧布局稳定（initDists 再做容器尺寸非 0 的重试门控） */
 const chartsReady = ref(false)
 onMounted(async () => {
   try {
@@ -146,7 +146,6 @@ const yearRows = computed(() => distRows(health.value?.years?.map((y) => ({ name
 
 /** 分布横向条（ECharts）：count 为条长，右侧标注数值 */
 function distOption(rows: { label: string; count: number }[]) {
-  if (!rows.length) return null
   return {
     grid: { left: 8, right: 44, top: 0, bottom: 0, containLabel: true },
     tooltip: {
@@ -174,6 +173,53 @@ function distOption(rows: { label: string; count: number }[]) {
     ],
   }
 }
+
+// ---- 分布图实例管理（手动 init 门控：容器尺寸非 0 才挂实例，见 useEChart 同款思路）----
+const distEls = ref<(HTMLElement | null)[]>([])
+const setDistEl = (i: number) => (el: unknown) => {
+  distEls.value[i] = (el as HTMLElement | null) ?? null
+}
+const distCharts: ReturnType<typeof echartsInit>[] = []
+const distROs: ResizeObserver[] = []
+let distDisposed = false
+let distTries = 0
+
+function initDists() {
+  if (distDisposed || !chartsReady.value) return
+  const groups = [
+    formatRows.value,
+    sourceRows.value,
+    sampleRateRows.value,
+    bitDepthRows.value,
+    yearRows.value,
+  ]
+  // 任一非空组的容器尚未就绪（ref 未挂 / 宽高为 0）→ 整批稍后重试
+  const pending = groups.some((rows, i) => {
+    const el = distEls.value[i]
+    return rows.length > 0 && (!el || el.clientWidth === 0 || el.clientHeight === 0)
+  })
+  if (pending) {
+    if (++distTries > 200) return
+    requestAnimationFrame(initDists)
+    return
+  }
+  groups.forEach((rows, i) => {
+    const el = distEls.value[i]
+    if (!el || !rows.length || distCharts[i]) return
+    const chart = echartsInit(el)
+    chart.setOption(distOption(rows))
+    distCharts[i] = chart
+    const ro = new ResizeObserver(() => chart.resize())
+    ro.observe(el)
+    distROs.push(ro)
+  })
+}
+watch([chartsReady, health], () => nextTick(initDists), { flush: 'post' })
+onUnmounted(() => {
+  distDisposed = true
+  distROs.forEach((r) => r.disconnect())
+  distCharts.forEach((c) => c.dispose())
+})
 </script>
 
 <template>
@@ -227,7 +273,7 @@ function distOption(rows: { label: string; count: number }[]) {
     <section class="rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
       <h2 class="text-sm font-semibold text-zinc-800 dark:text-zinc-100">{{ $t('stats.distTitle') }}</h2>
       <div class="mt-4 grid grid-cols-1 gap-x-8 gap-y-5 lg:grid-cols-2">
-        <div v-for="group in [
+        <div v-for="(group, i) in [
           { title: tr('stats.distFormats'), rows: formatRows },
           { title: tr('stats.distSources'), rows: sourceRows },
           { title: tr('stats.distSampleRate'), rows: sampleRateRows },
@@ -237,15 +283,9 @@ function distOption(rows: { label: string; count: number }[]) {
           <h3 class="text-xs font-medium text-zinc-500">{{ group.title }}</h3>
           <div v-if="!group.rows.length" class="mt-2 text-xs text-zinc-400">{{ $t('stats.distEmpty') }}</div>
           <div
-            v-else-if="!chartsReady"
-            class="mt-1"
-            :style="{ height: `${group.rows.length * 26 + 10}px` }"
-          />
-          <VChart
-            v-else
+            v-show="chartsReady"
+            :ref="setDistEl(i)"
             class="mt-1 w-full"
-            :option="distOption(group.rows) ?? undefined"
-            autoresize
             :style="{ height: `${group.rows.length * 26 + 10}px` }"
           />
         </div>

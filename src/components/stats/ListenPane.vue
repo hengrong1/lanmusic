@@ -1,7 +1,6 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import VChart from 'vue-echarts'
 import {
   CalendarIcon as Calendar,
   CalendarMarkIcon as CalendarMark,
@@ -23,6 +22,7 @@ import type {
 } from '@/types'
 import { useNav } from '@/composables/useNav'
 import { ensureEcharts, useChartTheme, CHART_COLORS } from '@/composables/useEcharts'
+import { useEChart } from '@/composables/useEChart'
 import { errorText } from '@/i18n/error'
 import { toast } from '@/composables/useToast'
 import { BaseButtonGroup } from '@/components/ui'
@@ -48,12 +48,15 @@ const top = ref<ListenTopItem[]>([])
 
 const emit = defineEmits<{ loaded: [] }>()
 /**
- * 图表挂载门控（两级）：dataReady = 首次数据就绪；chartsReady = 再等两帧布局稳定。
- * 懒加载视图 + out-in 过渡的组合下，DOM 插入后容器宽度要晚一拍才稳定，ECharts 在
- * 宽度为 0 时 init 会告警（Can't get DOM width or height）。双 rAF 保证跨越完整渲染管线。
+ * 图表挂载门控：dataReady = 首次数据就绪（汇总卡/空态判定依赖）。
+ * 图表 init 由 useEChart 门控（容器尺寸非 0 才 init），这里不再需要 chartsReady。
  */
 const dataReady = ref(false)
-const chartsReady = ref(false)
+// 图表容器 refs（useEChart 逐实例接管：init 门控 / setOption / resize / dispose）
+const trendEl = ref<HTMLElement | null>(null)
+const heatEl = ref<HTMLElement | null>(null)
+const modeEl = ref<HTMLElement | null>(null)
+const sourceEl = ref<HTMLElement | null>(null)
 onMounted(async () => {
   try {
     const [s, st, hm, bm, bs, top0, tr0] = await Promise.all([
@@ -73,12 +76,6 @@ onMounted(async () => {
     top.value = top0
     trend.value = tr0
     dataReady.value = true
-    await nextTick()
-    requestAnimationFrame(() =>
-      requestAnimationFrame(() => {
-        chartsReady.value = true
-      }),
-    )
     emit('loaded')
   } catch (e) {
     toast(errorText(e), 'error')
@@ -293,6 +290,12 @@ function donutOption(list: ListenBreakdownPoint[]) {
 const modeDonut = computed(() => donutOption(breakdownMode.value))
 const sourceDonut = computed(() => donutOption(breakdownSource.value))
 
+// ECharts 实例接管（init 门控 / option 增量 / resize / dispose）
+useEChart(trendEl, trendOption)
+useEChart(heatEl, heatOption)
+useEChart(modeEl, modeDonut)
+useEChart(sourceEl, sourceDonut)
+
 function kindLabel(kind: string): string {
   const modeMap: Record<string, string> = {
     order: tr('stats.modeOrder'),
@@ -332,8 +335,8 @@ function goItem(t: ListenTopItem) {
 
 <template>
   <div class="flex flex-col gap-6">
-    <!-- 图表等数据就绪 + 两帧布局稳定后再挂载：避免 ECharts 宽度为 0 时 init -->
-    <template v-if="dataReady && chartsReady">
+    <!-- 数据就绪后渲染；图表 init 由 useEChart 门控（容器尺寸非 0 才挂实例） -->
+    <template v-if="dataReady">
       <!-- 汇总卡（图标 + 数值） -->
       <div class="grid grid-cols-2 gap-3 lg:grid-cols-4">
       <div
@@ -383,13 +386,13 @@ function goItem(t: ListenTopItem) {
             />
           </div>
         </div>
-        <VChart class="h-56 w-full" :option="trendOption" autoresize />
+        <div ref="trendEl" class="h-56 w-full" />
       </section>
 
       <!-- 星期 × 小时热力图 -->
       <section class="rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
         <h2 class="text-sm font-semibold text-zinc-800 dark:text-zinc-100">{{ $t('stats.heatTitle') }}</h2>
-        <VChart class="h-52 w-full" :option="heatOption" autoresize />
+        <div ref="heatEl" class="h-52 w-full" />
       </section>
 
       <!-- 榜单 -->
@@ -464,14 +467,14 @@ function goItem(t: ListenTopItem) {
       <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <section class="rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
           <h2 class="text-sm font-semibold text-zinc-800 dark:text-zinc-100">{{ $t('stats.byModeTitle') }}</h2>
-          <VChart v-if="modeDonut" class="h-52 w-full" :option="modeDonut" autoresize />
+          <div v-if="modeDonut" ref="modeEl" class="h-52 w-full" />
           <p v-else class="flex h-52 items-center justify-center text-sm" :style="{ color: emptyText }">
             {{ $t('stats.emptyRange') }}
           </p>
         </section>
         <section class="rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
           <h2 class="text-sm font-semibold text-zinc-800 dark:text-zinc-100">{{ $t('stats.bySourceTitle') }}</h2>
-          <VChart v-if="sourceDonut" class="h-52 w-full" :option="sourceDonut" autoresize />
+          <div v-if="sourceDonut" ref="sourceEl" class="h-52 w-full" />
           <p v-else class="flex h-52 items-center justify-center text-sm" :style="{ color: emptyText }">
             {{ $t('stats.emptyRange') }}
           </p>
