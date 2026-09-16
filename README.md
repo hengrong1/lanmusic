@@ -9,11 +9,11 @@
 
 ## 界面预览
 
-| 全部歌曲 | 播放页 | 设置页 | 自定义背景 |
+| 亮色 | 暗色 | 自定义背景 | 播放页 |
 |:---:|:---:|:---:|:---:|
-| ![全部歌曲](docs/screenshots/tracks.png) | ![播放页](docs/screenshots/nowplaying.png) | ![设置页](docs/screenshots/settings.png) | ![自定义背景](docs/screenshots/custom-background.png) |
+| ![亮色](docs/screenshots/light.png) | ![暗色](docs/screenshots/dark.png) | ![自定义背景](docs/screenshots/custom-background.png) | ![播放页](docs/screenshots/nowplaying.png) |
 
-> 界面预览启用自定义背景图主题，展示真实曲库数据；其余界面可在运行应用后自行查看。
+> 预览基于真实曲库数据；自定义背景为设置 → 外观中选定的背景图效果，其余界面可在运行应用后自行查看。
 
 ## 技术栈
 
@@ -32,7 +32,7 @@
 - **扫描性能**：独立 SQLite 连接（WAL 读写分离）、多线程并发解析（共享任务队列，不持锁）、封面惰性提取、枚举/解析双阶段进度上报
 - **快速导入**：针对网络目录的开关（本地与 WebDAV 来源通用），仅按文件名/目录结构入库、不读文件内容；本地来源省掉标签解析，WebDAV 来源还会**完全跳过逐文件的头部拉取**（大库首次导入能省下大量请求，也不易触发远端限流）；「完整解析」随时补全标签，且**无视该开关**（一定会真实解析，含已快速导入的歌曲）
 - **`music://` 自定义流协议**：HTTP Range 拖动进度、2MB 分块封顶、本地/WebDAV 统一路由、跨平台适配（macOS `music://` / Windows `http://music.localhost`）
-- **播放**：播放模式（顺序/列表循环/单曲/随机）、队列管理、虚拟滚动列表（10 万级）、专辑/艺人视图、搜索、全局快捷键（空格 / `N` / `P` / `Ctrl+F` / `[` / `]`）
+- **播放**：播放模式（顺序/列表循环/单曲/随机）、队列管理、上一曲始终切换到队列上一首（不回本曲开头；队首且循环模式时回末尾）、虚拟滚动列表（10 万级）、专辑/艺人视图、搜索、全局快捷键（空格 / `N` / `P` / `Ctrl+F` / `[` / `]`）
 - **扫描范围**：按目录名跳过——内置 `#recycle` / `#snapshot` / `@eaDir` / `$RECYCLE.BIN` / `System Volume Information` / `lost+found` / `.Trash*` 等 NAS 回收站与系统目录（共 10 条，见 `scanner.rs::BUILTIN_SKIP_DIRS`），设置页可按目录名追加（不区分大小写，任何层级命中即整棵剪掉）；设置页把内置的这批目录名以「内置」标记单独列出（数据来自 `get_builtin_skip_dirs`，避免用户误以为需要手动添加）；每来源可开关「子目录扫描」，关闭后仅扫描根目录下的文件（本地/WebDAV 通用，目录监听模式随之切换）
 - **目录监听**：本地来源目录接入 notify 监听，文件变化（新增/修改/删除/重命名）自动触发增量扫描（去抖 3s；监听模式跟随来源的「子目录扫描」开关；WebDAV 源无法监听，需手动重扫）
 
@@ -49,7 +49,8 @@
 - **歌词校准**：播放页右下角「后退 / 还原 / 前进」控件（或快捷键 `[` / `]`），每次 ±0.5s、范围 ±10s；偏移按曲目持久化，toast 原地更新累计量（连续点击不叠加提示框）；同一浮层分隔线下方是**歌词副行开关**——`音`（音译 / 罗马字）与 `译`（译文）两个文字按钮，默认关闭，仅当前歌词确实带该副行时才出现（没有的直接不显示），点开后为主题色底 + 主题色字
 - **最近播放**（`play_count` / `last_played_at` 统计）
 - **喜欢**（收藏）
-- **多选批量操作**：全部歌曲 / 喜欢 / 最近播放 / 专辑 / 艺人 / 搜索结果与歌单页均支持多选（播放 / 加入队列 / 添加到歌单），歌单页可移出歌单，曲库侧可从曲库移除（不删磁盘文件）
+- **多选批量操作**：全部歌曲 / 喜欢 / 最近播放 / 专辑 / 艺人 / 搜索结果与歌单页均支持多选（播放 / 加入队列 / 添加到歌单），歌单页可移出歌单，曲库侧可从曲库移除（不删磁盘文件）；「添加到歌单」的歌单选择菜单从底部操作栏上方弹出（带展开动画）
+- **中文拼音排序**：全部歌曲 / 专辑 / 艺人列表按标题 / 专辑 / 艺人排序（含表头点击升降序）按「数字 → 字母 → 汉字」分组——数字段按数值序（`2` 在 `10` 前）、汉字组内按拼音、英文大小写不敏感；空专辑 / 艺人排最后。实现为 SQLite 自定义 collation（`PINYIN`，见 `db.rs::open_conn`）
 - **已移除歌曲**：手动移除与扫描时文件消失的曲目都会留底（设置 → 已移除歌曲），记录歌名/艺人/专辑/路径与移除原因，便于找回；支持单条或全部还原（确认文件仍在后自动扫描重新入库）；上限 1000 条自动裁剪
 - **艺人合并**：艺人名规整（「陈奕迅（Eason Chan）」→「陈奕迅」）一键归并；设置页展示已合并名单，支持自定义合并（两位名字不同的艺人实为同一人时手动归并）。旧名记为别名（`artist_aliases`），之后扫描遇到旧名仍归到主艺人名下，不会重新建出独立艺人
 - **歌曲淡入淡出**：播放/暂停与切歌时音量平滑过渡（淡入 0.8s、淡出 0.6s），**默认开启**，设置页可关闭
@@ -178,7 +179,7 @@ src-tauri/                 # Rust 后端
 └── src/
     ├── lib.rs             # 应用入口：窗口/托盘/协议注册/命令注册/封面自愈
     ├── commands.rs        # IPC 命令层：参数校验 + 数据库薄封装
-    ├── db.rs              # SQLite schema + 列迁移 + KV 设置
+    ├── db.rs              # SQLite schema + 列迁移 + KV 设置 + 拼音排序 collation
     ├── scanner.rs         # 增量扫描管线（local/webdav 两来源，后台线程 + 进度事件）
     ├── watcher.rs         # 本地来源目录监听（notify，去抖后触发增量扫描）
     ├── metadata.rs        # lofty 元数据解析（含远程头部字节解析）
@@ -251,7 +252,7 @@ src-tauri/                 # Rust 后端
 | 播放/歌词/喜欢 | `report_play(id)` · `get_lyrics(id)` · `favorite_toggle(id, fav)` · `set_thumbbar_playing(playing)`（Windows 任务栏缩略图按钮图标同步） · `desktop_lyrics_set(enabled)`（桌面歌词浮窗开关） · `list_system_fonts()`（系统字体列表） · `set_prevent_sleep(prevent)`（播放时阻止系统休眠/锁屏） |
 | 设置 | `get_setting(key)` · `set_setting(key, value)` · `get_builtin_skip_dirs()`（内置跳过目录名，设置页用于标出这批「内置」关键字） · `get_artist_separators()` · `set_artist_separators(value)`（保存多艺人分隔符并立即重拆曲库，返回受影响曲目的艺人变更列表） · `normalize_artist_names()`（规整同义艺人名） · `merge_artist(sourceId, targetId)`（自定义合并，旧名记为别名） · `list_artist_aliases()`（已合并名单） |
 
-`query_tracks` 支持的 `sort` 值：`title` `-title` `album` `-album` `artist` `-artist` `added` `duration` `-duration` `recent` `none`（`-` 前缀为降序）。
+`query_tracks` 支持的 `sort` 值：`title` `-title` `album` `-album` `artist` `-artist` `added` `duration` `-duration` `recent` `none`（`-` 前缀为降序）。文本列（title/album/artist）按「数字 → 字母 → 汉字（拼音）」分组序比较（见 M2「中文拼音排序」）。
 
 搜索（`search` 非空时）自动启用多字段匹配：搜索范围（`fields`: title/artist/album/lyrics/filename，默认前三）、拼音匹配（`pinyin`，可关）、排序偏好（`sort`：`relevance` 相关度 / `added` 时间添加 / `plays` 播放次数），结果带 `matchedFields` 命中字段。设置页「搜索」可调整上述选项、输入防抖时长；搜索框聚焦展示最近搜索（最多 50 条）。
 
