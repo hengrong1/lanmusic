@@ -195,27 +195,37 @@ const viewComponent = computed(() => {
 /** 视图切换的 key：路由任一参数变化都触发过渡 */
 const viewKey = computed(() => JSON.stringify(nav.current.value))
 
-// ---- 视图渲染自检保险 ----
-// 现象（用户报告）：从听歌统计切到别的画面后内容区空白。浏览器 mock 环境无法复现，
-// 故此处加保险：切换后延时检查新视图根元素，若「零高或近乎全透明」（GSAP 中断 / 布局异常 /
-// 残留内联样式），强制清理并写前端日志（进 diagnostics 的前端错误计数 + 落盘），
-// 既能自愈又能为下次复现留下确证。
+// ---- 视图渲染自检 ----
+// 现象（用户报告）：从听歌统计切到别的画面后内容区空白（侧栏/顶栏正常、必现、前端零报错）。
+// 浏览器实测（生产构建 + 真实规模数据 1436 曲 / 200 专辑卡 / 满格热力图、三个 tab 路径、
+// dev 模式）均无法复现，判断为真实环境特有组合。故：切换后延时检查新视图根元素——
+// 异常（零高/近乎全透明）时强制恢复并记 error；正常时也记一行 info 现场快照。
+// 现场快照含视图名/尺寸/透明度/文本量/窗口尺寸/html class/DOM 摘要，复现一次即可定位；
+// 排查结束后可把 info 那行去掉（error 分支保留作长期保险）。
 const mainEl = ref<HTMLElement | null>(null)
 watch(viewKey, () => {
   window.setTimeout(() => {
+    const view = nav.current.value.view
     const node = mainEl.value?.firstElementChild as HTMLElement | null
-    if (!node || node.nodeType !== 1) return
+    if (!node || node.nodeType !== 1) {
+      api.frontendLog('warn', `[view-guard] 视图 ${view} 的 main 内没有元素节点`).catch(() => {})
+      return
+    }
     const cs = getComputedStyle(node)
-    const invisible = node.offsetHeight === 0 || Number(cs.opacity) < 0.05
-    if (!invisible) return
-    const before = `h=${node.offsetHeight} op=${cs.opacity}`
-    node.style.opacity = ''
-    node.style.transform = ''
-    node.style.translate = ''
-    api
-      .frontendLog('error', `[view-guard] 视图 ${nav.current.value.view} 渲染异常（${before}），已强制恢复`)
-      .catch(() => {})
-  }, 700)
+    const textLen = (node.innerText || '').length
+    const snapshot =
+      `h=${node.offsetHeight} w=${node.offsetWidth} op=${cs.opacity} text=${textLen} ` +
+      `win=${window.innerWidth}x${window.innerHeight} html=${document.documentElement.className} ` +
+      `scroll=${mainEl.value?.scrollHeight ?? -1} dom=${node.outerHTML.slice(0, 200).replace(/\s+/g, ' ')}`
+    if (node.offsetHeight === 0 || Number(cs.opacity) < 0.05) {
+      node.style.opacity = ''
+      node.style.transform = ''
+      node.style.translate = ''
+      api.frontendLog('error', `[view-guard] 视图 ${view} 不可见，已强制恢复 | ${snapshot}`).catch(() => {})
+    } else {
+      api.frontendLog('info', `[view-guard] ${view} | ${snapshot}`).catch(() => {})
+    }
+  }, 900)
 })
 
 // ---- GSAP 过渡：主视图切换（简短淡入淡出，不做缩放避免文字模糊）----
