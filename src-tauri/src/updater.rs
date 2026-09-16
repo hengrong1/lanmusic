@@ -849,6 +849,23 @@ pub fn download_installer(
         .to_string();
     let dest = std::env::temp_dir().join(&file_name);
 
+    // 复用已下载的安装包：文件名按版本固定（temp 里同版本永远只有一个文件），
+    // 已存在且 SHA-256 与校验资产一致时直接跳过整包下载——
+    // 「下载完成后重新检查更新再点下载」不再浪费流量；无校验资产或校验不符则重新下载覆盖。
+    'reuse: {
+        let Some(sha_url) = sha256_url else { break 'reuse };
+        if !dest.is_file() {
+            break 'reuse;
+        }
+        let Ok(existing) = sha256_file(&dest) else { break 'reuse };
+        let Ok(client) = http_client() else { break 'reuse };
+        if fetch_sha256(&client, sha_url).as_deref() == Ok(existing.as_str()) {
+            log::info!("临时目录已有校验一致的安装包，跳过下载：{}", dest.display());
+            return Ok(dest);
+        }
+        log::info!("临时目录已有同名安装包但校验不符，重新下载覆盖");
+    }
+
     let client = download_client()?;
     let started = std::time::Instant::now();
     log::info!("开始下载更新包 {file_name}");
@@ -926,6 +943,38 @@ pub fn run_installer(path: &str) -> Result<(), String> {
         .map_err(|e| format!("无法启动安装程序：{e}"))?;
     log::info!("已启动安装程序（静默 + 装完自动启动）：{}", p.display());
     Ok(())
+}
+
+/// 启动清理：删除系统临时目录中**旧于当前版本**的更新安装包
+/// （`LanMusic_<版本>_x64-setup.exe`；其他平台临时目录不会有此文件名，空跑无害）。
+/// 应用内更新成功后旧版本安装包会残留在 temp（Inno Setup 安装程序不自删临时文件），
+/// 逐版本升级会越积越多；等于/新于当前版本的文件保留——当前版本同名包可能是
+/// 已下载待安装的副本（配合 download_installer 的校验复用），更高版本可能是刚取回的新包。
+pub fn cleanup_old_installers() {
+    let current = env!("CARGO_PKG_VERSION");
+    let Ok(entries) = std::fs::read_dir(std::env::temp_dir()) else {
+        return;
+    };
+    let mut removed = 0usize;
+    for entry in entries.flatten() {
+        let file_name = entry.file_name();
+        let Some(name) = file_name.to_str() else { continue };
+        let Some(ver) = name
+            .strip_prefix("LanMusic_")
+            .and_then(|s| s.strip_suffix("_x64-setup.exe"))
+        else {
+            continue;
+        };
+        if version_cmp(ver, current) != std::cmp::Ordering::Less {
+            continue;
+        }
+        if std::fs::remove_file(entry.path()).is_ok() {
+            removed += 1;
+        }
+    }
+    if removed > 0 {
+        log::info!("已清理临时目录中旧版本的更新安装包 {removed} 个");
+    }
 }
 
 #[cfg(test)]

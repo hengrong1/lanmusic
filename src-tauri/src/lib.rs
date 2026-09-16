@@ -242,6 +242,10 @@ pub fn run() {
                 std::thread::spawn(move || covers::enforce_limit_with_setting(&app_handle));
             }
 
+            // 更新安装包清理：删除临时目录中旧于当前版本的 LanMusic 安装包
+            // （应用内更新升级后残留，Inno Setup 不自删临时文件；后台执行）
+            std::thread::spawn(updater::cleanup_old_installers);
+
             // Ogg 转码缓存清理：启动时清空上次会话的 WAV 缓存（后台执行；仅 macOS 编译）
             #[cfg(target_os = "macos")]
             {
