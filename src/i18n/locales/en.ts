@@ -36,8 +36,6 @@ export default {
     topTitle: 'Most played',
     topKindTrack: 'Tracks', topKindArtist: 'Artists', topKindAlbum: 'Albums', topKindGenre: 'Genres',
     rangeWeek: '7 days', rangeMonth: '30 days', rangeAll: 'All',
-    byModeTitle: 'Play mode breakdown', bySourceTitle: 'Source breakdown',
-    modeOrder: 'In order', modeLoop: 'Repeat all', modeOne: 'Repeat one', modeShuffle: 'Shuffle', modeUnknown: 'Unknown',
     srcLocal: 'Local', srcWebdav: 'WebDAV',
     playsWithCount: '{count} plays',
     hoursMinutes: '{h} h {m} min', minutesSeconds: '{m} min {s} s', secondsOnly: '{s} s',

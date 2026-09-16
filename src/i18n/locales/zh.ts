@@ -36,8 +36,6 @@ export default {
     topTitle: '听得最多的歌',
     topKindTrack: '曲目', topKindArtist: '艺人', topKindAlbum: '专辑', topKindGenre: '流派',
     rangeWeek: '近 7 天', rangeMonth: '近 30 天', rangeAll: '全部',
-    byModeTitle: '播放模式占比', bySourceTitle: '播放来源占比',
-    modeOrder: '顺序', modeLoop: '列表循环', modeOne: '单曲循环', modeShuffle: '随机', modeUnknown: '未知',
     srcLocal: '本地', srcWebdav: 'WebDAV',
     playsWithCount: '播放 {count} 次',
     hoursMinutes: '{h} 小时 {m} 分', minutesSeconds: '{m} 分 {s} 秒', secondsOnly: '{s} 秒',

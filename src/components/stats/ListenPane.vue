@@ -14,14 +14,13 @@ import {
 } from '@solar-icons/vue/linear'
 import { api } from '@/api/commands'
 import type {
-  ListenBreakdownPoint,
   ListenDailyPoint,
   ListenHeatCell,
   ListenSummary,
   ListenTopItem,
 } from '@/types'
 import { useNav } from '@/composables/useNav'
-import { ensureEcharts, useChartTheme, CHART_COLORS } from '@/composables/useEcharts'
+import { ensureEcharts, useChartTheme } from '@/composables/useEcharts'
 import { useEChart } from '@/composables/useEChart'
 import { errorText } from '@/i18n/error'
 import { toast } from '@/composables/useToast'
@@ -33,15 +32,13 @@ ensureEcharts()
 
 const { t: tr } = useI18n()
 const nav = useNav()
-const { axisLabel, axisLine, splitLine, tooltipBase, cardBg, emptyText } = useChartTheme()
+const { axisLabel, axisLine, splitLine, tooltipBase, cardBg } = useChartTheme()
 
 const summary = ref<ListenSummary | null>(null)
 const streak = ref<[number, number]>([0, 0])
 const granularity = ref<'day' | 'week' | 'month'>('day')
 const trend = ref<ListenDailyPoint[]>([])
 const heat = ref<ListenHeatCell[]>([])
-const breakdownMode = ref<ListenBreakdownPoint[]>([])
-const breakdownSource = ref<ListenBreakdownPoint[]>([])
 const topKind = ref<'track' | 'artist' | 'album' | 'genre'>('track')
 const topRange = ref<'week' | 'month' | 'all'>('month')
 const top = ref<ListenTopItem[]>([])
@@ -55,24 +52,18 @@ const dataReady = ref(false)
 // 图表容器 refs（useEChart 逐实例接管：init 门控 / setOption / resize / dispose）
 const trendEl = ref<HTMLElement | null>(null)
 const heatEl = ref<HTMLElement | null>(null)
-const modeEl = ref<HTMLElement | null>(null)
-const sourceEl = ref<HTMLElement | null>(null)
 onMounted(async () => {
   try {
-    const [s, st, hm, bm, bs, top0, tr0] = await Promise.all([
+    const [s, st, hm, top0, tr0] = await Promise.all([
       api.listenStatsSummary(),
       api.listenStreak(),
       api.listenHeatmap(),
-      api.listenBreakdown('mode'),
-      api.listenBreakdown('source'),
       api.listenTopTracks(topKind.value, topRange.value, 20),
       api.listenDaily(30, 'day'),
     ])
     summary.value = s
     streak.value = st
     heat.value = hm
-    breakdownMode.value = bm
-    breakdownSource.value = bs
     top.value = top0
     trend.value = tr0
     dataReady.value = true
@@ -251,61 +242,9 @@ const heatOption = computed(() => {
   }
 })
 
-/** 占比环形图：by=mode/source 各一个；空数据返回 null 由模板隐藏 */
-function donutOption(list: ListenBreakdownPoint[]) {
-  const total = list.reduce((a, b) => a + b.seconds, 0)
-  if (!list.length || total <= 0) return null
-  return {
-    tooltip: {
-      trigger: 'item',
-      ...tooltipBase.value,
-      formatter: (p: { name: string; percent: number; value: number }) =>
-        `${p.name}<br/>${p.percent}% · ${fmtSeconds(p.value)}`,
-    },
-    legend: {
-      bottom: 0,
-      left: 'center',
-      itemWidth: 10,
-      itemHeight: 10,
-      icon: 'circle',
-      textStyle: { color: axisLabel.value, fontSize: 11 },
-    },
-    series: [
-      {
-        type: 'pie',
-        radius: ['52%', '78%'],
-        center: ['50%', '44%'],
-        itemStyle: { borderRadius: 4, borderColor: cardBg.value, borderWidth: 2 },
-        label: { show: false },
-        emphasis: { scaleSize: 4 },
-        data: list.map((p, i) => ({
-          name: kindLabel(p.kind),
-          value: p.seconds,
-          itemStyle: { color: CHART_COLORS[i % CHART_COLORS.length] },
-        })),
-      },
-    ],
-  }
-}
-const modeDonut = computed(() => donutOption(breakdownMode.value))
-const sourceDonut = computed(() => donutOption(breakdownSource.value))
-
 // ECharts 实例接管（init 门控 / option 增量 / resize / dispose）
 useEChart(trendEl, trendOption)
 useEChart(heatEl, heatOption)
-useEChart(modeEl, modeDonut)
-useEChart(sourceEl, sourceDonut)
-
-function kindLabel(kind: string): string {
-  const modeMap: Record<string, string> = {
-    order: tr('stats.modeOrder'),
-    loop: tr('stats.modeLoop'),
-    one: tr('stats.modeOne'),
-    shuffle: tr('stats.modeShuffle'),
-    unknown: tr('stats.modeUnknown'),
-  }
-  return modeMap[kind] ?? (kind === 'local' ? tr('stats.srcLocal') : kind === 'webdav' ? tr('stats.srcWebdav') : kind)
-}
 
 function fmtDate(ts: number | null): string {
   if (!ts) return '—'
@@ -462,24 +401,6 @@ function goItem(t: ListenTopItem) {
           </button>
         </div>
       </section>
-
-      <!-- 播放模式 / 来源占比（环形图） -->
-      <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <section class="rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
-          <h2 class="text-sm font-semibold text-zinc-800 dark:text-zinc-100">{{ $t('stats.byModeTitle') }}</h2>
-          <div v-if="modeDonut" ref="modeEl" class="h-52 w-full" />
-          <p v-else class="flex h-52 items-center justify-center text-sm" :style="{ color: emptyText }">
-            {{ $t('stats.emptyRange') }}
-          </p>
-        </section>
-        <section class="rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
-          <h2 class="text-sm font-semibold text-zinc-800 dark:text-zinc-100">{{ $t('stats.bySourceTitle') }}</h2>
-          <div v-if="sourceDonut" ref="sourceEl" class="h-52 w-full" />
-          <p v-else class="flex h-52 items-center justify-center text-sm" :style="{ color: emptyText }">
-            {{ $t('stats.emptyRange') }}
-          </p>
-        </section>
-      </div>
 
       <!-- 首末收听 -->
       <p class="text-center text-xs text-zinc-400">

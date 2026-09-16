@@ -374,7 +374,6 @@ pub fn run() {
             commands::listen_hourly,
             commands::listen_heatmap,
             commands::listen_streak,
-            commands::listen_breakdown,
             commands::library_health,
             commands::scan_history_list,
             commands::report_play_latency,

@@ -158,13 +158,6 @@ export interface ListenHeatCell {
   seconds: number
 }
 
-/** 听歌统计：占比行（by=mode 时 kind 为播放模式；by=source 时为来源 kind） */
-export interface ListenBreakdownPoint {
-  kind: string
-  plays: number
-  seconds: number
-}
-
 /** 听歌统计：连续听歌天数（current/longest，按本地时区自然日） */
 export type ListenStreak = [current: number, longest: number]
 

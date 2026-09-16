@@ -1318,15 +1318,6 @@ pub struct ListenHeatCell {
     pub seconds: i64,
 }
 
-/// 占比行（by=mode 时 kind 为播放模式；by=source 时为来源 kind）
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ListenBreakdownPoint {
-    pub kind: String,
-    pub plays: i64,
-    pub seconds: i64,
-}
-
 /// 记录一段实际收听（前端 player 心跳/结算：暂停、快进跳过的不计秒）。
 /// seconds 钳制到 [1, 3600]，防前端异常写入脏数据；曲目不存在时外键约束自然拒绝。
 /// mode 为收听时的播放模式（order/loop/one/shuffle），占比统计用；老数据为 NULL。
@@ -1636,40 +1627,7 @@ pub fn listen_streak(state: State<'_, AppState>) -> Result<(i64, i64), String> {
     Ok((current, longest))
 }
 
-/// 收听占比：by = mode（播放模式 order/loop/one/shuffle/未知）| source（本地/WebDAV）。
-#[tauri::command]
-pub fn listen_breakdown(
-    state: State<'_, AppState>,
-    by: String,
-) -> Result<Vec<ListenBreakdownPoint>, String> {
-    let conn = state.db.lock().map_err(|e| e.to_string())?;
-    let sql = match by.as_str() {
-        "source" => {
-            "SELECT s.kind, COUNT(*), SUM(h.seconds) \
-             FROM play_history h \
-             JOIN tracks t ON t.id = h.track_id \
-             JOIN sources s ON s.id = t.source_id \
-             GROUP BY s.kind ORDER BY 3 DESC"
-        }
-        _ => {
-            "SELECT IFNULL(mode,'unknown'), COUNT(*), SUM(seconds) \
-             FROM play_history GROUP BY 1 ORDER BY 3 DESC"
-        }
-    };
-    let mut stmt = conn.prepare(sql).map_err(|e| e.to_string())?;
-    let items = stmt
-        .query_map([], |r| {
-            Ok(ListenBreakdownPoint {
-                kind: r.get(0)?,
-                plays: r.get(1)?,
-                seconds: r.get(2)?,
-            })
-        })
-        .map_err(|e| e.to_string())?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| e.to_string())?;
-    Ok(items)
-}
+/// 收听占比查询已移除（占比卡片下线）；play_history.mode 列保留采集，便于后续分析。
 
 // ---------- 音乐库体检 ----------
 
