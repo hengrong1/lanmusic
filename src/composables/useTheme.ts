@@ -2,7 +2,8 @@ import { ref, watchEffect } from 'vue'
 
 export type ThemeMode = 'light' | 'dark' | 'system'
 
-const mode = ref<ThemeMode>((localStorage.getItem('lm.theme') as ThemeMode) || 'dark')
+/** 主题默认跟随系统（用户要求）：键不存在时用 system，首次启动由系统亮暗决定 */
+const mode = ref<ThemeMode>((localStorage.getItem('lm.theme') as ThemeMode) || 'system')
 const systemDark = ref(window.matchMedia('(prefers-color-scheme: dark)').matches)
 
 window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {

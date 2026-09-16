@@ -35,6 +35,8 @@ import { dialogBlur, dialogDraggable, type DialogBlur } from '@/composables/useD
 import { useBackground } from '@/composables/useBackground'
 import { getPreventSleep, setPreventSleepSetting } from '@/composables/usePowerGuard'
 import { useUpdater } from '@/composables/useUpdater'
+import { useStatsEntry } from '@/composables/useStatsEntry'
+import { useNav } from '@/composables/useNav'
 import { usePlayerStore } from '@/stores/player'
 import { api } from '@/api/commands'
 import { getSearchSettings, setSearchSettings, type SearchSettings } from '@/composables/useSearchSettings'
@@ -620,6 +622,15 @@ onMounted(async () => {
 // ---- 应用内更新（GitHub Releases）----
 const updater = useUpdater()
 const progressPct = computed(() => (updater.progress.value >= 0 ? Math.round(updater.progress.value * 100) : -1))
+
+// ---- 听歌统计入口开关（与侧栏共享状态，见 useStatsEntry）----
+const nav = useNav()
+const { statsEnabled, setStatsEnabled: _setStatsEnabled } = useStatsEntry()
+function setStatsEntry(v: boolean) {
+  _setStatsEnabled(v)
+  // 关闭入口时若正停在统计页，跳回全部歌曲（侧栏入口已隐藏，避免停留在不可达页面）
+  if (!v && nav.current.value.view === 'stats') nav.go({ view: 'tracks' })
+}
 
 /** 重新运行首次启动引导（清 DB 标记后重载，便于回看或演示） */
 async function rerunOnboarding() {
@@ -1758,6 +1769,17 @@ const showWebdavLimits = computed(() => showWebdav.value || library.sources.some
                     @update:model-value="setCloseAction"
                   />
                 </div>
+              </div>
+            </section>
+
+            <!-- 听歌统计入口：默认隐藏（用户要求），开关只控制侧栏入口显示，流水始终在记录 -->
+            <section>
+              <div class="flex items-center justify-between gap-3">
+                <div class="min-w-0">
+                  <p class="text-zinc-600 dark:text-zinc-300">{{ t('settings.statsEntry') }}</p>
+                  <p class="mt-0.5 text-xs text-zinc-400">{{ t('settings.statsEntryHint') }}</p>
+                </div>
+                <BaseSwitch :model-value="statsEnabled" size="sm" @update:model-value="setStatsEntry" />
               </div>
             </section>
 

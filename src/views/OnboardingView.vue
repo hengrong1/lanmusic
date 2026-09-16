@@ -42,7 +42,7 @@ function pickLocale(next: 'zh' | 'en') {
 function applyPreset(key: 'classic' | 'light' | 'deep') {
   preset.value = key
   if (key === 'classic') {
-    setTheme('dark')
+    setTheme('system') // 经典紫默认跟随系统亮暗（用户要求：主题默认跟随系统）
     setThemeColor(null)
     spectrumMode.value = 'particles'
   } else if (key === 'light') {

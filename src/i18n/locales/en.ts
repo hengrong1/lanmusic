@@ -156,6 +156,7 @@ export default {
     closeToTray: 'Minimize to tray when closing the window',
     closeToQuit: 'Quit the app when closing the window',
     closeAction: 'On Close', closeActionDesc: 'Choose what happens when clicking the close button',
+    statsEntry: 'Show "Listening Stats" entry', statsEntryHint: 'Show the stats page entry in the sidebar; recording keeps running in the background even when hidden',
     closeActionTray: 'Minimize to Tray', closeActionQuit: 'Quit App',
     rerunOnboarding: 'Run setup guide again',
     rerunOnboardingDesc: 'Show the first-run setup again (language, appearance preset, add music).',
@@ -546,7 +547,7 @@ export default {
     appearance: { title: 'Pick a look', desc: 'Apply a theme preset in one click; fine-tune anytime in Settings → Appearance.' },
     preset: {
       classic: 'Classic Violet',
-      classicDesc: 'Dark + default violet + particle spectrum (recommended)',
+      classicDesc: 'Follow system + default violet + particle spectrum (recommended)',
       light: 'Light Minimal',
       lightDesc: 'Light + blue + no spectrum',
       deep: 'Deep Cyan',

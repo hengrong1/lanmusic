@@ -149,6 +149,7 @@ export default {
     minimizeToTray: '最小化到托盘', minimizeToTrayDesc: '关闭窗口时最小化到托盘',
     closeToTray: '关闭窗口时将最小化到托盘', closeToQuit: '关闭窗口时将退出应用',
     closeAction: '关闭窗口时', closeActionDesc: '选择点击关闭按钮后的行为',
+    statsEntry: '显示「听歌统计」入口', statsEntryHint: '在侧栏显示听歌统计页入口；关闭后统计仍会在后台记录',
     closeActionTray: '最小化到托盘', closeActionQuit: '退出应用',
     rerunOnboarding: '重新运行首次引导',
     rerunOnboardingDesc: '再次显示首次启动的引导流程（语言、外观预设、添加音乐）。',
@@ -540,7 +541,7 @@ export default {
     appearance: { title: '选一套外观', desc: '一键套用主题模式与配色，稍后可在设置 → 外观中细调。' },
     preset: {
       classic: '经典紫',
-      classicDesc: '深色 + 默认紫 + 粒子频谱（推荐）',
+      classicDesc: '跟随系统亮暗 + 默认紫 + 粒子频谱（推荐）',
       light: '浅色极简',
       lightDesc: '浅色 + 蓝色 + 无频谱',
       deep: '深邃黑',
