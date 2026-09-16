@@ -1,6 +1,14 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import {
+  ClockCircleIcon as ClockCircle,
+  DatabaseIcon as Database,
+  MicrophoneIcon as Microphone,
+  MusicNoteIcon as MusicNote,
+  TagIcon as Tag,
+  VinylRecordIcon as VinylRecord,
+} from '@solar-icons/vue/linear'
 import { api } from '@/api/commands'
 import type { LibraryHealth, NameCount, ScanHistoryItem } from '@/types'
 import { errorText } from '@/i18n/error'
@@ -46,13 +54,20 @@ function scanDate(ts: number): string {
 }
 
 const overview = computed(() => [
-  { label: tr('stats.hpTracks'), value: String(health.value?.tracks ?? 0) },
-  { label: tr('stats.hpAlbums'), value: String(health.value?.albums ?? 0) },
-  { label: tr('stats.hpArtists'), value: String(health.value?.artists ?? 0) },
-  { label: tr('stats.hpGenres'), value: String(health.value?.genres ?? 0) },
-  { label: tr('stats.hpTotalDuration'), value: fmtSeconds(health.value?.totalSeconds ?? 0) },
-  { label: tr('stats.hpTotalSize'), value: fmtSize(health.value?.totalSize ?? 0) },
+  { icon: MusicNote, label: tr('stats.hpTracks'), value: String(health.value?.tracks ?? 0) },
+  { icon: VinylRecord, label: tr('stats.hpAlbums'), value: String(health.value?.albums ?? 0) },
+  { icon: Microphone, label: tr('stats.hpArtists'), value: String(health.value?.artists ?? 0) },
+  { icon: Tag, label: tr('stats.hpGenres'), value: String(health.value?.genres ?? 0) },
+  { icon: ClockCircle, label: tr('stats.hpTotalDuration'), value: fmtSeconds(health.value?.totalSeconds ?? 0) },
+  { icon: Database, label: tr('stats.hpTotalSize'), value: fmtSize(health.value?.totalSize ?? 0) },
 ])
+
+/** 覆盖率颜色分级：≥80% 健康（绿）、≥50% 一般（琥珀）、否则偏弱（红） */
+function covColor(p: number): string {
+  if (p >= 80) return 'bg-emerald-500'
+  if (p >= 50) return 'bg-amber-500'
+  return 'bg-rose-400'
+}
 
 /** 覆盖率行：label + 百分比 + 细节小字 */
 const coverage = computed(() => {
@@ -124,10 +139,15 @@ const yearRows = computed(() => distRows(health.value?.years?.map((y) => ({ name
       <div
         v-for="card in overview"
         :key="card.label"
-        class="rounded-xl border border-zinc-200 bg-white px-4 py-3.5 dark:border-zinc-800 dark:bg-zinc-900"
+        class="flex items-start gap-3 rounded-xl border border-zinc-200 bg-white px-4 py-3.5 dark:border-zinc-800 dark:bg-zinc-900"
       >
-        <p class="text-xs text-zinc-400">{{ card.label }}</p>
-        <p class="mt-1 text-lg font-semibold tabular-nums text-zinc-900 dark:text-zinc-50">{{ card.value }}</p>
+        <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-violet-500/10">
+          <component :is="card.icon" class="h-4.5 w-4.5 text-violet-500" :stroke-width="1.5" />
+        </div>
+        <div class="min-w-0">
+          <p class="truncate text-xs text-zinc-400">{{ card.label }}</p>
+          <p class="mt-0.5 text-lg font-semibold tabular-nums leading-tight text-zinc-900 dark:text-zinc-50">{{ card.value }}</p>
+        </div>
       </div>
     </div>
 
@@ -141,7 +161,7 @@ const yearRows = computed(() => distRows(health.value?.years?.map((y) => ({ name
             <span class="tabular-nums text-zinc-400">{{ row.pct }}%</span>
           </div>
           <div class="mt-1 h-2 overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-800">
-            <div class="h-full rounded-full bg-violet-500/70" :style="{ width: `${row.pct}%` }" />
+            <div class="h-full rounded-full" :class="covColor(row.pct)" :style="{ width: `${row.pct}%` }" />
           </div>
           <p v-if="row.detail" class="mt-1 text-[11px] text-zinc-400">{{ row.detail }}</p>
         </div>
