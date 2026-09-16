@@ -190,13 +190,7 @@ export interface MetaCoverage {
   total: number
 }
 
-export interface DupSample {
-  title: string
-  artist: string | null
-  count: number
-}
-
-/** 音乐库体检：曲库构成、分布、覆盖率与疑似重复（一次性聚合） */
+/** 音乐库体检：曲库构成、分布、覆盖率（一次性聚合） */
 export interface LibraryHealth {
   tracks: number
   albums: number
@@ -208,7 +202,6 @@ export interface LibraryHealth {
   formats: NameCount[]
   sources: NameCount[]
   years: YearCount[]
-  bitrates: NameCount[]
   sampleRates: NameCount[]
   bitDepths: NameCount[]
   lyricsEmbedded: number
@@ -220,8 +213,6 @@ export interface LibraryHealth {
   mvCount: number
   meta: MetaCoverage
   metaIncomplete: number
-  dupGroups: number
-  dupSamples: DupSample[]
 }
 
 export interface ScanHistoryItem {

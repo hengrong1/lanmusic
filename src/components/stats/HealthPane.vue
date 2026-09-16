@@ -112,7 +112,6 @@ function distRows(list: NameCount[] | undefined, translate: (name: string) => st
 const sourceLabel = (kind: string) => (kind === 'local' ? tr('stats.srcLocal') : tr('stats.srcWebdav'))
 const formatRows = computed(() => distRows(health.value?.formats))
 const sourceRows = computed(() => distRows(health.value?.sources, sourceLabel))
-const bitrateRows = computed(() => distRows(health.value?.bitrates, (n) => `${n} kbps`))
 const sampleRateRows = computed(() => distRows(health.value?.sampleRates, (n) => `${n} Hz`))
 const bitDepthRows = computed(() => distRows(health.value?.bitDepths, (n) => `${n} bit`))
 const yearRows = computed(() => distRows(health.value?.years?.map((y) => ({ name: String(y.year), count: y.count }))))
@@ -167,7 +166,6 @@ const yearRows = computed(() => distRows(health.value?.years?.map((y) => ({ name
         <div v-for="group in [
           { title: tr('stats.distFormats'), rows: formatRows },
           { title: tr('stats.distSources'), rows: sourceRows },
-          { title: tr('stats.distBitrate'), rows: bitrateRows },
           { title: tr('stats.distSampleRate'), rows: sampleRateRows },
           { title: tr('stats.distBitDepth'), rows: bitDepthRows },
           { title: tr('stats.distYears'), rows: yearRows },
@@ -185,27 +183,6 @@ const yearRows = computed(() => distRows(health.value?.years?.map((y) => ({ name
           </div>
         </div>
       </div>
-    </section>
-
-    <!-- 疑似重复 -->
-    <section class="rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
-      <h2 class="text-sm font-semibold text-zinc-800 dark:text-zinc-100">{{ $t('stats.dupTitle') }}</h2>
-      <p v-if="health && health.dupGroups === 0" class="mt-2 text-xs text-zinc-400">{{ $t('stats.dupEmpty') }}</p>
-      <template v-else-if="health">
-        <p class="mt-2 text-xs text-zinc-400">{{ tr('stats.dupCount', { n: health.dupGroups }) }}</p>
-        <div class="mt-2 flex flex-col gap-1.5">
-          <div
-            v-for="row in health.dupSamples"
-            :key="row.title + (row.artist ?? '')"
-            class="flex items-center justify-between gap-2 text-xs"
-          >
-            <span class="min-w-0 truncate text-zinc-600 dark:text-zinc-300">
-              {{ row.title }}<template v-if="row.artist"> — {{ row.artist }}</template>
-            </span>
-            <span class="shrink-0 tabular-nums text-zinc-400">{{ tr('stats.dupTrackCount', { n: row.count }) }}</span>
-          </div>
-        </div>
-      </template>
     </section>
 
     <!-- 扫描历史 -->

@@ -1701,14 +1701,6 @@ pub struct MetaCoverage {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct DupSample {
-    pub title: String,
-    pub artist: Option<String>,
-    pub count: i64,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct LibraryHealth {
     pub tracks: i64,
     pub albums: i64,
@@ -1720,7 +1712,6 @@ pub struct LibraryHealth {
     pub formats: Vec<NameCount>,
     pub sources: Vec<NameCount>,
     pub years: Vec<YearCount>,
-    pub bitrates: Vec<NameCount>,
     pub sample_rates: Vec<NameCount>,
     pub bit_depths: Vec<NameCount>,
     pub lyrics_embedded: i64,
@@ -1732,8 +1723,6 @@ pub struct LibraryHealth {
     pub mv_count: i64,
     pub meta: MetaCoverage,
     pub meta_incomplete: i64,
-    pub dup_groups: i64,
-    pub dup_samples: Vec<DupSample>,
 }
 
 /// 音乐库体检：曲库构成、格式/来源/年份/码率分布、歌词/封面/MV/元数据覆盖率、疑似重复。
@@ -1776,9 +1765,6 @@ pub fn library_health(state: State<'_, AppState>) -> Result<LibraryHealth, Strin
     )?;
     let sources = name_counts(
         "SELECT s.kind, COUNT(*) FROM tracks t JOIN sources s ON s.id = t.source_id GROUP BY s.kind ORDER BY 2 DESC",
-    )?;
-    let bitrates = name_counts(
-        "SELECT CAST(bitrate AS TEXT), COUNT(*) FROM tracks WHERE bitrate IS NOT NULL GROUP BY bitrate ORDER BY 1",
     )?;
     let sample_rates = name_counts(
         "SELECT CAST(sample_rate AS TEXT), COUNT(*) FROM tracks WHERE sample_rate IS NOT NULL GROUP BY sample_rate ORDER BY 1",
@@ -1833,32 +1819,6 @@ pub fn library_health(state: State<'_, AppState>) -> Result<LibraryHealth, Strin
         )
         .map_err(|e| e.to_string())?;
     let meta_incomplete = q1("SELECT COUNT(*) FROM tracks WHERE meta_state = 0")?;
-    let dup_groups = q1(
-        "SELECT COUNT(*) FROM (SELECT 1 FROM tracks \
-         GROUP BY LOWER(TRIM(title)), IFNULL(artist_id, 0) HAVING COUNT(*) > 1)",
-    )?;
-    let dup_samples: Vec<DupSample> = {
-        let mut stmt = conn
-            .prepare(
-                "SELECT LOWER(TRIM(t1.title)), IFNULL(a.name,''), COUNT(*) \
-                 FROM tracks t1 LEFT JOIN artists a ON a.id = t1.artist_id \
-                 GROUP BY LOWER(TRIM(t1.title)), IFNULL(t1.artist_id, 0) \
-                 HAVING COUNT(*) > 1 ORDER BY COUNT(*) DESC LIMIT 10",
-            )
-            .map_err(|e| e.to_string())?;
-        let rows = stmt
-            .query_map([], |r| {
-                Ok(DupSample {
-                    title: r.get(0)?,
-                    artist: r.get(1)?,
-                    count: r.get(2)?,
-                })
-            })
-            .map_err(|e| e.to_string())?
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|e| e.to_string())?;
-        rows
-    };
 
     Ok(LibraryHealth {
         tracks,
@@ -1871,7 +1831,6 @@ pub fn library_health(state: State<'_, AppState>) -> Result<LibraryHealth, Strin
         formats,
         sources,
         years,
-        bitrates,
         sample_rates,
         bit_depths,
         lyrics_embedded,
@@ -1883,8 +1842,6 @@ pub fn library_health(state: State<'_, AppState>) -> Result<LibraryHealth, Strin
         mv_count,
         meta,
         meta_incomplete,
-        dup_groups,
-        dup_samples,
     })
 }
 
