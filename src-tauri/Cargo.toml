@@ -29,6 +29,8 @@ tauri-plugin-process = "2"
 tauri-plugin-log = "2"
 # 日志门面（与 tauri 传递依赖同版本 0.4，不额外编译）
 log = "0.4"
+# 诊断页的进程内存 / CPU 即时采样（跨平台，见 diagnostics.rs）
+sysinfo = "0.33"
 # 更新包下载后的 SHA-256 校验（纯 Rust 实现，见 updater.rs）
 sha2 = "0.10"
 # collation：自定义排序规则（中文按拼音排序，见 db.rs::open_conn 注册 PINYIN）

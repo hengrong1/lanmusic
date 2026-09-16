@@ -93,6 +93,7 @@ pub mod webdav {
     }
 
     pub fn list_dir(dir: &Url, auth: Option<&Auth>) -> Result<Vec<Item>, String> {
+        let started = std::time::Instant::now();
         let method = reqwest::Method::from_bytes(b"PROPFIND").map_err(|e| e.to_string())?;
         let mut req = http_client()
             .request(method, dir.as_str())
@@ -106,6 +107,7 @@ pub mod webdav {
             .send()
             .map_err(|e| crate::error::err1(crate::error::codes::WEBDAV_PROPFIND_FAILED, "error", e))?;
         if !resp.status().is_success() {
+            crate::diagnostics::webdav_done(false, started.elapsed().as_millis() as u64);
             return Err(crate::error::err1(
                 crate::error::codes::WEBDAV_PROPFIND_STATUS,
                 "status",
@@ -113,7 +115,9 @@ pub mod webdav {
             ));
         }
         let xml = resp.text().map_err(|e| e.to_string())?;
-        parse_propfind(&xml, dir)
+        let parsed = parse_propfind(&xml, dir);
+        crate::diagnostics::webdav_done(parsed.is_ok(), started.elapsed().as_millis() as u64);
+        parsed
     }
 
     fn local_name(name: &str) -> &str {
@@ -276,6 +280,7 @@ pub mod webdav {
         auth: Option<&Auth>,
         range: Option<(u64, u64)>,
     ) -> Result<Vec<u8>, String> {
+        let started = std::time::Instant::now();
         let mut req = client.get(url.as_str());
         if let Some(a) = auth {
             req = req.basic_auth(&a.username, Some(&a.password));
@@ -285,37 +290,49 @@ pub mod webdav {
         }
         let resp = req
             .send()
-            .map_err(|e| crate::error::err1(crate::error::codes::DOWNLOAD_FAILED, "error", e))?;
+            .map_err(|e| {
+                crate::diagnostics::webdav_done(false, started.elapsed().as_millis() as u64);
+                crate::error::err1(crate::error::codes::DOWNLOAD_FAILED, "error", e)
+            })?;
         if !resp.status().is_success() {
+            crate::diagnostics::webdav_done(false, started.elapsed().as_millis() as u64);
             return Err(crate::error::err1(
                 crate::error::codes::DOWNLOAD_STATUS,
                 "status",
                 resp.status(),
             ));
         }
-        resp.bytes().map(|b| b.to_vec()).map_err(|e| e.to_string())
+        let bytes = resp.bytes().map_err(|e| e.to_string());
+        crate::diagnostics::webdav_done(bytes.is_ok(), started.elapsed().as_millis() as u64);
+        bytes.map(|b| b.to_vec())
     }
 
     pub fn download_text(url: &Url, auth: Option<&Auth>) -> Result<Option<String>, String> {
+        let started = std::time::Instant::now();
         let mut req = http_client().get(url.as_str());
         if let Some(a) = auth {
             req = req.basic_auth(&a.username, Some(&a.password));
         }
         let resp = req.send().map_err(|e| {
+            crate::diagnostics::webdav_done(false, started.elapsed().as_millis() as u64);
             crate::error::err1(crate::error::codes::LYRICS_DOWNLOAD_FAILED, "error", e)
         })?;
         if resp.status() == reqwest::StatusCode::NOT_FOUND {
+            crate::diagnostics::webdav_done(true, started.elapsed().as_millis() as u64);
             return Ok(None);
         }
         if !resp.status().is_success() {
+            crate::diagnostics::webdav_done(false, started.elapsed().as_millis() as u64);
             return Err(crate::error::err1(
                 crate::error::codes::LYRICS_DOWNLOAD_STATUS,
                 "status",
                 resp.status(),
             ));
         }
-        let bytes = resp.bytes().map_err(|e| e.to_string())?;
-        Ok(Some(crate::lyrics::decode_lyric_bytes(&bytes)))
+        let bytes = resp.bytes().map_err(|e| e.to_string());
+        crate::diagnostics::webdav_done(bytes.is_ok(), started.elapsed().as_millis() as u64);
+        bytes
+            .map(|b| Some(crate::lyrics::decode_lyric_bytes(&b)))
     }
 
     #[cfg(test)]

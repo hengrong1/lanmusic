@@ -31,13 +31,31 @@ pub fn ensure_cover<R: Runtime>(
     app: &AppHandle<R>,
     album_id: i64,
 ) -> Result<Option<PathBuf>, String> {
+    let started = std::time::Instant::now();
+    let result = ensure_cover_inner(app, album_id);
+    // 诊断：Err 只可能来自提取路径（缓存命中不会 Err）；总耗时含命中（命中耗时极小）
+    if result.is_err() {
+        crate::diagnostics::COVER_EXTRACT_FAIL.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+    crate::diagnostics::COVER_TOTAL_MS
+        .fetch_add(started.elapsed().as_millis() as u64, std::sync::atomic::Ordering::Relaxed);
+    result
+}
+
+fn ensure_cover_inner<R: Runtime>(
+    app: &AppHandle<R>,
+    album_id: i64,
+) -> Result<Option<PathBuf>, String> {
+    use std::sync::atomic::Ordering;
     let state = app.state::<AppState>();
     let jpg = state.covers_dir.join(format!("{album_id}.jpg"));
     let none = state.covers_dir.join(format!("{album_id}.none"));
     if jpg.is_file() {
+        crate::diagnostics::COVER_CACHE_HITS.fetch_add(1, Ordering::Relaxed);
         return Ok(Some(jpg));
     }
     if none.is_file() {
+        crate::diagnostics::COVER_CACHE_HITS.fetch_add(1, Ordering::Relaxed);
         return Ok(None);
     }
 
@@ -45,11 +63,14 @@ pub fn ensure_cover<R: Runtime>(
     let _guard = state.cover_extract.lock().map_err(|e| e.to_string())?;
     // 双重检查（排队期间可能已被其他请求完成）
     if jpg.is_file() {
+        crate::diagnostics::COVER_CACHE_HITS.fetch_add(1, Ordering::Relaxed);
         return Ok(Some(jpg));
     }
     if none.is_file() {
+        crate::diagnostics::COVER_CACHE_HITS.fetch_add(1, Ordering::Relaxed);
         return Ok(None);
     }
+    crate::diagnostics::COVER_CACHE_MISSES.fetch_add(1, Ordering::Relaxed);
 
     // 专辑信息与候选来源
     let (cover_url, local_candidates, remote_candidates) = {
@@ -126,6 +147,7 @@ pub fn ensure_cover<R: Runtime>(
                 got_bytes = true;
                 if save(&bytes).is_ok() {
                     mark_cover(app, album_id)?;
+                    crate::diagnostics::COVER_EXTRACT_OK.fetch_add(1, Ordering::Relaxed);
                     return Ok(Some(jpg));
                 }
             }
@@ -152,6 +174,7 @@ pub fn ensure_cover<R: Runtime>(
                 if let Some(cover) = meta.cover {
                     if save(&cover).is_ok() {
                         mark_cover(app, album_id)?;
+                        crate::diagnostics::COVER_EXTRACT_OK.fetch_add(1, Ordering::Relaxed);
                         return Ok(Some(jpg));
                     }
                 }
@@ -174,6 +197,7 @@ pub fn ensure_cover<R: Runtime>(
             if let Some(bytes) = meta.cover {
                 if save(&bytes).is_ok() {
                     mark_cover(app, album_id)?;
+                    crate::diagnostics::COVER_EXTRACT_OK.fetch_add(1, Ordering::Relaxed);
                     return Ok(Some(jpg));
                 }
             }
@@ -182,6 +206,7 @@ pub fn ensure_cover<R: Runtime>(
             got_bytes = true;
             if save(&bytes).is_ok() {
                 mark_cover(app, album_id)?;
+                crate::diagnostics::COVER_EXTRACT_OK.fetch_add(1, Ordering::Relaxed);
                 return Ok(Some(jpg));
             }
         }

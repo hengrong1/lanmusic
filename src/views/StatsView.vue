@@ -3,10 +3,12 @@ import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { HeadphonesRoundIcon as HeadphonesBold } from '@solar-icons/vue/bold/headphones-round'
 import { DatabaseIcon as Database } from '@solar-icons/vue/linear/database'
+import { StethoscopeIcon as Stethoscope } from '@solar-icons/vue/linear/stethoscope'
 import { useStatsEntry } from '@/composables/useStatsEntry'
 import { useStagger } from '@/composables/useStagger'
 import ListenPane from '@/components/stats/ListenPane.vue'
 import HealthPane from '@/components/stats/HealthPane.vue'
+import DiagnosticsPane from '@/components/stats/DiagnosticsPane.vue'
 import { BaseTabs } from '@/components/ui'
 
 const { t } = useI18n()
@@ -14,7 +16,7 @@ const { statsEnabled } = useStatsEntry()
 const root = ref<HTMLElement | null>(null)
 useStagger(root, computed(() => statsEnabled.value))
 
-const tab = ref<'listen' | 'health'>('listen')
+const tab = ref<'listen' | 'health' | 'diag'>('listen')
 </script>
 
 <template>
@@ -34,6 +36,7 @@ const tab = ref<'listen' | 'health'>('listen')
           :items="[
             { value: 'listen', label: t('stats.tabListen'), icon: HeadphonesBold },
             { value: 'health', label: t('stats.tabHealth'), icon: Database },
+            { value: 'diag', label: t('stats.tabDiag'), icon: Stethoscope },
           ]"
         />
       </div>
@@ -41,6 +44,7 @@ const tab = ref<'listen' | 'health'>('listen')
       <div class="min-h-0 flex-1 pt-5">
         <ListenPane v-if="tab === 'listen'" />
         <HealthPane v-else-if="tab === 'health'" />
+        <DiagnosticsPane v-else-if="tab === 'diag'" />
       </div>
     </template>
     <div v-else class="flex flex-1 flex-col items-center justify-center gap-2 text-center">

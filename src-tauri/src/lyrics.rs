@@ -136,6 +136,23 @@ pub fn source_ref(app: &AppHandle, source_id: i64) -> Result<SourceRef, String> 
 
 /// 返回原始歌词文本（外挂 .qrc/.lrc 与内嵌歌词按设置的优先顺序取用，见 lyric_priority）
 pub fn fetch(app: &AppHandle, track_id: i64) -> Result<Option<String>, String> {
+    let started = std::time::Instant::now();
+    let result = fetch_inner(app, track_id);
+    // 诊断：歌词加载成功/失败与耗时（Ok(None) = 按来源优先级没找到，算正常完成）
+    match &result {
+        Ok(_) => {
+            crate::diagnostics::LYRICS_OK.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        }
+        Err(_) => {
+            crate::diagnostics::LYRICS_FAIL.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        }
+    }
+    crate::diagnostics::LYRICS_TOTAL_MS
+        .fetch_add(started.elapsed().as_millis() as u64, std::sync::atomic::Ordering::Relaxed);
+    result
+}
+
+fn fetch_inner(app: &AppHandle, track_id: i64) -> Result<Option<String>, String> {
     let state = app.state::<AppState>();
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     let row = conn

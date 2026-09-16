@@ -8,6 +8,7 @@ import type {
   ArtistSplitChange,
   LibraryHealth,
   LibraryStats,
+  DiagnosticsSnapshot,
   ListenBreakdownPoint,
   ListenDailyPoint,
   ListenHeatCell,
@@ -83,6 +84,8 @@ export const api = {
   listenBreakdown: (by: 'mode' | 'source') => invoke<ListenBreakdownPoint[]>('listen_breakdown', { by }),
   libraryHealth: () => invoke<LibraryHealth>('library_health'),
   scanHistoryList: () => invoke<ScanHistoryItem[]>('scan_history_list'),
+  reportPlayLatency: (ms: number) => invoke<void>('report_play_latency', { ms }),
+  diagnosticsSnapshot: () => invoke<DiagnosticsSnapshot>('diagnostics_snapshot'),
   /** 运行已下载的安装包（静默安装 + 装完自动重启），随后应用退出 */
   installUpdateAndRestart: (path: string) =>
     invoke<void>('install_update_and_restart', { path }),

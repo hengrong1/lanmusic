@@ -233,6 +233,28 @@ export interface ScanHistoryItem {
   ms: number
 }
 
+// ---------- 性能与诊断（进程内内存态，重启清零） ----------
+
+export interface DiagnosticsSnapshot {
+  appVersion: string
+  tauriVersion: string
+  os: string
+  arch: string
+  webviewVersion: string | null
+  uptimeSeconds: number
+  setupMs: number
+  memoryMb: number
+  cpuPercent: number
+  webdav: { requests: number; failures: number; totalMs: number }
+  covers: { cacheHits: number; cacheMisses: number; extractOk: number; extractFail: number; totalMs: number }
+  lyrics: { ok: number; fail: number; totalMs: number }
+  playLatency: { count: number; avgMs: number; maxMs: number }
+  panics: number
+  frontendErrors: number
+  lastScanEnumMs: number
+  lastScanParseMs: number
+}
+
 export interface ScanProgress {
   sourceId: number
   /** "enumerate" = 正在枚举目录（total 未知）；"parse" = 解析入库中 */

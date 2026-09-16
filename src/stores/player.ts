@@ -268,6 +268,7 @@ export const usePlayerStore = defineStore('player', () => {
   let listenTrackId = 0 // 当前累计所属曲目 id（0 = 无）
   let listenSeconds = 0 // 未结算的累计收听秒数（浮点累加，结算时取整）
   let lastListenTick = 0 // 上次心跳时刻（performance.now()）
+  let playStartTick = 0 // 播放启动延迟统计起点（performance.now()；0 = 无待结算）
   /** 结算并上报未落库的收听片段；force=false 时不足阈值就不写（防碎片行） */
   function flushListen(force = false) {
     if (!listenTrackId) return
@@ -374,6 +375,12 @@ export const usePlayerStore = defineStore('player', () => {
     playing.value = true
     buffering.value = false
     errorStreak = 0
+    // 播放启动延迟：从 requestPlay 到真正出声（每次加载只报一次，恢复播放不报）
+    if (playStartTick > 0) {
+      const ms = Math.round(performance.now() - playStartTick)
+      playStartTick = 0
+      if (ms > 0 && ms < 60_000) api.reportPlayLatency(ms).catch(() => {})
+    }
     lastListenTick = performance.now() // 恢复播放：心跳基准重置（暂停期间不计秒）
   })
   audio.addEventListener('pause', () => {
@@ -424,6 +431,7 @@ export const usePlayerStore = defineStore('player', () => {
    */
   function requestPlay() {
     buffering.value = true
+    playStartTick = performance.now() // 播放启动延迟统计起点
     const attempt = () => {
       audio.play()?.catch((e: unknown) => {
         if ((e as DOMException | undefined)?.name === 'AbortError') return

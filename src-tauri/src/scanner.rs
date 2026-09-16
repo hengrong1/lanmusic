@@ -271,6 +271,7 @@ fn run_local_scan(
     let skip_dirs = load_skip_dirs(&conn);
 
     // ---- 1. 枚举目录 + 收集 .lrc + 检测视频文件 ----
+    let enum_started = std::time::Instant::now();
     let mut files: Vec<(String, i64, i64)> = Vec::new();
     let mut lrc_map: HashMap<String, String> = HashMap::new(); // rel 去扩展名 → 本地 .lrc 绝对路径
     let mut video_stems: HashSet<String> = HashSet::new(); // 视频文件的 stem_key 集合
@@ -342,6 +343,10 @@ fn run_local_scan(
         .cloned()
         .collect();
 
+    // 诊断：枚举阶段耗时（到 diff 开始为止）
+    crate::diagnostics::LAST_SCAN_ENUM_MS.store(enum_started.elapsed().as_millis() as u64, std::sync::atomic::Ordering::Relaxed);
+    let parse_started = std::time::Instant::now();
+
     // ---- 3. 并发解析 ----
     let base_c = base.clone();
     let video_stems_c = video_stems.clone();
@@ -410,6 +415,9 @@ fn run_local_scan(
     )
     .map_err(|e| e.to_string())?;
 
+    // 诊断：解析+diff 阶段耗时（最近一次）
+    crate::diagnostics::LAST_SCAN_PARSE_MS.store(parse_started.elapsed().as_millis() as u64, std::sync::atomic::Ordering::Relaxed);
+
     Ok((added, updated, removed))
 }
 
@@ -443,6 +451,7 @@ fn run_webdav_scan(
     };
 
     // ---- 1. PROPFIND 遍历 ----
+    let enum_started = std::time::Instant::now();
     let mut files: Vec<(String, i64)> = Vec::new(); // (rel, size)
     let mut lrc_map: HashMap<String, String> = HashMap::new(); // rel 去扩展名 → 完整 URL
     let mut cover_map: HashMap<String, String> = HashMap::new(); // 目录 rel → 封面 URL
@@ -508,6 +517,9 @@ fn run_webdav_scan(
     }
     let total = files.len();
     emit_parse(app, source_id, 0, total);
+    // 诊断：PROPFIND 枚举阶段耗时
+    crate::diagnostics::LAST_SCAN_ENUM_MS.store(enum_started.elapsed().as_millis() as u64, std::sync::atomic::Ordering::Relaxed);
+    let parse_started = std::time::Instant::now();
 
     // ---- 2. diff（mtime 不可靠，仅按 size + meta_state）----
     // 快速导入与本地扫描共用同一个来源开关：开启后只按文件名/目录结构入库，
@@ -601,6 +613,9 @@ fn run_webdav_scan(
         params![now, source_id],
     )
     .map_err(|e| e.to_string())?;
+
+    // 诊断：解析+diff 阶段耗时（最近一次）
+    crate::diagnostics::LAST_SCAN_PARSE_MS.store(parse_started.elapsed().as_millis() as u64, std::sync::atomic::Ordering::Relaxed);
 
     Ok((added, updated, removed))
 }

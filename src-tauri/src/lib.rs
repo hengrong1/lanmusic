@@ -1,6 +1,7 @@
 mod commands;
 mod covers;
 mod db;
+mod diagnostics;
 mod error;
 #[cfg(windows)]
 mod fonts;
@@ -25,6 +26,10 @@ use tauri::{AppHandle, Emitter, Manager, PhysicalPosition};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // 诊断：进程启动时刻（计算运行时长用）
+    *diagnostics::STARTED.lock().unwrap() = Some(std::time::Instant::now());
+    let setup_started = std::time::Instant::now();
+
     // 日志目标：落盘为主，开发期额外同步输出到终端。
     // release 版 windows_subsystem = "windows" 没有控制台，日志文件是唯一排查出口。
     // mut 仅 debug 需要（下面 push Stdout）；release 下该 cfg 分支被剔除，
@@ -72,7 +77,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_process::init())
-        .setup(|app| {
+        .setup(move |app| {
             // panic 钩子：release 版无控制台，panic 默认只写 stderr = 完全丢失。
             // 启动路径的 .expect（数据目录 / DB 打开）正是「应用打不开」的高发点，
             // 没有这条日志就只能看系统事件查看器里一行宽泛记录。此钩子在日志插件
@@ -81,6 +86,7 @@ pub fn run() {
             let default_hook = std::panic::take_hook();
             std::panic::set_hook(Box::new(move |info| {
                 log::error!("panic: {info}");
+                diagnostics::PANIC_COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                 default_hook(info);
             }));
 
@@ -321,6 +327,9 @@ pub fn run() {
                 thumbbar::init(app.handle().clone(), hwnd);
             }
 
+            // 诊断：Rust setup 阶段耗时（不含 WebView 首帧渲染）
+            diagnostics::SETUP_MS.store(setup_started.elapsed().as_millis() as u64, std::sync::atomic::Ordering::Relaxed);
+
             Ok(())
         })
         // 音频流协议：music://track/{id}（Windows 上为 http://music.localhost/track/{id}）
@@ -368,6 +377,8 @@ pub fn run() {
             commands::listen_breakdown,
             commands::library_health,
             commands::scan_history_list,
+            commands::report_play_latency,
+            commands::diagnostics_snapshot,
             commands::get_lyrics,
             commands::parse_qrc,
             commands::frontend_log,

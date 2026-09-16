@@ -1944,11 +1944,29 @@ pub fn parse_qrc(raw: String) -> Result<Option<Vec<crate::qrc::QrcLine>>, String
 /// 才能进日志文件。排查用途，有意不本地化；凭证类内容不得经由此通道打印。
 #[tauri::command]
 pub fn frontend_log(level: String, message: String) {
+    if level == "error" {
+        // 诊断：前端错误计数
+        crate::diagnostics::FRONTEND_ERRORS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
     match level.as_str() {
         "error" => log::error!("[前端] {message}"),
         "warn" => log::warn!("[前端] {message}"),
         _ => log::info!("[前端] {message}"),
     }
+}
+
+// ---------- 性能与诊断 ----------
+
+#[tauri::command]
+pub fn report_play_latency(ms: u64) {
+    if ms <= 60_000 {
+        crate::diagnostics::play_latency(ms);
+    }
+}
+
+#[tauri::command]
+pub fn diagnostics_snapshot() -> crate::diagnostics::DiagnosticsSnapshot {
+    crate::diagnostics::snapshot()
 }
 
 /// 检查 GitHub 最新 Release（见 updater.rs）：远端版本更高才返回 Some。
