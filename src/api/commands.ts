@@ -6,17 +6,22 @@ import type {
   ArtistItem,
   ArtistNormalizeChange,
   ArtistSplitChange,
+  LibraryHealth,
   LibraryStats,
+  ListenBreakdownPoint,
   ListenDailyPoint,
+  ListenHeatCell,
   ListenHourPoint,
+  ListenStreak,
   ListenSummary,
-  ListenTopTrack,
+  ListenTopItem,
   Page,
   Playlist,
   QrcLine,
   ReleaseInfo,
   RemovedRestoreResult,
   RemovedTrack,
+  ScanHistoryItem,
   Source,
   Track,
   TrackQuery,
@@ -64,14 +69,20 @@ export const api = {
   /** 下载更新安装包（SHA-256 校验；进度见 update:download-progress 事件），返回落地路径 */
   downloadUpdateInstaller: (url: string, sha256Url: string | null, size: number | null) =>
     invoke<string>('download_update_installer', { url, sha256Url, size }),
-  /** 听歌统计：上报一段实际收听（秒）。暂停/快进跳过的不计。 */
-  reportListen: (trackId: number, seconds: number) =>
-    invoke<void>('report_listen', { trackId, seconds }),
+  /** 听歌统计：上报一段实际收听（秒）与当时的播放模式。暂停/快进跳过的不计。 */
+  reportListen: (trackId: number, seconds: number, mode: string) =>
+    invoke<void>('report_listen', { trackId, seconds, mode }),
   listenStatsSummary: () => invoke<ListenSummary>('listen_stats_summary'),
-  listenTopTracks: (range: 'week' | 'month' | 'all', limit?: number) =>
-    invoke<ListenTopTrack[]>('listen_top_tracks', { range, limit: limit ?? null }),
-  listenDaily: (days?: number) => invoke<ListenDailyPoint[]>('listen_daily', { days: days ?? null }),
+  listenTopTracks: (kind: 'track' | 'artist' | 'album' | 'genre', range: 'week' | 'month' | 'all', limit?: number) =>
+    invoke<ListenTopItem[]>('listen_top_tracks', { kind, range, limit: limit ?? null }),
+  listenDaily: (days?: number, granularity?: 'day' | 'week' | 'month') =>
+    invoke<ListenDailyPoint[]>('listen_daily', { days: days ?? null, granularity: granularity ?? null }),
   listenHourly: () => invoke<ListenHourPoint[]>('listen_hourly'),
+  listenHeatmap: () => invoke<ListenHeatCell[]>('listen_heatmap'),
+  listenStreak: () => invoke<ListenStreak>('listen_streak'),
+  listenBreakdown: (by: 'mode' | 'source') => invoke<ListenBreakdownPoint[]>('listen_breakdown', { by }),
+  libraryHealth: () => invoke<LibraryHealth>('library_health'),
+  scanHistoryList: () => invoke<ScanHistoryItem[]>('scan_history_list'),
   /** 运行已下载的安装包（静默安装 + 装完自动重启），随后应用退出 */
   installUpdateAndRestart: (path: string) =>
     invoke<void>('install_update_and_restart', { path }),

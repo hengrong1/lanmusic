@@ -115,19 +115,31 @@ export interface ListenSummary {
   totalPlays: number
   todaySeconds: number
   weekSeconds: number
+  /** 曲库累计播放次数（play_count 总和，含历史） */
+  totalTrackPlays: number
+  /** 有效播放：同一曲目同一天只计一次 */
+  effectivePlays: number
+  uniqueTracks: number
+  uniqueArtists: number
+  uniqueAlbums: number
+  firstListened: number | null
+  lastListened: number | null
+  /** 有收听记录的自然日数（供计算日均/周均/月均） */
+  listenDays: number
 }
 
-/** 听歌统计：榜单行（按累计收听秒数排序） */
-export interface ListenTopTrack {
-  trackId: number
-  title: string
+/** 听歌统计：榜单行（kind = track/artist/album/genre，id/name/albumId 语义随 kind 变化） */
+export interface ListenTopItem {
+  kind: 'track' | 'artist' | 'album' | 'genre'
+  id: number
+  name: string
   artist: string | null
   albumId: number | null
   seconds: number
   plays: number
 }
 
-/** 听歌统计：每日收听时长点（day = YYYY-MM-DD 本地时区；缺失日期由前端补零） */
+/** 听歌统计：趋势点（day 内容随粒度：日=YYYY-MM-DD，周=YYYY-Www，月=YYYY-MM） */
 export interface ListenDailyPoint {
   day: string
   seconds: number
@@ -137,6 +149,88 @@ export interface ListenDailyPoint {
 export interface ListenHourPoint {
   hour: string
   seconds: number
+}
+
+/** 听歌统计：星期×小时热力格（dow 0=周日…6=周六，本地时区；缺失格由前端补零） */
+export interface ListenHeatCell {
+  dow: number
+  hour: number
+  seconds: number
+}
+
+/** 听歌统计：占比行（by=mode 时 kind 为播放模式；by=source 时为来源 kind） */
+export interface ListenBreakdownPoint {
+  kind: string
+  plays: number
+  seconds: number
+}
+
+/** 听歌统计：连续听歌天数（current/longest，按本地时区自然日） */
+export type ListenStreak = [current: number, longest: number]
+
+// ---------- 音乐库体检 ----------
+
+export interface NameCount {
+  name: string
+  count: number
+}
+
+export interface YearCount {
+  year: number
+  count: number
+}
+
+export interface MetaCoverage {
+  title: number
+  artist: number
+  album: number
+  year: number
+  genre: number
+  trackNo: number
+  total: number
+}
+
+export interface DupSample {
+  title: string
+  artist: string | null
+  count: number
+}
+
+/** 音乐库体检：曲库构成、分布、覆盖率与疑似重复（一次性聚合） */
+export interface LibraryHealth {
+  tracks: number
+  albums: number
+  artists: number
+  genres: number
+  totalSeconds: number
+  totalSize: number
+  sizeKnown: number
+  formats: NameCount[]
+  sources: NameCount[]
+  years: YearCount[]
+  bitrates: NameCount[]
+  sampleRates: NameCount[]
+  bitDepths: NameCount[]
+  lyricsEmbedded: number
+  lyricsExternal: number
+  lyricsQrc: number
+  tracksWithLyrics: number
+  albumsWithCover: number
+  tracksWithCover: number
+  mvCount: number
+  meta: MetaCoverage
+  metaIncomplete: number
+  dupGroups: number
+  dupSamples: DupSample[]
+}
+
+export interface ScanHistoryItem {
+  at: number
+  sourceName: string
+  added: number
+  updated: number
+  removed: number
+  ms: number
 }
 
 export interface ScanProgress {

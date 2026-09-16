@@ -1268,13 +1268,27 @@ pub struct ListenSummary {
     pub total_plays: i64,
     pub today_seconds: i64,
     pub week_seconds: i64,
+    /// 曲库累计播放次数（tracks.play_count 总和，含本版本之前的历史）
+    pub total_track_plays: i64,
+    /// 有效播放次数：本版本起，同一曲目同一天只计一次
+    pub effective_plays: i64,
+    /// 收听过的独立曲目 / 艺人 / 专辑数
+    pub unique_tracks: i64,
+    pub unique_artists: i64,
+    pub unique_albums: i64,
+    pub first_listened: Option<i64>,
+    pub last_listened: Option<i64>,
+    /// 有收听记录的自然日数（前端据此算日均/周均/月均）
+    pub listen_days: i64,
 }
 
+/// 榜单统一行：kind=track/artist/album/genre 时 id/name/album_id 语义随 kind 变化
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ListenTopTrack {
-    pub track_id: i64,
-    pub title: String,
+pub struct ListenTopItem {
+    pub kind: String,
+    pub id: i64,
+    pub name: String,
     pub artist: Option<String>,
     pub album_id: Option<i64>,
     pub seconds: i64,
@@ -1295,25 +1309,52 @@ pub struct ListenHourPoint {
     pub seconds: i64,
 }
 
+/// 星期 × 小时热力格子（dow：0=周日 … 6=周六；hour：0-23，本地时区）
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListenHeatCell {
+    pub dow: i64,
+    pub hour: i64,
+    pub seconds: i64,
+}
+
+/// 占比行（by=mode 时 kind 为播放模式；by=source 时为来源 kind）
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListenBreakdownPoint {
+    pub kind: String,
+    pub plays: i64,
+    pub seconds: i64,
+}
+
 /// 记录一段实际收听（前端 player 心跳/结算：暂停、快进跳过的不计秒）。
 /// seconds 钳制到 [1, 3600]，防前端异常写入脏数据；曲目不存在时外键约束自然拒绝。
+/// mode 为收听时的播放模式（order/loop/one/shuffle），占比统计用；老数据为 NULL。
 #[tauri::command]
-pub fn report_listen(state: State<'_, AppState>, track_id: i64, seconds: i64) -> Result<(), String> {
+pub fn report_listen(
+    state: State<'_, AppState>,
+    track_id: i64,
+    seconds: i64,
+    mode: Option<String>,
+) -> Result<(), String> {
     let seconds = seconds.clamp(1, 3600);
+    let mode = mode.filter(|m| matches!(m.as_str(), "order" | "loop" | "one" | "shuffle"));
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs() as i64;
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     conn.execute(
-        "INSERT INTO play_history (track_id, played_at, seconds) VALUES (?1, ?2, ?3)",
-        params![track_id, now, seconds],
+        "INSERT INTO play_history (track_id, played_at, seconds, mode) VALUES (?1, ?2, ?3, ?4)",
+        params![track_id, now, seconds, mode],
     )
     .map_err(|e| e.to_string())?;
     Ok(())
 }
 
-/// 汇总：总收听时长 / 总收听片段数 / 今日时长 / 近 7 天时长（本地时区自然日）。
+/// 汇总：总收听时长 / 片段数 / 今日 / 近 7 天（本地时区自然日）+
+/// 曲库累计播放次数 / 有效播放次数（一曲一天一次）/ 独立曲目·艺人·专辑数 /
+/// 首末收听时间 / 有收听记录的自然日数。
 #[tauri::command]
 pub fn listen_stats_summary(state: State<'_, AppState>) -> Result<ListenSummary, String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
@@ -1327,21 +1368,63 @@ pub fn listen_stats_summary(state: State<'_, AppState>) -> Result<ListenSummary,
             |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
         )
         .map_err(|e| e.to_string())?;
+    let (total_track_plays, listen_days) = conn
+        .query_row(
+            "SELECT (SELECT COALESCE(SUM(play_count),0) FROM tracks), \
+             (SELECT COUNT(DISTINCT date(played_at,'unixepoch','localtime')) FROM play_history)",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .map_err(|e| e.to_string())?;
+    let effective_plays: i64 = conn
+        .query_row(
+            "SELECT COUNT(DISTINCT track_id || '-' || strftime('%Y%m%d', played_at,'unixepoch','localtime')) FROM play_history",
+            [],
+            |r| r.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+    let (unique_tracks, unique_artists, unique_albums) = conn
+        .query_row(
+            "SELECT COUNT(DISTINCT h.track_id), \
+             COUNT(DISTINCT IFNULL(t.artist_id, -1)), \
+             COUNT(DISTINCT IFNULL(t.album_id, -1)) \
+             FROM play_history h JOIN tracks t ON t.id = h.track_id",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        )
+        .map_err(|e| e.to_string())?;
+    let (first_listened, last_listened) = conn
+        .query_row(
+            "SELECT MIN(played_at), MAX(played_at) FROM play_history",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .map_err(|e| e.to_string())?;
     Ok(ListenSummary {
         total_seconds,
         total_plays,
         today_seconds,
         week_seconds,
+        total_track_plays,
+        effective_plays,
+        unique_tracks,
+        unique_artists,
+        unique_albums,
+        first_listened,
+        last_listened,
+        listen_days,
     })
 }
 
-/// 收听最多的曲目榜单：range = week(近 7 天滚动) | month(近 30 天) | all；按累计收听秒数降序。
+/// 收听榜单：kind = track | artist | album | genre；range = week(近 7 天滚动) | month(近 30 天) | all。
+/// 按累计收听秒数降序（并列按片段数）。
 #[tauri::command]
 pub fn listen_top_tracks(
     state: State<'_, AppState>,
+    kind: Option<String>,
     range: String,
     limit: Option<i64>,
-) -> Result<Vec<ListenTopTrack>, String> {
+) -> Result<Vec<ListenTopItem>, String> {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
@@ -1352,23 +1435,47 @@ pub fn listen_top_tracks(
         _ => None,
     };
     let limit = limit.unwrap_or(20).clamp(1, 100);
+    let kind = kind.unwrap_or_else(|| "track".into());
+    let base = "FROM play_history h \
+                JOIN tracks t ON t.id = h.track_id \
+                LEFT JOIN artists a ON a.id = t.artist_id \
+                LEFT JOIN albums al ON al.id = t.album_id \
+                WHERE (?1 IS NULL OR h.played_at >= ?1)";
+    let (select_sql, group_sql) = match kind.as_str() {
+        "artist" => (
+            "SELECT t.artist_id, IFNULL(a.name,''), NULL, MAX(t.album_id), SUM(h.seconds), COUNT(*)",
+            " GROUP BY t.artist_id",
+        ),
+        "album" => (
+            "SELECT t.album_id, IFNULL(al.title,''), NULL, t.album_id, SUM(h.seconds), COUNT(*)",
+            " GROUP BY t.album_id",
+        ),
+        "genre" => (
+            "SELECT 0, TRIM(t.genre), NULL, MAX(t.album_id), SUM(h.seconds), COUNT(*)",
+            " GROUP BY TRIM(t.genre)",
+        ),
+        _ => (
+            "SELECT h.track_id, t.title, a.name, t.album_id, SUM(h.seconds), COUNT(*)",
+            " GROUP BY h.track_id",
+        ),
+    };
+    let extra_where = match kind.as_str() {
+        "artist" => " AND t.artist_id IS NOT NULL",
+        "album" => " AND t.album_id IS NOT NULL",
+        "genre" => " AND TRIM(IFNULL(t.genre,'')) != ''",
+        _ => "",
+    };
+    let sql = format!(
+        "{select_sql} {base}{extra_where}{group_sql} ORDER BY 5 DESC, 6 DESC LIMIT ?2"
+    );
     let conn = state.db.lock().map_err(|e| e.to_string())?;
-    let mut stmt = conn
-        .prepare(
-            "SELECT h.track_id, t.title, a.name, t.album_id, SUM(h.seconds), COUNT(*) \
-             FROM play_history h \
-             JOIN tracks t ON t.id = h.track_id \
-             LEFT JOIN artists a ON a.id = t.artist_id \
-             WHERE ?1 IS NULL OR h.played_at >= ?1 \
-             GROUP BY h.track_id \
-             ORDER BY 5 DESC, 6 DESC LIMIT ?2",
-        )
-        .map_err(|e| e.to_string())?;
+    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
     let items = stmt
         .query_map(params![since, limit], |r| {
-            Ok(ListenTopTrack {
-                track_id: r.get(0)?,
-                title: r.get(1)?,
+            Ok(ListenTopItem {
+                kind: kind.clone(),
+                id: r.get(0)?,
+                name: r.get(1)?,
                 artist: r.get(2)?,
                 album_id: r.get(3)?,
                 seconds: r.get(4)?,
@@ -1381,24 +1488,31 @@ pub fn listen_top_tracks(
     Ok(items)
 }
 
-/// 每日收听时长（本地时区自然日），days 为回看天数（滚动窗口）；前端负责补零画图。
+/// 收听趋势：granularity = day(默认) | week | month，days 为回看天数（滚动窗口，本地时区）。
+/// week/month 直接返回非空桶（前端按序画图即可）。
 #[tauri::command]
 pub fn listen_daily(
     state: State<'_, AppState>,
     days: Option<i64>,
+    granularity: Option<String>,
 ) -> Result<Vec<ListenDailyPoint>, String> {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs() as i64;
-    let since = now - days.unwrap_or(30).clamp(1, 365) * 86400;
+    let since = now - days.unwrap_or(30).clamp(1, 3650) * 86400;
+    let bucket = match granularity.as_deref() {
+        Some("week") => "strftime('%Y-%W', played_at,'unixepoch','localtime')",
+        Some("month") => "strftime('%Y-%m', played_at,'unixepoch','localtime')",
+        _ => "date(played_at,'unixepoch','localtime')",
+    };
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     let mut stmt = conn
-        .prepare(
-            "SELECT date(played_at,'unixepoch','localtime') d, SUM(seconds) \
+        .prepare(&format!(
+            "SELECT {bucket} d, SUM(seconds) \
              FROM play_history WHERE played_at >= ?1 \
-             GROUP BY d ORDER BY d",
-        )
+             GROUP BY d ORDER BY d"
+        ))
         .map_err(|e| e.to_string())?;
     let items = stmt
         .query_map(params![since], |r| {
@@ -1428,6 +1542,383 @@ pub fn listen_hourly(state: State<'_, AppState>) -> Result<Vec<ListenHourPoint>,
             Ok(ListenHourPoint {
                 hour: r.get(0)?,
                 seconds: r.get(1)?,
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+    Ok(items)
+}
+
+/// 星期 × 小时收听热力图（本地时区）。dow：0=周日 … 6=周六；前端负责铺满 7×24 空格。
+#[tauri::command]
+pub fn listen_heatmap(state: State<'_, AppState>) -> Result<Vec<ListenHeatCell>, String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    let mut stmt = conn
+        .prepare(
+            "SELECT CAST(strftime('%w', played_at,'unixepoch','localtime') AS INTEGER) dow, \
+             CAST(strftime('%H', played_at,'unixepoch','localtime') AS INTEGER) hh, \
+             SUM(seconds) \
+             FROM play_history GROUP BY dow, hh",
+        )
+        .map_err(|e| e.to_string())?;
+    let items = stmt
+        .query_map([], |r| {
+            Ok(ListenHeatCell {
+                dow: r.get(0)?,
+                hour: r.get(1)?,
+                seconds: r.get(2)?,
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+    Ok(items)
+}
+
+/// civil date（YYYY-MM-DD）→ 天数序号（Howard Hinnant 算法），用于连续天数推算
+fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
+    let y = if m <= 2 { y - 1 } else { y };
+    let era = if y >= 0 { y } else { y - 399 } / 400;
+    let yoe = y - era * 400;
+    let mp = (m + 9) % 12;
+    let doy = (153 * mp + 2) / 5 + d - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    era * 146097 + doe
+}
+
+fn civil_to_days(s: &str) -> Option<i64> {
+    let mut it = s.split('-');
+    let y = it.next()?.parse::<i64>().ok()?;
+    let m = it.next()?.parse::<i64>().ok()?;
+    let d = it.next()?.parse::<i64>().ok()?;
+    Some(days_from_civil(y, m, d))
+}
+
+/// 连续听歌天数：current = 最近一次连续段（最后收听日为今天或昨天才有效，否则 0）；
+/// longest = 历史最长连续收听天数。均按本地时区自然日。
+#[tauri::command]
+pub fn listen_streak(state: State<'_, AppState>) -> Result<(i64, i64), String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    let mut days: Vec<i64> = conn
+        .prepare("SELECT DISTINCT date(played_at,'unixepoch','localtime') FROM play_history ORDER BY 1")
+        .map_err(|e| e.to_string())?
+        .query_map([], |r| r.get::<_, String>(0))
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?
+        .iter()
+        .filter_map(|s| civil_to_days(s))
+        .collect();
+    days.sort_unstable();
+    days.dedup();
+    if days.is_empty() {
+        return Ok((0, 0));
+    }
+    let mut longest = 0i64;
+    let mut cur = 0i64;
+    let mut prev: Option<i64> = None;
+    for d in &days {
+        cur = match prev {
+            Some(p) if d - p == 1 => cur + 1,
+            _ => 1,
+        };
+        longest = longest.max(cur);
+        prev = Some(*d);
+    }
+    // 当前连续：最后收听日必须是今天或昨天（本地时区），否则连续已中断
+    let today = conn
+        .query_row("SELECT date('now','localtime')", [], |r| r.get::<_, String>(0))
+        .map_err(|e| e.to_string())?;
+    let today_days = civil_to_days(&today).unwrap_or(0);
+    let last = *days.last().unwrap();
+    let current = if today_days - last <= 1 { cur } else { 0 };
+    Ok((current, longest))
+}
+
+/// 收听占比：by = mode（播放模式 order/loop/one/shuffle/未知）| source（本地/WebDAV）。
+#[tauri::command]
+pub fn listen_breakdown(
+    state: State<'_, AppState>,
+    by: String,
+) -> Result<Vec<ListenBreakdownPoint>, String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    let sql = match by.as_str() {
+        "source" => {
+            "SELECT s.kind, COUNT(*), SUM(h.seconds) \
+             FROM play_history h \
+             JOIN tracks t ON t.id = h.track_id \
+             JOIN sources s ON s.id = t.source_id \
+             GROUP BY s.kind ORDER BY 3 DESC"
+        }
+        _ => {
+            "SELECT IFNULL(mode,'unknown'), COUNT(*), SUM(seconds) \
+             FROM play_history GROUP BY 1 ORDER BY 3 DESC"
+        }
+    };
+    let mut stmt = conn.prepare(sql).map_err(|e| e.to_string())?;
+    let items = stmt
+        .query_map([], |r| {
+            Ok(ListenBreakdownPoint {
+                kind: r.get(0)?,
+                plays: r.get(1)?,
+                seconds: r.get(2)?,
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+    Ok(items)
+}
+
+// ---------- 音乐库体检 ----------
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NameCount {
+    pub name: String,
+    pub count: i64,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct YearCount {
+    pub year: i64,
+    pub count: i64,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MetaCoverage {
+    pub title: i64,
+    pub artist: i64,
+    pub album: i64,
+    pub year: i64,
+    pub genre: i64,
+    pub track_no: i64,
+    pub total: i64,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DupSample {
+    pub title: String,
+    pub artist: Option<String>,
+    pub count: i64,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LibraryHealth {
+    pub tracks: i64,
+    pub albums: i64,
+    pub artists: i64,
+    pub genres: i64,
+    pub total_seconds: f64,
+    pub total_size: i64,
+    pub size_known: i64,
+    pub formats: Vec<NameCount>,
+    pub sources: Vec<NameCount>,
+    pub years: Vec<YearCount>,
+    pub bitrates: Vec<NameCount>,
+    pub sample_rates: Vec<NameCount>,
+    pub bit_depths: Vec<NameCount>,
+    pub lyrics_embedded: i64,
+    pub lyrics_external: i64,
+    pub lyrics_qrc: i64,
+    pub tracks_with_lyrics: i64,
+    pub albums_with_cover: i64,
+    pub tracks_with_cover: i64,
+    pub mv_count: i64,
+    pub meta: MetaCoverage,
+    pub meta_incomplete: i64,
+    pub dup_groups: i64,
+    pub dup_samples: Vec<DupSample>,
+}
+
+/// 音乐库体检：曲库构成、格式/来源/年份/码率分布、歌词/封面/MV/元数据覆盖率、疑似重复。
+#[tauri::command]
+pub fn library_health(state: State<'_, AppState>) -> Result<LibraryHealth, String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    let q1 = |sql: &str| -> Result<i64, String> {
+        conn.query_row(sql, [], |r| r.get(0))
+            .map_err(|e| e.to_string())
+    };
+    let name_counts = |sql: &str| -> Result<Vec<NameCount>, String> {
+        let mut stmt = conn.prepare(sql).map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok(NameCount {
+                    name: r.get(0)?,
+                    count: r.get(1)?,
+                })
+            })
+            .map_err(|e| e.to_string())?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())?;
+        Ok(rows)
+    };
+
+    let tracks = q1("SELECT COUNT(*) FROM tracks")?;
+    let albums = q1("SELECT COUNT(*) FROM albums")?;
+    let artists = q1("SELECT COUNT(*) FROM artists")?;
+    let genres = q1("SELECT COUNT(DISTINCT NULLIF(TRIM(genre),'')) FROM tracks")?;
+    let (total_seconds, total_size, size_known): (f64, i64, i64) = conn
+        .query_row(
+            "SELECT COALESCE(SUM(duration),0), COALESCE(SUM(file_size),0), COUNT(file_size) FROM tracks",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        )
+        .map_err(|e| e.to_string())?;
+
+    let formats = name_counts(
+        "SELECT IFNULL(format,''), COUNT(*) FROM tracks GROUP BY format ORDER BY 2 DESC",
+    )?;
+    let sources = name_counts(
+        "SELECT s.kind, COUNT(*) FROM tracks t JOIN sources s ON s.id = t.source_id GROUP BY s.kind ORDER BY 2 DESC",
+    )?;
+    let bitrates = name_counts(
+        "SELECT CAST(bitrate AS TEXT), COUNT(*) FROM tracks WHERE bitrate IS NOT NULL GROUP BY bitrate ORDER BY 1",
+    )?;
+    let sample_rates = name_counts(
+        "SELECT CAST(sample_rate AS TEXT), COUNT(*) FROM tracks WHERE sample_rate IS NOT NULL GROUP BY sample_rate ORDER BY 1",
+    )?;
+    let bit_depths = name_counts(
+        "SELECT CAST(bit_depth AS TEXT), COUNT(*) FROM tracks WHERE bit_depth IS NOT NULL GROUP BY bit_depth ORDER BY 1",
+    )?;
+    let years: Vec<YearCount> = {
+        let mut stmt = conn
+            .prepare("SELECT year, COUNT(*) FROM tracks WHERE year IS NOT NULL GROUP BY year ORDER BY year")
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok(YearCount {
+                    year: r.get(0)?,
+                    count: r.get(1)?,
+                })
+            })
+            .map_err(|e| e.to_string())?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())?;
+        rows
+    };
+
+    let lyrics_embedded = q1("SELECT COUNT(*) FROM tracks WHERE has_embedded_lyrics = 1")?;
+    let lyrics_external =
+        q1("SELECT COUNT(*) FROM lrc_files WHERE path NOT LIKE '%.qrc' AND path LIKE '%.%'")?;
+    let lyrics_qrc = q1("SELECT COUNT(*) FROM lrc_files WHERE path LIKE '%.qrc'")?;
+    let tracks_with_lyrics =
+        q1("SELECT COUNT(*) FROM tracks WHERE has_embedded_lyrics = 1 OR EXISTS (SELECT 1 FROM lrc_files WHERE lrc_files.track_id = tracks.id)")?;
+    let albums_with_cover = q1("SELECT COUNT(*) FROM albums WHERE has_cover = 1")?;
+    let tracks_with_cover = q1(
+        "SELECT COUNT(*) FROM tracks t JOIN albums al ON al.id = t.album_id WHERE al.has_cover = 1",
+    )?;
+    let mv_count = q1("SELECT COUNT(*) FROM tracks WHERE has_mv = 1")?;
+    let meta = conn
+        .query_row(
+            "SELECT COUNT(title), COUNT(artist_id), COUNT(album_id), COUNT(year), \
+             COUNT(NULLIF(TRIM(genre),'')), COUNT(track_no), COUNT(*) FROM tracks",
+            [],
+            |r| {
+                Ok(MetaCoverage {
+                    title: r.get(0)?,
+                    artist: r.get(1)?,
+                    album: r.get(2)?,
+                    year: r.get(3)?,
+                    genre: r.get(4)?,
+                    track_no: r.get(5)?,
+                    total: r.get(6)?,
+                })
+            },
+        )
+        .map_err(|e| e.to_string())?;
+    let meta_incomplete = q1("SELECT COUNT(*) FROM tracks WHERE meta_state = 0")?;
+    let dup_groups = q1(
+        "SELECT COUNT(*) FROM (SELECT 1 FROM tracks \
+         GROUP BY LOWER(TRIM(title)), IFNULL(artist_id, 0) HAVING COUNT(*) > 1)",
+    )?;
+    let dup_samples: Vec<DupSample> = {
+        let mut stmt = conn
+            .prepare(
+                "SELECT LOWER(TRIM(t1.title)), IFNULL(a.name,''), COUNT(*) \
+                 FROM tracks t1 LEFT JOIN artists a ON a.id = t1.artist_id \
+                 GROUP BY LOWER(TRIM(t1.title)), IFNULL(t1.artist_id, 0) \
+                 HAVING COUNT(*) > 1 ORDER BY COUNT(*) DESC LIMIT 10",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok(DupSample {
+                    title: r.get(0)?,
+                    artist: r.get(1)?,
+                    count: r.get(2)?,
+                })
+            })
+            .map_err(|e| e.to_string())?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())?;
+        rows
+    };
+
+    Ok(LibraryHealth {
+        tracks,
+        albums,
+        artists,
+        genres,
+        total_seconds,
+        total_size,
+        size_known,
+        formats,
+        sources,
+        years,
+        bitrates,
+        sample_rates,
+        bit_depths,
+        lyrics_embedded,
+        lyrics_external,
+        lyrics_qrc,
+        tracks_with_lyrics,
+        albums_with_cover,
+        tracks_with_cover,
+        mv_count,
+        meta,
+        meta_incomplete,
+        dup_groups,
+        dup_samples,
+    })
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScanHistoryItem {
+    pub at: i64,
+    pub source_name: String,
+    pub added: i64,
+    pub updated: i64,
+    pub removed: i64,
+    pub ms: i64,
+}
+
+/// 最近几次扫描的历史（来源名 + 增删改数量 + 耗时）。
+#[tauri::command]
+pub fn scan_history_list(state: State<'_, AppState>) -> Result<Vec<ScanHistoryItem>, String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    let mut stmt = conn
+        .prepare(
+            "SELECT h.at, IFNULL(s.name,''), h.added, h.updated, h.removed, h.ms \
+             FROM scan_history h LEFT JOIN sources s ON s.id = h.source_id \
+             ORDER BY h.at DESC, h.id DESC LIMIT 10",
+        )
+        .map_err(|e| e.to_string())?;
+    let items = stmt
+        .query_map([], |r| {
+            Ok(ScanHistoryItem {
+                at: r.get(0)?,
+                source_name: r.get(1)?,
+                added: r.get(2)?,
+                updated: r.get(3)?,
+                removed: r.get(4)?,
+                ms: r.get(5)?,
             })
         })
         .map_err(|e| e.to_string())?

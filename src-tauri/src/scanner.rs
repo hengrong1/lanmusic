@@ -168,20 +168,31 @@ pub fn scan_source(app: AppHandle, source_id: i64, full_rescan: bool) {
 
     match result {
         Ok((added, updated, removed)) => {
-            log::info!(
-                "扫描完成 source {source_id}：新增 {added}，更新 {updated}，移除 {removed}，耗时 {} ms",
-                started.elapsed().as_millis()
-            );
+            let ms = started.elapsed().as_millis();
+            log::info!("扫描完成 source {source_id}：新增 {added}，更新 {updated}，移除 {removed}，耗时 {ms} ms");
             let _ = app.emit(
                 "scan:done",
-                ScanDone {
-                    source_id,
-                    added,
-                    updated,
-                    removed,
-                    ms: started.elapsed().as_millis(),
-                },
+                ScanDone { source_id, added, updated, removed, ms },
             );
+            // 扫描历史：落一行供「音乐库体检」展示最近几次增删改
+            let state = app.state::<AppState>();
+            let conn = state.db.lock().ok();
+            if let Some(conn) = conn {
+                let _ = conn.execute(
+                    "INSERT INTO scan_history (source_id, at, added, updated, removed, ms) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                    params![
+                        source_id,
+                        std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_secs() as i64,
+                        added as i64,
+                        updated as i64,
+                        removed as i64,
+                        ms as i64
+                    ],
+                );
+            }
         }
         Err(message) => {
             log::error!("扫描失败 source {source_id}：{message}");

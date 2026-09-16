@@ -184,6 +184,18 @@ CREATE TABLE IF NOT EXISTS play_history (
 );
 CREATE INDEX IF NOT EXISTS idx_play_history_time ON play_history(played_at);
 CREATE INDEX IF NOT EXISTS idx_play_history_track ON play_history(track_id);
+
+-- 扫描历史：每次扫描完成后写一行（听歌统计页的「音乐库体检」展示最近几次增删改）
+CREATE TABLE IF NOT EXISTS scan_history (
+  id INTEGER PRIMARY KEY,
+  source_id INTEGER NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
+  at INTEGER NOT NULL,
+  added INTEGER NOT NULL,
+  updated INTEGER NOT NULL,
+  removed INTEGER NOT NULL,
+  ms INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_scan_history_at ON scan_history(at DESC);
 "#;
 
 /// 移除记录上限：超出时按时间从旧到新裁剪
@@ -246,6 +258,8 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
     ensure_column(conn, "playlists", "description", "TEXT")?;
     // 原始艺人标签（未按分隔符拆分），用于调整分隔符后重新拆分艺人
     ensure_column(conn, "tracks", "raw_artist", "TEXT")?;
+    // 播放历史的收听模式（order/loop/one/shuffle）：占比统计用，老流水 NULL 归「未知」
+    ensure_column(conn, "play_history", "mode", "TEXT")?;
     // 旧数据无加入时间：回填 0 视为最早加入，倒序时排在最前
     conn.execute(
         "UPDATE playlist_items SET added_at = 0 WHERE added_at IS NULL",

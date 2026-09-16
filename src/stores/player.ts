@@ -273,7 +273,7 @@ export const usePlayerStore = defineStore('player', () => {
     if (!listenTrackId) return
     const secs = Math.round(listenSeconds)
     if (secs < (force ? 1 : LISTEN_FLUSH_THRESHOLD)) return
-    api.reportListen(listenTrackId, secs).catch(() => {})
+    api.reportListen(listenTrackId, secs, mode.value).catch(() => {})
     listenSeconds = 0
   }
 
