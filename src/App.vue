@@ -195,20 +195,60 @@ const viewComponent = computed(() => {
 const viewKey = computed(() => JSON.stringify(nav.current.value))
 
 // ---- GSAP 过渡：主视图切换（简短淡入淡出，不做缩放避免文字模糊）----
+// done 兜底：out-in 模式下若 enter 的 GSAP tween 被意外中断（overwrite / 元素被替换），
+// onComplete 不会触发、Transition 永久挂起 → 新视图停在 opacity 0（表现为切页后全空白）。
+// 600ms 强制完成兜底，幂等。
 function viewEnter(el: Element, done: () => void) {
   // 懒加载视图首次进入时可能先渲染注释占位节点：直接完成，避免动画挂在空目标上
   if (el.nodeType !== 1) {
     done()
     return
   }
+  let finished = false
+  const finish = () => {
+    if (!finished) {
+      finished = true
+      done()
+    }
+  }
+  const guard = window.setTimeout(finish, 600)
   gsap.fromTo(
     el,
     { opacity: 0, y: 18 },
-    { opacity: 1, y: 0, duration: 0.32, ease: 'power2.out', clearProps: 'all', onComplete: done },
+    {
+      opacity: 1,
+      y: 0,
+      duration: 0.32,
+      ease: 'power2.out',
+      overwrite: 'auto',
+      clearProps: 'all',
+      onComplete: () => {
+        window.clearTimeout(guard)
+        finish()
+      },
+    },
   )
 }
 function viewLeave(el: Element, done: () => void) {
-  gsap.to(el, { opacity: 0, y: -14, duration: 0.16, ease: 'power1.in', onComplete: done })
+  let finished = false
+  const finish = () => {
+    if (!finished) {
+      finished = true
+      done()
+    }
+  }
+  const guard = window.setTimeout(finish, 400)
+  gsap.to(el, {
+    opacity: 0,
+    y: -14,
+    duration: 0.16,
+    ease: 'power1.in',
+    overwrite: 'auto',
+    onComplete: () => {
+      window.clearTimeout(guard)
+      finish()
+    },
+  })
 }
 
 // ---- GSAP 过渡：播放页环境背景（进入淡入；退出与内容层同步下滑，全程保持不透明，避免中途透出底层视图）----

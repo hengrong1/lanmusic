@@ -14,8 +14,9 @@ let timer: ReturnType<typeof setInterval> | null = null
 const emit = defineEmits<{ loaded: [] }>()
 onMounted(() => {
   refresh()
-  // 轮询：运行时长/内存/CPU 是即时值；sysinfo 的 CPU 百分比第二次采样起才有效
-  timer = setInterval(refresh, 3000)
+  // 轮询：运行时长/内存/CPU 是即时值；sysinfo 的 CPU 百分比第二次采样起才有效。
+  // 5s 而非更短：snapshot 里有进程采样，别让轮询成为常态负载
+  timer = setInterval(refresh, 5000)
 })
 onUnmounted(() => {
   if (timer) clearInterval(timer)

@@ -1880,8 +1880,12 @@ pub fn report_play_latency(ms: u64) {
 }
 
 #[tauri::command]
-pub fn diagnostics_snapshot() -> crate::diagnostics::DiagnosticsSnapshot {
-    crate::diagnostics::snapshot()
+pub async fn diagnostics_snapshot() -> Result<crate::diagnostics::DiagnosticsSnapshot, String> {
+    // sysinfo 进程采样是重量级调用（Windows 上可达百毫秒级），必须挪出主线程：
+    // 同步 command 跑主线程会阻塞 UI（含 GSAP 过渡），诊断页轮询期间页面切换会掉帧卡顿
+    tauri::async_runtime::spawn_blocking(crate::diagnostics::snapshot)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// 检查 GitHub 最新 Release（见 updater.rs）：远端版本更高才返回 Some。
