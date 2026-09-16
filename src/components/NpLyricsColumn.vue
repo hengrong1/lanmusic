@@ -67,6 +67,11 @@ const lyricResetTip = computed(() =>
 /** 校准按钮悬停态：底色与图标跟随播放页主题色（--np-accent 由 App 随环境色下发） */
 const calibHover =
   'hover:bg-[color-mix(in_srgb,var(--np-accent,#a78bfa)_18%,transparent)] hover:text-[var(--np-accent,#a78bfa)]'
+
+/** 副行开关（音 / 译）的选中态：强调色文字 + 同色半透明底，与校准按钮的悬停态同配方，
+ *  开着与关着一眼可辨（关着只有很淡的白色描字） */
+const subToggleOn =
+  'bg-[color-mix(in_srgb,var(--np-accent,#a78bfa)_18%,transparent)] text-[var(--np-accent,#a78bfa)]'
 </script>
 
 <template>
@@ -142,6 +147,32 @@ const calibHover =
       >
         <RewindForward class="h-5 w-5" />
       </button>
+      <!-- 歌词副行显隐：音译（音）与译文（译）两个文字按钮，仅当前歌词确实带该副行时才出现
+           （没检测到就整颗隐藏，不留空位）；与上面的时间校准按钮之间用细分隔线分组，
+           **默认关闭**、按曲目记忆，点开后用强调色底 + 强调色字表示开着（见 subToggleOn） -->
+      <template v-if="player.hasLyricTransliteration || player.hasLyricTranslation">
+        <span class="my-0.5 h-px w-5 shrink-0 bg-white/15"></span>
+        <button
+          v-if="player.hasLyricTransliteration"
+          class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-[13px] font-medium transition"
+          :class="player.lyricTransliteration ? subToggleOn : 'text-white/25 hover:text-white/60'"
+          v-tooltip="
+            player.lyricTransliteration ? $t('lyrics.transliterationHide') : $t('lyrics.transliterationShow')
+          "
+          @click="player.toggleLyricTransliteration()"
+        >
+          音
+        </button>
+        <button
+          v-if="player.hasLyricTranslation"
+          class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-[13px] font-medium transition"
+          :class="player.lyricTranslation ? subToggleOn : 'text-white/25 hover:text-white/60'"
+          v-tooltip="player.lyricTranslation ? $t('lyrics.translationHide') : $t('lyrics.translationShow')"
+          @click="player.toggleLyricTranslation()"
+        >
+          译
+        </button>
+      </template>
     </div>
     <div class="min-h-0 flex-1">
       <LyricsPanel :align="align" />

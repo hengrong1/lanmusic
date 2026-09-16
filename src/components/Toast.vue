@@ -18,11 +18,13 @@ const { toasts } = useToast()
         <div
           v-for="t in toasts"
           :key="t.id"
-          class="app-float pointer-events-auto flex max-w-md items-center gap-2 rounded-full border border-white/15 bg-(--app-overlay) px-4 py-2 text-sm shadow-lg dark:border-zinc-700 dark:bg-zinc-800/98 dark:text-zinc-100"
+          class="app-float pointer-events-auto flex max-w-md items-start gap-2 rounded-2xl border border-white/15 bg-(--app-overlay) px-4 py-2 text-sm shadow-lg dark:border-zinc-700 dark:bg-zinc-800/98 dark:text-zinc-100"
         >
-          <CircleAlert v-if="t.kind === 'error'" class="h-4 w-4 shrink-0 text-red-500" />
-          <Info v-else class="h-4 w-4 shrink-0 text-violet-500" />
-          <span class="truncate">{{ t.text }}</span>
+          <!-- 长文案（如带完整曲名的提示）换行完整显示：
+               原来 truncate 会把尾部截成省略号，rounded-full 的胶囊圆弧还会啃掉换行后的首尾文字 -->
+          <CircleAlert v-if="t.kind === 'error'" class="mt-0.5 h-4 w-4 shrink-0 text-red-500" />
+          <Info v-else class="mt-0.5 h-4 w-4 shrink-0 text-violet-500" />
+          <span class="min-w-0 break-words">{{ t.text }}</span>
         </div>
       </TransitionGroup>
     </div>

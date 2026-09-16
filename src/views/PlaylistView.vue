@@ -207,7 +207,11 @@ function batchAddToPlaylist(e: MouseEvent) {
     toast(t('playlist.noneToPick'))
     return
   }
-  playlistMenu.value = { x: e.clientX, y: e.clientY }
+  // 按钮上方弹出（placement='top'）：取按钮几何而非点击点——点击点在按钮中部，
+  // 直接用会让菜单底边压在操作栏上；左缘对齐按钮左缘
+  const btn = (e.currentTarget as HTMLElement | null) ?? (e.target as HTMLElement)
+  const rect = btn.getBoundingClientRect()
+  playlistMenu.value = { x: rect.left, y: rect.top }
   playlistMenuItems.value = library.playlists.slice(0, 50).map((p) => ({
     label: `${p.name} (${p.trackCount})`,
     action: () => void addSelectedToPlaylist(p.id),
@@ -360,9 +364,10 @@ async function onPickerAdded() {
       @deleted="onDeleted"
     />
 
-    <!-- 添加到歌单：歌单选择菜单 -->
+    <!-- 添加到歌单：歌单选择菜单（多选操作栏在底部 → placement=top 向上弹出） -->
     <ContextMenu
       v-if="playlistMenu"
+      placement="top"
       :x="playlistMenu.x"
       :y="playlistMenu.y"
       :items="playlistMenuItems"

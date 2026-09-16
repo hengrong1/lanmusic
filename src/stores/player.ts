@@ -8,8 +8,16 @@ import { api } from '@/api/commands'
 import { useLibraryStore } from '@/stores/library'
 import { toast } from '@/composables/useToast'
 import { t as tr } from '@/i18n/translate'
-import { activeLineIndex, parseLrc, parseWordLrc, plainLines, type LrcLine } from '@/utils/lrc'
+import {
+  activeLineIndex,
+  foldQrcSubLines,
+  parseLrc,
+  parseWordLrc,
+  plainLines,
+  type LrcLine,
+} from '@/utils/lrc'
 import { looksBinaryish, looksLikeHexQrc, qrcToLrcLines } from '@/utils/qrc'
+import { insertNextAfter } from '@/utils/queue'
 import type { QrcLine } from '@/types'
 import { applyPowerGuard } from '@/composables/usePowerGuard'
 import { errorText } from '@/i18n/error'
@@ -89,6 +97,18 @@ export const usePlayerStore = defineStore('player', () => {
   const lyricsLoading = ref(false)
   /** 歌词偏移（秒）：>0 歌词延后显示，<0 提前。按曲目持久化，用于校准 LRC 时间轴与音频不同步 */
   const lyricOffset = ref(0)
+  /**
+   * 双语歌词两条副行的显示开关：**默认都关闭**（键不存在即关，只有显式存 '1' 才算开），
+   * 按曲目记忆，切歌时随曲目重读。界面只在当前歌词确实带该副行时显示对应按钮
+   * （见 hasLyricTransliteration / hasLyricTranslation），点开后才在原文上下显示。
+   * - lyricTransliteration：音译 / 罗马字（显示在原文上方）
+   * - lyricTranslation：译文（显示在原文下方）
+   */
+  const lyricTransliteration = ref(false)
+  const lyricTranslation = ref(false)
+  /** 当前歌词是否带音译 / 译文：决定播放页歌词区那两颗开关图标显不显示（没有的整颗隐藏） */
+  const hasLyricTransliteration = computed(() => !!lyricsLines.value?.some((l) => !!l.transliteration))
+  const hasLyricTranslation = computed(() => !!lyricsLines.value?.some((l) => !!l.translation))
   const activeLyricIndex = computed(() =>
     lyricsLines.value ? activeLineIndex(lyricsLines.value, position.value - lyricOffset.value) : -1,
   )
@@ -103,6 +123,8 @@ export const usePlayerStore = defineStore('player', () => {
     lyricsWordLines.value = null
     lyricsUnsupported.value = false
     lyricOffset.value = readLrcOffset(trackId)
+    lyricTransliteration.value = readLyricTransliteration(trackId)
+    lyricTranslation.value = readLyricTrans(trackId)
     lyricsLoading.value = true
     try {
       // 不以 hasLyrics 标志为前置条件：旧库的标志可能过期（快速导入/旧版本扫描）
@@ -116,8 +138,10 @@ export const usePlayerStore = defineStore('player', () => {
       // 切歌后旧回包直接丢弃
       if (my !== lyricsSeq || current.value?.id !== trackId) return
       if (qrc && qrc.length) {
-        lyricsWordLines.value = qrc
-        lyricsLines.value = qrcToLrcLines(qrc)
+        // 双语/音译歌词：同起点的副行并进上一行（与 parseWordLrc 同口径，两条链路行数口径一致）
+        const folded = foldQrcSubLines(qrc)
+        lyricsWordLines.value = folded
+        lyricsLines.value = qrcToLrcLines(folded)
         return
       }
       // 字级歌词（A2 `<mm:ss.xx>` 写法 与 多标签逐字 `[00:00.000]身[00:00.582]骑` 两种结构）：
@@ -184,6 +208,41 @@ export const usePlayerStore = defineStore('player', () => {
       'info',
       'lyric-offset',
     )
+  }
+
+  /** 读取某曲目的音译（罗马字）开关（**默认关闭**：键不存在即关，只有显式存 '1' 才算开） */
+  function readLyricTransliteration(trackId: number): boolean {
+    return localStorage.getItem(`lm.lrcTranslit.${trackId}`) === '1'
+  }
+
+  /** 读取某曲目的译文开关（同上口径，默认关闭） */
+  function readLyricTrans(trackId: number): boolean {
+    return localStorage.getItem(`lm.lrcTrans.${trackId}`) === '1'
+  }
+
+  /** 写回某曲目的副行开关（音译 / 译文）；写失败不抛错，本次会话内的显隐照样生效 */
+  function writeLyricSubFlag(key: string, trackId: number, on: boolean) {
+    try {
+      localStorage.setItem(`${key}.${trackId}`, on ? '1' : '0')
+    } catch {
+      /* ignore */
+    }
+  }
+
+  /** 切换音译（罗马字）显示：按曲目持久化，纯前端显隐，不需要重载歌词 */
+  function toggleLyricTransliteration() {
+    const t = current.value
+    if (!t) return
+    lyricTransliteration.value = !lyricTransliteration.value
+    writeLyricSubFlag('lm.lrcTranslit', t.id, lyricTransliteration.value)
+  }
+
+  /** 切换译文显示：同上口径 */
+  function toggleLyricTranslation() {
+    const t = current.value
+    if (!t) return
+    lyricTranslation.value = !lyricTranslation.value
+    writeLyricSubFlag('lm.lrcTrans', t.id, lyricTranslation.value)
   }
 
   const current = computed<Track | null>(() => queue.value[index.value] ?? null)
@@ -442,12 +501,15 @@ export const usePlayerStore = defineStore('player', () => {
     }
   }
 
+  /**
+   * 上一曲：**永远切到队列里的上一首**。
+   * 刻意不做「播放超过 3 秒就先回到本曲开头」那套（iTunes / Spotify 的老习惯）：
+   * 那会让按钮时灵时不灵——同一颗按钮点下去去哪，取决于当前播到第几秒，用户没法预期。
+   * 想回到本曲开头用进度条拖回去即可。
+   * 队列第一首时：循环模式回到末尾，否则原地回到开头（没有上一首可切）。
+   */
   function prev() {
     if (!queue.value.length) return
-    if (position.value > 3) {
-      audio.currentTime = 0
-      return
-    }
     const i = index.value - 1
     if (i < 0) {
       if (mode.value === 'loop') playAt(queue.value.length - 1)
@@ -492,14 +554,26 @@ export const usePlayerStore = defineStore('player', () => {
   }
 
   // ---------- 队列操作 ----------
+  /** 下一首播放：队列里已有这首时不再新增条目（挪到下一首 / 本来就是下一首则只提示） */
   function playNextInQueue(t: Track) {
     if (index.value === -1) {
       playList([t], 0)
       return
     }
-    queue.value.splice(index.value + 1, 0, t)
+    const r = insertNextAfter(queue.value, index.value, t)
+    if (r.action === 'noop') return
+    if (r.action === 'alreadyNext') {
+      toast(tr('toast.alreadyPlayNext', { title: t.title }))
+      return
+    }
+    queue.value = r.queue
+    index.value = r.index
     snapshotQueue()
-    toast(tr('toast.playNextAfter', { title: current.value?.title ?? '' }))
+    toast(
+      r.action === 'moved'
+        ? tr('toast.movedToPlayNext', { title: t.title })
+        : tr('toast.playNextAfter', { title: current.value?.title ?? '' }),
+    )
   }
 
   function enqueue(t: Track) {
@@ -694,6 +768,12 @@ export const usePlayerStore = defineStore('player', () => {
     lyricsLoading,
     lyricOffset,
     setLyricOffset,
+    lyricTransliteration,
+    hasLyricTransliteration,
+    toggleLyricTransliteration,
+    lyricTranslation,
+    hasLyricTranslation,
+    toggleLyricTranslation,
     reloadLyrics,
     activeLyricIndex,
     playList,

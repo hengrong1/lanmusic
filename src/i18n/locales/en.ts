@@ -337,6 +337,8 @@ export default {
     jumpTo: 'Jump to {time}: {text}', jumpToInterlude: 'Jump to {time} (interlude)',
     noLyricsLocal: 'Supports a same-name .lrc file or embedded lyrics',
     unsupported: 'These lyrics are encrypted and cannot be displayed yet',
+    translationShow: 'Show translation', translationHide: 'Hide translation',
+    transliterationShow: 'Show transliteration', transliterationHide: 'Hide transliteration',
   },
   nowPlaying: {
     title: 'Now Playing', upNext: 'Up Next', queue: 'Queue', lyrics: 'Lyrics', info: 'Info',
@@ -410,6 +412,7 @@ export default {
     lyricOffsetReset: 'Lyrics timeline reset',
     lyricOffsetDelay: 'Lyrics delayed by {value}s', lyricOffsetAdvance: 'Lyrics advanced by {value}s',
     playFailed: 'Playback failed: {title}', playNextAfter: 'Will play after "{title}"',
+    alreadyPlayNext: '"{title}" is already next', movedToPlayNext: '"{title}" moved to play next',
     playFailedTooMany: 'Stopped auto-skip after {count} consecutive playback failures',
   },
   time: {

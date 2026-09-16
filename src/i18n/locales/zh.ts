@@ -331,6 +331,8 @@ export default {
     jumpTo: '跳转到 {time}：{text}', jumpToInterlude: '跳转到 {time}（间奏）',
     noLyricsLocal: '支持 .lrc 同名文件或内嵌歌词',
     unsupported: '该歌词为加密格式，暂不支持显示',
+    translationShow: '显示翻译', translationHide: '隐藏翻译',
+    transliterationShow: '显示音译', transliterationHide: '隐藏音译',
   },
   nowPlaying: {
     title: '正在播放', upNext: '即将播放', queue: '队列', lyrics: '歌词', info: '信息',
@@ -404,6 +406,7 @@ export default {
     lyricOffsetReset: '歌词时间轴已还原',
     lyricOffsetDelay: '歌词已延后 {value}s', lyricOffsetAdvance: '歌词已提前 {value}s',
     playFailed: '播放失败：{title}', playNextAfter: '将在「{title}」后播放',
+    alreadyPlayNext: '「{title}」已在下一首', movedToPlayNext: '「{title}」已移到下一首',
     playFailedTooMany: '连续 {count} 首播放失败，已停止自动跳过',
   },
   time: {

@@ -191,6 +191,16 @@ onMounted(() => void nextTick(scrollToActive))
               : { fontSize: lyricFontSize(i, line.text) }
           "
         >
+          <!-- 音译副行：与歌词文件的行序一致——音译在上、原文居中、译文在下。
+               字号按 em 跟随主行的阶梯字号自动缩小，颜色给次级白
+               （活动行主色由父级 line 设置，这里必须显式覆盖）。
+               开关关闭、或该行没有对应内容时不渲染，不占位 -->
+          <span
+            v-if="player.lyricTransliteration && line.transliteration"
+            class="mb-0.5 block font-normal leading-snug transition-colors duration-300"
+            :class="i === player.activeLyricIndex ? 'text-white/70' : 'text-zinc-500'"
+            :style="{ fontSize: '0.72em' }"
+          >{{ line.transliteration }}</span>
           <!-- QRC 逐字行（活动行）：单词按播放进度渐变填充；其余行显示整行文本 -->
           <template v-if="i === player.activeLyricIndex && isWordLine(i)">
             <span
@@ -203,6 +213,13 @@ onMounted(() => void nextTick(scrollToActive))
           <template v-else-if="line.text">{{ line.text }}</template>
           <!-- 间奏占位：折叠后的一行，极简 -->
           <span v-else class="tracking-[0.5em] opacity-30">···</span>
+          <!-- 译文副行（原文下方） -->
+          <span
+            v-if="player.lyricTranslation && line.translation"
+            class="mt-0.5 block font-normal leading-snug transition-colors duration-300"
+            :class="i === player.activeLyricIndex ? 'text-white/60' : 'text-zinc-500/80'"
+            :style="{ fontSize: '0.72em' }"
+          >{{ line.translation }}</span>
         </p>
       </div>
     </template>

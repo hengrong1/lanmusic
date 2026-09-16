@@ -24,10 +24,12 @@ export function looksBinaryish(raw: string): boolean {
 }
 
 /** QRC 行 → 行级时间轴（滚动定位 / 点击跳转 / 桌面歌词复用现有链路）。
- * 间奏空行已由 Rust 侧折叠，行下标与逐字数据一一对应。 */
+ * 间奏空行与副行（音译 / 译文）已折叠，行下标与逐字数据一一对应；两条副行原样透传给界面。 */
 export function qrcToLrcLines(lines: QrcLine[]): LrcLine[] {
   return lines.map((l) => ({
     time: l.startTime / 1000,
     text: l.text,
+    transliteration: l.transliteration,
+    translation: l.translation,
   }))
 }

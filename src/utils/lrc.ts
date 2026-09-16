@@ -4,9 +4,52 @@ export interface LrcLine {
   /** 秒 */
   time: number
   text: string
+  /** 音译（罗马字）副行：显示在原文上方；无则留空 */
+  transliteration?: string
+  /** 译文副行：显示在原文下方；无则留空 */
+  translation?: string
 }
 
 const TIME_TAG = /\[(\d{1,3}):(\d{1,2})(?:[.:](\d{1,3}))?\]/g
+
+/**
+ * 译文行与原文行的起始时间容差（毫秒）：双语歌词的两行是同一起点，
+ * 允许各来源之间几十毫秒的偏差，但不能大到把「紧接着的下一句」吞掉。
+ */
+const TRANSLATION_TOLERANCE_MS = 120
+
+/**
+ * 折叠「译文行」（双语歌词的第二行）。
+ *
+ * 判定：某行紧跟在上一行之后、起始时间几乎相同、自身不是逐字行（译文一般只有整行文本）、
+ * 且文本与上一行不同 → 认作上一行的译文，写入 `translation` 并从行序列中移除。
+ *
+ * 不做这步的话，译文会作为一行独立歌词插进列表：滚动到该处会闪出一行译文，
+ * 高亮也会在原文/译文之间来回跳（双语 LRC 与 QRC 都能碰到）。
+ *
+ * 行级歌词（本函数）**不识别音译**：没有字级时间轴时，一行拉丁文本无法区分
+ * 「罗马字音译」与「英文翻译」，误判会让译文开关管错行。音译只在逐字链路识别。
+ */
+function foldLrcTranslations(lines: LrcLine[]): LrcLine[] {
+  const out: LrcLine[] = []
+  for (const line of lines) {
+    const prev = out[out.length - 1]
+    const text = line.text.trim()
+    if (
+      prev &&
+      text &&
+      !prev.translation &&
+      prev.text.trim() &&
+      text !== prev.text.trim() &&
+      Math.abs(line.time - prev.time) * 1000 <= TRANSLATION_TOLERANCE_MS
+    ) {
+      prev.translation = text
+      continue
+    }
+    out.push(line)
+  }
+  return out
+}
 
 /**
  * 解析 LRC 歌词。支持多时间标签 `[00:12.5][01:20.0]歌词`。
@@ -35,7 +78,7 @@ export function parseLrc(raw: string): { lines: LrcLine[]; synced: boolean } {
     if (!line.text && last && !last.text) continue
     collapsed.push(line)
   }
-  return { lines: collapsed, synced: true }
+  return { lines: foldLrcTranslations(collapsed), synced: true }
 }
 
 /** 二分查找当前播放行 */
@@ -113,6 +156,61 @@ function splitAngleWords(src: string, fallbackStart: number): WordSeg[] {
     if (text) words.push({ start: tagToMs(m), text })
   })
   return words
+}
+
+/** 中日韩文字（汉字 / 假名 / 谚文）：音译行只有拉丁字母，据此把音译行与原文行区分开 */
+const CJK_RE = /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uac00-\ud7af]/
+
+function hasCjk(text: string): boolean {
+  return CJK_RE.test(text)
+}
+
+/**
+ * 折叠逐字歌词里的「副行」——同一句的读音转写（音译）与译文。
+ * 界面按歌词文件的行序排布：音译在上、原文居中、译文在下。
+ *
+ * 判定（均要求与上一行起始时间几乎相同、文本不同）：
+ * - 自身不是逐字行（整行文本）→ 译文（translation）；
+ * - 自身与上一行都是逐字行、且两者「是否含中日韩文字」不同 → 全拉丁的那行是音译
+ *   （transliteration）；若音译写在原文之前，把音译整行挪到原文上，
+ *   让原文行继续占据序列里的位置。
+ *
+ * 副行不折叠的话，它们会各占一行歌词：滚动、高亮与左下角跳转按钮都会出现重复行。
+ * Rust 侧 QRC 解析结果也走这里，这样 lyricsWordLines 与 lyricsLines 行数始终一一对应。
+ */
+export function foldQrcSubLines(lines: QrcLine[]): QrcLine[] {
+  const out: QrcLine[] = []
+  for (const line of lines) {
+    const prev = out[out.length - 1]
+    const text = line.text.trim()
+    if (
+      prev &&
+      text &&
+      prev.text.trim() &&
+      text !== prev.text.trim() &&
+      Math.abs(line.startTime - prev.startTime) <= TRANSLATION_TOLERANCE_MS
+    ) {
+      // ① 整行文本 → 译文（已有译文时不再覆盖：宁可多留一行，也不吞掉内容）
+      if (line.words.length <= 1) {
+        if (!prev.translation) {
+          prev.translation = text
+          continue
+        }
+      } else if (prev.words.length > 1 && hasCjk(prev.text) !== hasCjk(text)) {
+        // ② 两条逐字行同起点、其中一行全是拉丁字母 → 那是音译行
+        if (hasCjk(text)) {
+          out.pop() // 音译在前、原文在后：音译整行挪到原文上
+          line.transliteration = prev.text.trim()
+          out.push(line)
+        } else {
+          prev.transliteration = text
+        }
+        continue
+      }
+    }
+    out.push(line)
+  }
+  return out
 }
 
 /**
@@ -205,10 +303,11 @@ export function parseWordLrc(raw: string): QrcLine[] | null {
   if (!sawWord || !out.length) return null
   out.sort((a, b) => a.startTime - b.startTime)
 
-  // 与 parseLrc / Rust QRC 同口径：折叠连续间奏占位行（前奏常是一串空时间戳）
+  // 与 parseLrc / Rust QRC 同口径：折叠连续间奏占位行（前奏常是一串空时间戳），
+  // 再把同起点的副行（音译 / 译文）并进原文行
   const collapsed = out.filter((l, i) => !(l.text === '' && out[i - 1]?.text === ''))
   out.length = 0
-  out.push(...collapsed)
+  out.push(...foldQrcSubLines(collapsed))
 
   if (offsetMs) {
     for (const line of out) {

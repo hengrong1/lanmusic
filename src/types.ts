@@ -178,6 +178,10 @@ export interface QrcLine {
   endTime: number
   text: string
   words: QrcWord[]
+  /** 音译（罗马字）副行：显示在原文上方；前端折叠副行时写入，Rust 侧不产出该字段 */
+  transliteration?: string
+  /** 译文副行：显示在原文下方；前端折叠副行时写入，Rust 侧不产出该字段 */
+  translation?: string
 }
 
 /** GitHub 最新 Release（应用内更新检查，Rust 侧已比较版本，见 src-tauri/src/updater.rs） */

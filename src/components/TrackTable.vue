@@ -542,7 +542,8 @@ function onDragEnd() {
 .row-playing {
   position: relative;
   border-radius: 12px;
-  margin: 0 4px;
+  /* 不要再写 margin：行根已有 mx-2（8px），此处 scoped 未分层规则优先级高于
+     Tailwind utilities，一旦覆盖就会让播放行比其它行宽 8px，从第 3 列起每列右移 4px */
   background-size: 200% 100%;
   background-image: linear-gradient(
     to right,
@@ -555,7 +556,11 @@ function onDragEnd() {
     0 0 0 1px color-mix(in srgb, var(--color-violet-500) 15%, transparent),
     0 2px 8px color-mix(in srgb, var(--color-violet-500) 8%, transparent);
   animation: row-shimmer 3s ease-in-out infinite, row-pulse 2s ease-in-out infinite;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  /* 只过渡视觉属性：all 会把 margin/width 等布局属性一起动画化，切歌时整行会滑动 */
+  transition:
+    background-color 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+    box-shadow 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+    color 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 .dark .row-playing {
   background-image: linear-gradient(
