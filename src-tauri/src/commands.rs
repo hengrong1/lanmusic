@@ -544,10 +544,20 @@ pub fn query_tracks(state: State<'_, AppState>, q: TrackQuery) -> Result<Page<Tr
     };
     let page = q.page.unwrap_or(0) as i64;
     let page_size = q.page_size.unwrap_or(200).clamp(1, 5000) as i64;
+    // 最近播放最多展示 500 首（用户定稿）：内层先取最近 500 首，再对窗口分页；
+    // total 同步封顶，翻页越过 500 后自然返回空页。其余视图不限制。
+    const RECENT_LIMIT: i64 = 500;
+    let is_recent = q.view.as_deref() == Some("recent");
 
-    let count_sql = format!(
-        "SELECT COUNT(*) FROM tracks t LEFT JOIN artists a ON a.id = t.artist_id LEFT JOIN albums al ON al.id = t.album_id {where_sql}"
-    );
+    let count_sql = if is_recent {
+        format!(
+            "SELECT MIN(cnt, {RECENT_LIMIT}) FROM (SELECT COUNT(*) AS cnt FROM tracks t LEFT JOIN artists a ON a.id = t.artist_id LEFT JOIN albums al ON al.id = t.album_id {where_sql})"
+        )
+    } else {
+        format!(
+            "SELECT COUNT(*) FROM tracks t LEFT JOIN artists a ON a.id = t.artist_id LEFT JOIN albums al ON al.id = t.album_id {where_sql}"
+        )
+    };
     let total: i64 = conn
         .query_row(
             &count_sql,
@@ -556,10 +566,17 @@ pub fn query_tracks(state: State<'_, AppState>, q: TrackQuery) -> Result<Page<Tr
         )
         .map_err(|e| e.to_string())?;
 
-    let sql = format!(
-        "{TRACK_SELECT} {where_sql} {order_sql} LIMIT {page_size} OFFSET {}",
-        page * page_size
-    );
+    let sql = if is_recent {
+        format!(
+            "SELECT * FROM ({TRACK_SELECT} {where_sql} {order_sql} LIMIT {RECENT_LIMIT}) LIMIT {page_size} OFFSET {}",
+            page * page_size
+        )
+    } else {
+        format!(
+            "{TRACK_SELECT} {where_sql} {order_sql} LIMIT {page_size} OFFSET {}",
+            page * page_size
+        )
+    };
     let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
     let mut items: Vec<Track> = stmt
         .query_map(params_from_iter(args.iter().map(|b| b.as_ref())), row_track)
