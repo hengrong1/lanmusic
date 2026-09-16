@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import VChart from 'vue-echarts'
 import {
   ClockCircleIcon as ClockCircle,
   DatabaseIcon as Database,
@@ -11,10 +12,14 @@ import {
 } from '@solar-icons/vue/linear'
 import { api } from '@/api/commands'
 import type { LibraryHealth, NameCount, ScanHistoryItem } from '@/types'
+import { ensureEcharts, useChartTheme } from '@/composables/useEcharts'
 import { errorText } from '@/i18n/error'
 import { toast } from '@/composables/useToast'
 
+ensureEcharts()
+
 const { t: tr } = useI18n()
+const { axisLabel, tooltipBase } = useChartTheme()
 
 const health = ref<LibraryHealth | null>(null)
 const scans = ref<ScanHistoryItem[]>([])
@@ -130,6 +135,37 @@ const sourceRows = computed(() => distRows(health.value?.sources, sourceLabel))
 const sampleRateRows = computed(() => distRows(health.value?.sampleRates, (n) => `${n} Hz`))
 const bitDepthRows = computed(() => distRows(health.value?.bitDepths, (n) => `${n} bit`))
 const yearRows = computed(() => distRows(health.value?.years?.map((y) => ({ name: String(y.year), count: y.count }))))
+
+/** 分布横向条（ECharts）：count 为条长，右侧标注数值 */
+function distOption(rows: { label: string; count: number }[]) {
+  if (!rows.length) return null
+  return {
+    grid: { left: 8, right: 44, top: 0, bottom: 0, containLabel: true },
+    tooltip: {
+      trigger: 'item',
+      ...tooltipBase.value,
+      formatter: (p: { name: string; value: number }) => `${p.name} · ${p.value}`,
+    },
+    xAxis: { type: 'value', show: false },
+    yAxis: {
+      type: 'category',
+      data: rows.map((r) => r.label),
+      inverse: true,
+      axisLabel: { color: axisLabel.value, fontSize: 11 },
+      axisLine: { show: false },
+      axisTick: { show: false },
+    },
+    series: [
+      {
+        type: 'bar',
+        data: rows.map((r) => r.count),
+        barWidth: 10,
+        itemStyle: { borderRadius: [0, 5, 5, 0], color: '#8b5cf6' },
+        label: { show: true, position: 'right', color: axisLabel.value, fontSize: 10, formatter: '{c}' },
+      },
+    ],
+  }
+}
 </script>
 
 <template>
@@ -192,15 +228,13 @@ const yearRows = computed(() => distRows(health.value?.years?.map((y) => ({ name
         ]" :key="group.title">
           <h3 class="text-xs font-medium text-zinc-500">{{ group.title }}</h3>
           <div v-if="!group.rows.length" class="mt-2 text-xs text-zinc-400">{{ $t('stats.distEmpty') }}</div>
-          <div v-else class="mt-2 flex flex-col gap-1.5">
-            <div v-for="row in group.rows" :key="row.label" class="flex items-center gap-2 text-xs">
-              <span class="w-20 shrink-0 truncate text-zinc-500">{{ row.label }}</span>
-              <div class="h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-800">
-                <div class="h-full rounded-full bg-violet-500/70" :style="{ width: `${row.pct}%` }" />
-              </div>
-              <span class="w-12 shrink-0 text-right tabular-nums text-zinc-400">{{ row.count }}</span>
-            </div>
-          </div>
+          <VChart
+            v-else
+            class="mt-1 w-full"
+            :option="distOption(group.rows) ?? undefined"
+            autoresize
+            :style="{ height: `${group.rows.length * 26 + 10}px` }"
+          />
         </div>
       </div>
     </section>

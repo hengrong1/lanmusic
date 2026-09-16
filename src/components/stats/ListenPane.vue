@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import VChart from 'vue-echarts'
 import {
   CalendarIcon as Calendar,
   CalendarMarkIcon as CalendarMark,
@@ -21,14 +22,18 @@ import type {
   ListenTopItem,
 } from '@/types'
 import { useNav } from '@/composables/useNav'
+import { ensureEcharts, useChartTheme, CHART_COLORS } from '@/composables/useEcharts'
 import { errorText } from '@/i18n/error'
 import { toast } from '@/composables/useToast'
 import { BaseButtonGroup } from '@/components/ui'
 import CoverImg from '@/components/CoverImg.vue'
 import EmptyState from '@/components/EmptyState.vue'
 
+ensureEcharts()
+
 const { t: tr } = useI18n()
 const nav = useNav()
+const { axisLabel, axisLine, splitLine, tooltipBase, cardBg, emptyText } = useChartTheme()
 
 const summary = ref<ListenSummary | null>(null)
 const streak = ref<[number, number]>([0, 0])
@@ -93,6 +98,9 @@ function fmtSeconds(s: number): string {
   return tr('stats.secondsOnly', { s: sec })
 }
 
+/** 全空判定：从未有过收听流水 → 展示空态引导 */
+const isEmpty = computed(() => (summary.value?.totalSeconds ?? 0) === 0)
+
 /** 汇总卡（带图标）：数值为 0 也显示，整体空态由 isEmpty 决定 */
 const cards = computed(() => [
   { icon: ClockCircle, label: tr('stats.totalTime'), value: fmtSeconds(summary.value?.totalSeconds ?? 0) },
@@ -110,10 +118,7 @@ const cards = computed(() => [
   },
 ])
 
-/** 全空判定：从未有过收听流水 → 展示空态引导 */
-const isEmpty = computed(() => (summary.value?.totalSeconds ?? 0) === 0)
-
-/** 趋势柱数据：day 粒度补零铺满 30 天；week/month 直接画非空桶 */
+/** 趋势数据：day 粒度补零铺满 30 天；week/month 直接用非空桶（label 去掉年份前缀） */
 const trendBars = computed(() => {
   const map = new Map(trend.value.map((d) => [d.day, d.seconds]))
   const out: { key: string; label: string; seconds: number }[] = []
@@ -131,50 +136,149 @@ const trendBars = computed(() => {
   }
   return out
 })
-const trendMax = computed(() => Math.max(1, ...trendBars.value.map((b) => b.seconds)))
 const trendPeak = computed(() => fmtSeconds(Math.max(0, ...trendBars.value.map((b) => b.seconds))))
 
-/** 热力图矩阵：行 = 周一…周日（dow 1..6,0），列 = 0..23 点；GitHub 风格 5 档色 */
-const dowNames = computed(() => tr('stats.dowNames').split(','))
-const heatMax = computed(() => Math.max(1, ...heat.value.map((c) => c.seconds)))
-const heatRows = computed(() => {
-  const map = new Map(heat.value.map((c) => [`${c.dow}:${c.hour}`, c.seconds]))
-  return [1, 2, 3, 4, 5, 6, 0].map((dow) => ({
-    dow,
-    label: dowNames.value[(dow + 6) % 7] ?? '',
-    cells: Array.from({ length: 24 }, (_, hour) => ({
-      hour,
-      level: heatLevel(map.get(`${dow}:${hour}`) ?? 0),
-    })),
-  }))
-})
-function heatLevel(seconds: number): number {
-  if (seconds <= 0) return 0
-  const r = seconds / heatMax.value
-  if (r <= 0.25) return 1
-  if (r <= 0.5) return 2
-  if (r <= 0.75) return 3
-  return 4
+/** Y 轴刻度：秒 → 可读时长（h / m） */
+function fmtYTick(v: number): string {
+  if (v >= 3600) return `${(v / 3600).toFixed(1)}h`
+  if (v >= 60) return `${Math.round(v / 60)}m`
+  return `${v}s`
 }
-const HEAT_CLASSES = [
-  'bg-zinc-100 dark:bg-zinc-800',
-  'bg-violet-500/25',
-  'bg-violet-500/45',
-  'bg-violet-500/70',
-  'bg-violet-500',
-]
 
-/** 占比条分色：各项独立颜色，视觉可分 */
-const BAR_COLORS = ['bg-violet-500', 'bg-sky-500', 'bg-amber-500', 'bg-emerald-500', 'bg-rose-500', 'bg-zinc-400']
-function breakdownRows(list: ListenBreakdownPoint[]) {
-  const total = Math.max(1, list.reduce((a, b) => a + b.seconds, 0))
-  return list.map((p, i) => ({
-    ...p,
-    label: kindLabel(p.kind),
-    pct: Math.round((p.seconds / total) * 100),
-    color: BAR_COLORS[i % BAR_COLORS.length],
-  }))
+const trendOption = computed(() => ({
+  grid: { left: 8, right: 8, top: 16, bottom: 0, containLabel: true },
+  tooltip: {
+    trigger: 'axis',
+    axisPointer: { type: 'shadow' },
+    ...tooltipBase.value,
+    formatter: (ps: { name: string; value: number }[]) => `${ps[0]?.name}<br/>${fmtSeconds(ps[0]?.value ?? 0)}`,
+  },
+  xAxis: {
+    type: 'category',
+    data: trendBars.value.map((b) => b.label),
+    axisLabel: { color: axisLabel.value, fontSize: 10, hideOverlap: true },
+    axisLine: { lineStyle: { color: axisLine.value } },
+    axisTick: { show: false },
+  },
+  yAxis: {
+    type: 'value',
+    axisLabel: { color: axisLabel.value, fontSize: 10, formatter: fmtYTick },
+    splitLine: { lineStyle: { color: splitLine.value, type: 'dashed' } },
+  },
+  series: [
+    {
+      type: 'bar',
+      data: trendBars.value.map((b) => b.seconds),
+      barCategoryGap: '25%',
+      itemStyle: {
+        borderRadius: [3, 3, 0, 0],
+        color: {
+          type: 'linear',
+          x: 0,
+          y: 0,
+          x2: 0,
+          y2: 1,
+          colorStops: [
+            { offset: 0, color: '#8b5cf6' },
+            { offset: 1, color: '#c4b5fd' },
+          ],
+        },
+      },
+    },
+  ],
+}))
+
+/** 热力图：星期（行）× 小时（列），铺满 7×24 补零；色带随明暗主题 */
+const dowNames = computed(() => tr('stats.dowNames').split(','))
+const heatOption = computed(() => {
+  const map = new Map(heat.value.map((c) => [`${c.dow}:${c.hour}`, c.seconds]))
+  const dows = [1, 2, 3, 4, 5, 6, 0] // 行序：周一…周日（yAxis inverse 后首行在顶）
+  const data: [number, number, number][] = []
+  dows.forEach((dow, yi) => {
+    for (let hh = 0; hh < 24; hh++) data.push([hh, yi, map.get(`${dow}:${hh}`) ?? 0])
+  })
+  const max = Math.max(1, ...heat.value.map((c) => c.seconds))
+  return {
+    grid: { left: 8, right: 8, top: 6, bottom: 0, containLabel: true },
+    tooltip: {
+      ...tooltipBase.value,
+      formatter: (p: { value: [number, number, number] }) =>
+        `${dowNames.value[p.value[1]] ?? ''} ${String(p.value[0]).padStart(2, '0')}:00 · ${fmtSeconds(p.value[2])}`,
+    },
+    xAxis: {
+      type: 'category',
+      data: Array.from({ length: 24 }, (_, h) => String(h)),
+      axisLabel: { color: axisLabel.value, fontSize: 10, interval: 5 },
+      axisLine: { show: false },
+      axisTick: { show: false },
+    },
+    yAxis: {
+      type: 'category',
+      data: dowNames.value,
+      inverse: true,
+      axisLabel: { color: axisLabel.value, fontSize: 11 },
+      axisLine: { show: false },
+      axisTick: { show: false },
+    },
+    visualMap: {
+      show: false,
+      min: 0,
+      max,
+      inRange: {
+        color: axisLabel.value === '#a1a1aa'
+          ? ['#27272a', '#312e81', '#5b21b6', '#7c3aed', '#8b5cf6']
+          : ['#f4f4f5', '#ede9fe', '#ddd6fe', '#a78bfa', '#7c3aed'],
+      },
+    },
+    series: [
+      {
+        type: 'heatmap',
+        data,
+        itemStyle: { borderRadius: 3, borderColor: cardBg.value, borderWidth: 1 },
+      },
+    ],
+  }
+})
+
+/** 占比环形图：by=mode/source 各一个；空数据返回 null 由模板隐藏 */
+function donutOption(list: ListenBreakdownPoint[]) {
+  const total = list.reduce((a, b) => a + b.seconds, 0)
+  if (!list.length || total <= 0) return null
+  return {
+    tooltip: {
+      trigger: 'item',
+      ...tooltipBase.value,
+      formatter: (p: { name: string; percent: number; value: number }) =>
+        `${p.name}<br/>${p.percent}% · ${fmtSeconds(p.value)}`,
+    },
+    legend: {
+      bottom: 0,
+      left: 'center',
+      itemWidth: 10,
+      itemHeight: 10,
+      icon: 'circle',
+      textStyle: { color: axisLabel.value, fontSize: 11 },
+    },
+    series: [
+      {
+        type: 'pie',
+        radius: ['52%', '78%'],
+        center: ['50%', '44%'],
+        itemStyle: { borderRadius: 4, borderColor: cardBg.value, borderWidth: 2 },
+        label: { show: false },
+        emphasis: { scaleSize: 4 },
+        data: list.map((p, i) => ({
+          name: kindLabel(p.kind),
+          value: p.seconds,
+          itemStyle: { color: CHART_COLORS[i % CHART_COLORS.length] },
+        })),
+      },
+    ],
+  }
 }
+const modeDonut = computed(() => donutOption(breakdownMode.value))
+const sourceDonut = computed(() => donutOption(breakdownSource.value))
+
 function kindLabel(kind: string): string {
   const modeMap: Record<string, string> = {
     order: tr('stats.modeOrder'),
@@ -185,9 +289,6 @@ function kindLabel(kind: string): string {
   }
   return modeMap[kind] ?? (kind === 'local' ? tr('stats.srcLocal') : kind === 'webdav' ? tr('stats.srcWebdav') : kind)
 }
-
-const modeRows = computed(() => breakdownRows(breakdownMode.value))
-const sourceRows = computed(() => breakdownRows(breakdownSource.value))
 
 function fmtDate(ts: number | null): string {
   if (!ts) return '—'
@@ -266,59 +367,13 @@ function goItem(t: ListenTopItem) {
             />
           </div>
         </div>
-        <div class="mt-4 flex h-36 items-end gap-[3px]">
-          <div
-            v-for="bar in trendBars"
-            :key="bar.key"
-            class="group flex min-w-0 flex-1 cursor-default flex-col items-center justify-end self-stretch"
-            v-tooltip="`${bar.label} · ${fmtSeconds(bar.seconds)}`"
-          >
-            <div
-              class="w-full rounded-t-sm bg-gradient-to-t from-violet-500 to-violet-400 transition-colors group-hover:from-violet-600 group-hover:to-violet-500"
-              :style="{ height: `${Math.max(bar.seconds > 0 ? 4 : 0, (bar.seconds / trendMax) * 100)}%` }"
-            />
-          </div>
-        </div>
-        <div v-if="trendBars.length" class="mt-1.5 flex gap-[3px] text-[10px] tabular-nums text-zinc-400">
-          <span class="min-w-0 flex-1 text-left">{{ trendBars[0]?.label }}</span>
-          <span class="min-w-0 flex-1 text-center">{{ trendBars[Math.floor(trendBars.length / 2)]?.label }}</span>
-          <span class="min-w-0 flex-1 text-right">{{ trendBars[trendBars.length - 1]?.label }}</span>
-        </div>
+        <VChart class="h-56 w-full" :option="trendOption" autoresize />
       </section>
 
       <!-- 星期 × 小时热力图 -->
       <section class="rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
-        <div class="flex flex-wrap items-center justify-between gap-2">
-          <h2 class="text-sm font-semibold text-zinc-800 dark:text-zinc-100">{{ $t('stats.heatTitle') }}</h2>
-          <div class="flex items-center gap-1 text-[10px] text-zinc-400">
-            <span>{{ $t('stats.heatLess') }}</span>
-            <span v-for="(cls, i) in HEAT_CLASSES" :key="i" class="h-3 w-3 rounded-[3px]" :class="cls" />
-            <span>{{ $t('stats.heatMore') }}</span>
-          </div>
-        </div>
-        <div class="mt-4 flex flex-col gap-1">
-          <div v-for="row in heatRows" :key="row.dow" class="flex items-center gap-1">
-            <span class="w-8 shrink-0 text-right text-[11px] text-zinc-400">{{ row.label }}</span>
-            <div class="grid min-w-0 flex-1 grid-cols-[repeat(24,minmax(0,1fr))] gap-[2px]">
-              <div
-                v-for="cell in row.cells"
-                :key="cell.hour"
-                class="h-5 cursor-default rounded-[3px]"
-                :class="HEAT_CLASSES[cell.level]"
-                v-tooltip="`${row.label} ${String(cell.hour).padStart(2, '0')}:00 · ${fmtSeconds(Math.round((cell.level / 4) * heatMax))}`"
-              />
-            </div>
-          </div>
-          <!-- 小时刻度 -->
-          <div class="flex items-center gap-1">
-            <span class="w-8 shrink-0" />
-            <div class="grid min-w-0 flex-1 grid-cols-[repeat(24,minmax(0,1fr))] gap-[2px] text-[9px] tabular-nums text-zinc-400">
-              <span v-for="h in 24" :key="h" class="text-center">
-                {{ [0, 6, 12, 18, 23].includes(h - 1) ? h - 1 : '' }}
-              </span>
-            </div>
-          </div>
-        </div>
+        <h2 class="text-sm font-semibold text-zinc-800 dark:text-zinc-100">{{ $t('stats.heatTitle') }}</h2>
+        <VChart class="h-52 w-full" :option="heatOption" autoresize />
       </section>
 
       <!-- 榜单 -->
@@ -389,35 +444,21 @@ function goItem(t: ListenTopItem) {
         </div>
       </section>
 
-      <!-- 播放模式 / 来源占比 -->
+      <!-- 播放模式 / 来源占比（环形图） -->
       <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <section class="rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
           <h2 class="text-sm font-semibold text-zinc-800 dark:text-zinc-100">{{ $t('stats.byModeTitle') }}</h2>
-          <div class="mt-3 flex flex-col gap-2.5">
-            <div v-for="row in modeRows" :key="row.kind" class="flex items-center gap-2 text-xs">
-              <span class="w-16 shrink-0 text-zinc-500">{{ row.label }}</span>
-              <div class="h-2.5 min-w-0 flex-1 overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-800">
-                <div class="h-full rounded-full" :class="row.color" :style="{ width: `${row.pct}%` }" />
-              </div>
-              <span class="w-24 shrink-0 text-right tabular-nums text-zinc-400">
-                {{ row.pct }}% · {{ fmtSeconds(row.seconds) }}
-              </span>
-            </div>
-          </div>
+          <VChart v-if="modeDonut" class="h-52 w-full" :option="modeDonut" autoresize />
+          <p v-else class="flex h-52 items-center justify-center text-sm" :style="{ color: emptyText }">
+            {{ $t('stats.emptyRange') }}
+          </p>
         </section>
         <section class="rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
           <h2 class="text-sm font-semibold text-zinc-800 dark:text-zinc-100">{{ $t('stats.bySourceTitle') }}</h2>
-          <div class="mt-3 flex flex-col gap-2.5">
-            <div v-for="row in sourceRows" :key="row.kind" class="flex items-center gap-2 text-xs">
-              <span class="w-16 shrink-0 text-zinc-500">{{ row.label }}</span>
-              <div class="h-2.5 min-w-0 flex-1 overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-800">
-                <div class="h-full rounded-full" :class="row.color" :style="{ width: `${row.pct}%` }" />
-              </div>
-              <span class="w-24 shrink-0 text-right tabular-nums text-zinc-400">
-                {{ row.pct }}% · {{ fmtSeconds(row.seconds) }}
-              </span>
-            </div>
-          </div>
+          <VChart v-if="sourceDonut" class="h-52 w-full" :option="sourceDonut" autoresize />
+          <p v-else class="flex h-52 items-center justify-center text-sm" :style="{ color: emptyText }">
+            {{ $t('stats.emptyRange') }}
+          </p>
         </section>
       </div>
 
