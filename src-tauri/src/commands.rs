@@ -1057,11 +1057,26 @@ pub fn playlist_delete(state: State<'_, AppState>, id: i64) -> Result<(), String
 }
 
 #[tauri::command]
-pub fn playlist_get_items(state: State<'_, AppState>, id: i64) -> Result<Vec<Track>, String> {
+pub fn playlist_get_items(
+    state: State<'_, AppState>,
+    id: i64,
+    sort: Option<String>,
+) -> Result<Vec<Track>, String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
+    // 默认（空/none）= 加入时间倒序：新添加的歌曲排在最前；同时加入的按插入顺序（id）倒序。
+    // 表头排序与 query_tracks 同款 PINYIN 分组序（数字 < 字母 < 汉字），尾部以加入时间倒序兜底 tie-break
+    let order_sql = match sort.as_deref() {
+        Some("-title") => "ORDER BY t.title COLLATE PINYIN DESC, i.added_at DESC, i.id DESC",
+        Some("album") => "ORDER BY IFNULL(al.title, CHAR(1114110)) COLLATE PINYIN ASC, IFNULL(t.disc_no,0) ASC, IFNULL(t.track_no,0) ASC, t.title COLLATE PINYIN ASC, i.added_at DESC, i.id DESC",
+        Some("-album") => "ORDER BY IFNULL(al.title, CHAR(1114110)) COLLATE PINYIN DESC, IFNULL(t.disc_no,0) DESC, IFNULL(t.track_no,0) DESC, t.title COLLATE PINYIN DESC, i.added_at DESC, i.id DESC",
+        Some("artist") => "ORDER BY IFNULL(a.name, CHAR(1114110)) COLLATE PINYIN ASC, IFNULL(al.title, CHAR(1114110)) COLLATE PINYIN ASC, IFNULL(t.track_no,0) ASC, i.added_at DESC, i.id DESC",
+        Some("-artist") => "ORDER BY IFNULL(a.name, CHAR(1114110)) COLLATE PINYIN DESC, IFNULL(al.title, CHAR(1114110)) COLLATE PINYIN DESC, IFNULL(t.track_no,0) DESC, i.added_at DESC, i.id DESC",
+        Some("duration") => "ORDER BY IFNULL(t.duration,0) ASC, i.added_at DESC, i.id DESC",
+        Some("-duration") => "ORDER BY IFNULL(t.duration,0) DESC, i.added_at DESC, i.id DESC",
+        _ => "ORDER BY i.added_at DESC, i.id DESC",
+    };
     let sql = format!(
-        // 按加入时间倒序：新添加的歌曲排在最前；同时加入的按插入顺序（id）倒序
-        "{TRACK_SELECT} JOIN playlist_items i ON i.track_id = t.id WHERE i.playlist_id = ?1 ORDER BY i.added_at DESC, i.id DESC"
+        "{TRACK_SELECT} JOIN playlist_items i ON i.track_id = t.id WHERE i.playlist_id = ?1 {order_sql}"
     );
     let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
     let mut items: Vec<Track> = stmt

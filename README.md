@@ -42,7 +42,7 @@
   - 基本信息：名称、简介、创建时间、歌曲数量
   - 歌单封面：自动使用最新加入歌曲的专辑封面
   - 添加歌曲：搜索勾选面板（支持"全部/已选"视图切换、全选/清空、已在歌单禁选）
-  - 排序：默认按加入时间倒序，表头点击可按标题/艺人/专辑/时长排序（升序 → 降序 → 还原三态）；歌单名上限 25 字，被截断时悬停显示全名
+  - 排序：默认按加入时间倒序，表头点击可按标题/艺人/专辑/时长排序（升序 → 降序 → 还原三态）；文本列与曲库同款拼音分组序（后端 `PINYIN` collation 排序）；歌单名上限 25 字，被截断时悬停显示全名
   - 批量操作：多选模式支持播放/加入队列/移出歌单
   - 编辑集中化：通过统一弹层管理名称、简介、删除
 - **歌词**：`.lrc` / `.qrc` 同名文件 + 内嵌歌词（USLT/LYRICS，本地与 WebDAV 来源都支持）；播放页大封面 + 时间轴滚动歌词（点击行跳转）；QRC 逐字歌词按字高亮（Apple Music 式卡拉OK效果，覆盖播放页歌词面板 / 底部播放条单行歌词 / 桌面歌词浮窗，Rust 侧解析，QQ 音乐加密 .qrc 自动解密——新旧两种加密格式均支持）；**增强版 LRC**（Enhanced LRC / A2，行内 `<mm:ss.xx>` 字级时间戳）**与多标签逐字 LRC**（`[00:00.000]身[00:00.582]骑…`）同样按字高亮，与 QRC 共用一套渲染链路（前端 `parseWordLrc()` 统一解析，两种结构自动识别，可混排）；间奏空行折叠；**歌词来源优先级**可设置（外挂 QRC / 外挂 LRC / 内嵌歌词任意顺序，默认 QRC 优先，设置页「歌词」标签，变更后当前歌曲立即生效）；歌词文件读取自动识别编码（UTF-8 / GBK / GB18030，QQ 生态歌词常见 GBK 不再乱码）；**歌词副行（音译 / 译文）**（按歌词文件的行序排布：音译（罗马字）在上、原文居中、译文在下；同起点的副行自动识别并合并——三行逐字歌词不再显示成三个重复行；音译与译文在播放页歌词区各有文字开关（`音` / `译`），**默认关闭**、按曲目记忆，仅当该曲歌词里确实带这条副行时才出现按钮）
@@ -248,7 +248,7 @@ src-tauri/                 # Rust 后端
 |---|---|
 | 来源管理 | `add_local_source(path)` · `list_sources()` · `remove_source(id)` · `rescan_source(id, mode: auto\|full)` · `set_source_fast_import(id, enabled)` · `set_source_scan_subdirs(id, enabled)` · `webdav_add_source(url, username, password, name?)` |
 | 曲库查询 | `query_tracks({view, refId, search, sort, page, pageSize, fields, pinyin})` · `query_albums(search, page, pageSize)` · `query_artists(search, page, pageSize)` · `get_track(id)` · `get_tracks_by_ids(ids)` · `get_stream_url(id)` · `library_stats()` · `reveal_track(id)` · `remove_tracks(ids)`（从曲库移除，不删磁盘文件） · `list_removed_tracks()` / `clear_removed_tracks()`（移除记录） · `restore_removed_tracks(ids)`（还原到曲库） |
-| 歌单 | `playlist_list` · `playlist_create(name)` · `playlist_rename(id, name)` · `playlist_delete(id)` · `playlist_get_items(id)` · `playlist_add_tracks(id, trackIds)` · `playlist_remove_track(id, trackId)` · `playlist_remove_tracks(id, trackIds)` · `playlist_set_description(id, description)` · `playlist_cover(id)` · `playlist_reorder(id, trackIds)` |
+| 歌单 | `playlist_list` · `playlist_create(name)` · `playlist_rename(id, name)` · `playlist_delete(id)` · `playlist_get_items(id, sort?)`（sort 同 query_tracks 的文本/时长值，空 = 加入时间倒序） · `playlist_add_tracks(id, trackIds)` · `playlist_remove_track(id, trackId)` · `playlist_remove_tracks(id, trackIds)` · `playlist_set_description(id, description)` · `playlist_cover(id)` · `playlist_reorder(id, trackIds)` |
 | 播放/歌词/喜欢 | `report_play(id)` · `get_lyrics(id)` · `favorite_toggle(id, fav)` · `set_thumbbar_playing(playing)`（Windows 任务栏缩略图按钮图标同步） · `desktop_lyrics_set(enabled)`（桌面歌词浮窗开关） · `list_system_fonts()`（系统字体列表） · `set_prevent_sleep(prevent)`（播放时阻止系统休眠/锁屏） |
 | 设置 | `get_setting(key)` · `set_setting(key, value)` · `get_builtin_skip_dirs()`（内置跳过目录名，设置页用于标出这批「内置」关键字） · `get_artist_separators()` · `set_artist_separators(value)`（保存多艺人分隔符并立即重拆曲库，返回受影响曲目的艺人变更列表） · `normalize_artist_names()`（规整同义艺人名） · `merge_artist(sourceId, targetId)`（自定义合并，旧名记为别名） · `list_artist_aliases()`（已合并名单） |
 

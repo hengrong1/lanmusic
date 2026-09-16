@@ -71,7 +71,9 @@ export const api = {
   playlistSetDescription: (id: number, description: string) =>
     invoke<void>('playlist_set_description', { id, description }),
   playlistDelete: (id: number) => invoke<void>('playlist_delete', { id }),
-  playlistGetItems: (id: number) => invoke<Track[]>('playlist_get_items', { id }),
+  /** sort 为空 = 加入时间倒序；title/-title/album/-album/artist/-artist/duration/-duration 走后端拼音分组排序 */
+  playlistGetItems: (id: number, sort?: string) =>
+    invoke<Track[]>('playlist_get_items', { id, sort }),
   /** 返回实际新增数量（同歌单内已存在的曲目会跳过） */
   playlistAddTracks: (id: number, trackIds: number[]) =>
     invoke<number>('playlist_add_tracks', { id, trackIds }),

@@ -41,28 +41,10 @@ const coverAlbumId = ref<number | null>(null)
 const pickerOpen = ref(false)
 const editOpen = ref(false)
 
-// ---- 表头点击排序（前端客户端排序；'' / 'none' = 按加入时间倒序的默认顺序）----
+// ---- 表头点击排序（走后端 playlist_get_items 的 PINYIN 分组序，与曲库一致；'' / 'none' = 加入时间倒序默认）----
 const sort = ref('')
-const sortedTracks = computed(() => {
-  const s = sort.value
-  if (!s || s === 'none') return tracks.value
-  const desc = s.startsWith('-')
-  const field = desc ? s.slice(1) : s
-  const arr = [...tracks.value]
-  arr.sort((a, b) => {
-    let c: number
-    if (field === 'duration') {
-      c = (a.duration ?? 0) - (b.duration ?? 0)
-    } else {
-      const va = String((a as unknown as Record<string, unknown>)[field] ?? '')
-      const vb = String((b as unknown as Record<string, unknown>)[field] ?? '')
-      c = va.localeCompare(vb, 'zh-CN', { numeric: true })
-    }
-    return desc ? -c : c
-  })
-  return arr
-})
 function onSortChange(v: string) {
+  if (sort.value === v) return
   sort.value = v
 }
 
@@ -130,8 +112,8 @@ function onDeleted() {
 // ---- 歌单多选批量操作 ----
 const batchMode = ref(false)
 const selIds = ref<number[]>([])
-/** 已选曲目按当前显示顺序取（排序后批量播放保持所见即所得） */
-const selTracks = computed(() => sortedTracks.value.filter((t) => selIds.value.includes(t.id)))
+/** 已选曲目按当前显示顺序取（后端已排序，批量播放保持所见即所得） */
+const selTracks = computed(() => tracks.value.filter((t) => selIds.value.includes(t.id)))
 
 function enterBatch() {
   batchMode.value = true
@@ -235,7 +217,11 @@ async function load() {
   const my = ++loadSeq
   loading.value = true
   try {
-    const [items, cover] = await Promise.all([api.playlistGetItems(id), api.playlistCover(id)])
+    // sort 传当前表头排序（空 = 加入时间倒序默认）；排序由后端 PINYIN collation 完成，与曲库一致
+    const [items, cover] = await Promise.all([
+      api.playlistGetItems(id, sort.value || undefined),
+      api.playlistCover(id),
+    ])
     if (my !== loadSeq) return
     tracks.value = items
     // 歌单封面 = 最新加入歌曲的专辑封面
@@ -249,9 +235,10 @@ async function load() {
 
 onMounted(load)
 watch(playlistId, load)
+watch(sort, load)
 
 function playAll() {
-  if (sortedTracks.value.length) player.playList(sortedTracks.value, 0)
+  if (tracks.value.length) player.playList(tracks.value, 0)
 }
 
 /** 选歌弹层添加成功后：刷新列表、封面与侧栏计数 */
@@ -338,7 +325,7 @@ async function onPickerAdded() {
 
     <div v-else class="min-h-0 flex-1">
       <TrackTable
-        :tracks="sortedTracks"
+        :tracks="tracks"
         :sort="sort"
         :playlist-id="playlistId ?? undefined"
         :batch-mode="batchMode"
