@@ -31,7 +31,8 @@ tauri-plugin-log = "2"
 log = "0.4"
 # 更新包下载后的 SHA-256 校验（纯 Rust 实现，见 updater.rs）
 sha2 = "0.10"
-rusqlite = { version = "0.40.2", features = ["bundled"] }
+# collation：自定义排序规则（中文按拼音排序，见 db.rs::open_conn 注册 PINYIN）
+rusqlite = { version = "0.40.2", features = ["bundled", "collation"] }
 lofty = "0.25.1"
 # 歌词文件编码识别：QQ 生态歌词常见 GBK/GB18030，按 UTF-8 读会乱码（见 lyrics.rs decode_lyric_bytes）
 encoding_rs = "0.8"

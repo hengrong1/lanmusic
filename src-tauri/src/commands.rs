@@ -526,19 +526,21 @@ pub fn query_tracks(state: State<'_, AppState>, q: TrackQuery) -> Result<Page<Tr
     let (view_where, mut args) = view_filter(&q);
     let args = &mut args;
     let where_sql = view_where;
-    // 排序：支持 "-" 前缀表示降序（表头点击排序）
+    // 排序：支持 "-" 前缀表示降序（表头点击排序）。
+    // COLLATE PINYIN：自定义 collation（db.rs::open_conn 注册），分组序 = 数字 < 字母 < 汉字（拼音）。
+    // 空值兜底用 CHAR(1114110)（U+10FFFE，大于 pinyin_key 的汉字哨兵 U+10FFFD），空专辑/艺人绝对排最后
     let order_sql = match q.sort.as_deref() {
-        Some("-title") => "ORDER BY t.title COLLATE NOCASE DESC",
-        Some("album") => "ORDER BY IFNULL(al.title,'~') COLLATE NOCASE ASC, IFNULL(t.disc_no,0) ASC, IFNULL(t.track_no,0) ASC, t.title COLLATE NOCASE ASC",
-        Some("-album") => "ORDER BY IFNULL(al.title,'~') COLLATE NOCASE DESC, IFNULL(t.disc_no,0) DESC, IFNULL(t.track_no,0) DESC, t.title COLLATE NOCASE DESC",
-        Some("artist") => "ORDER BY IFNULL(a.name,'~') COLLATE NOCASE ASC, IFNULL(al.title,'~') COLLATE NOCASE ASC, IFNULL(t.track_no,0) ASC",
-        Some("-artist") => "ORDER BY IFNULL(a.name,'~') COLLATE NOCASE DESC, IFNULL(al.title,'~') COLLATE NOCASE DESC, IFNULL(t.track_no,0) DESC",
+        Some("-title") => "ORDER BY t.title COLLATE PINYIN DESC",
+        Some("album") => "ORDER BY IFNULL(al.title, CHAR(1114110)) COLLATE PINYIN ASC, IFNULL(t.disc_no,0) ASC, IFNULL(t.track_no,0) ASC, t.title COLLATE PINYIN ASC",
+        Some("-album") => "ORDER BY IFNULL(al.title, CHAR(1114110)) COLLATE PINYIN DESC, IFNULL(t.disc_no,0) DESC, IFNULL(t.track_no,0) DESC, t.title COLLATE PINYIN DESC",
+        Some("artist") => "ORDER BY IFNULL(a.name, CHAR(1114110)) COLLATE PINYIN ASC, IFNULL(al.title, CHAR(1114110)) COLLATE PINYIN ASC, IFNULL(t.track_no,0) ASC",
+        Some("-artist") => "ORDER BY IFNULL(a.name, CHAR(1114110)) COLLATE PINYIN DESC, IFNULL(al.title, CHAR(1114110)) COLLATE PINYIN DESC, IFNULL(t.track_no,0) DESC",
         Some("added") => "ORDER BY t.id DESC",
         Some("none") => "ORDER BY t.id ASC",
         Some("duration") => "ORDER BY IFNULL(t.duration,0) ASC",
         Some("-duration") => "ORDER BY IFNULL(t.duration,0) DESC",
         Some("recent") => "ORDER BY CASE WHEN t.last_played_at IS NULL THEN 1 ELSE 0 END, t.last_played_at DESC",
-        _ => "ORDER BY t.title COLLATE NOCASE ASC",
+        _ => "ORDER BY t.title COLLATE PINYIN ASC",
     };
     let page = q.page.unwrap_or(0) as i64;
     let page_size = q.page_size.unwrap_or(200).clamp(1, 5000) as i64;
@@ -611,7 +613,7 @@ pub fn query_albums(
         "SELECT al.id, al.title, a.name, al.year, al.has_cover, \
                 (SELECT COUNT(*) FROM tracks t WHERE t.album_id = al.id) \
          FROM albums al LEFT JOIN artists a ON a.id = al.artist_id \
-         {where_sql} ORDER BY al.title COLLATE NOCASE LIMIT {page_size} OFFSET {offset}"
+         {where_sql} ORDER BY al.title COLLATE PINYIN LIMIT {page_size} OFFSET {offset}"
     );
     let items: Vec<AlbumItem> = collect_rows(&conn, &sql, like.as_ref(), |r| {
         Ok(AlbumItem {
@@ -672,7 +674,7 @@ pub fn query_artists(
         "SELECT ar.id, ar.name, \
          (SELECT COUNT(*) FROM tracks t WHERE t.artist_id = ar.id \
            OR EXISTS (SELECT 1 FROM track_artists ta WHERE ta.track_id = t.id AND ta.artist_id = ar.id)) \
-         FROM artists ar {where_sql} ORDER BY ar.name COLLATE NOCASE LIMIT {page_size} OFFSET {offset}"
+         FROM artists ar {where_sql} ORDER BY ar.name COLLATE PINYIN LIMIT {page_size} OFFSET {offset}"
     );
     let items: Vec<ArtistItem> = collect_rows(&conn, &sql, like.as_ref(), |r| {
         Ok(ArtistItem {
@@ -1858,7 +1860,7 @@ pub fn list_artist_aliases(state: State<'_, AppState>) -> Result<Vec<ArtistAlias
         .prepare(
             "SELECT aa.alias, a.id, a.name FROM artist_aliases aa \
              JOIN artists a ON a.id = aa.artist_id \
-             ORDER BY a.name COLLATE NOCASE, aa.alias COLLATE NOCASE",
+             ORDER BY a.name COLLATE PINYIN, aa.alias COLLATE PINYIN",
         )
         .map_err(|e| e.to_string())?;
     let items = stmt

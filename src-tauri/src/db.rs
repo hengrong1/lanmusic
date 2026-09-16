@@ -1,5 +1,58 @@
+use pinyin::ToPinyin;
 use rusqlite::Connection;
 use std::path::Path;
+
+/// 拼音排序 key（分组式）：数字 < 字母 < 汉字，组内各按次序。
+/// 汉字逐字符转无声调全拼（多音字取默认音），并在每个汉字前插入哨兵字符
+/// （U+10FFFD，仅次于 Unicode 非字符的极大码点）——汉字域整体大于数字/字母/常见符号，
+/// 因此「Adele」排在「阿杜」之前（组分组），而「阿杜 vs 周杰伦」仍按拼音比（哨兵相同比拼音）。
+/// 非汉字字符 Unicode 小写原样保留，涵盖原 NOCASE 大小写不敏感语义。
+/// 连续 ASCII 数字段转定宽（12 位右对齐补零）token：段内按数值排序（"2" < "10"），
+/// 超 12 位的段取末 12 位（降级为模 10^12 序，曲名数字段不会这么长）；
+/// 注意 "1" 与 "01" 的 key 相等（数值等价），相等行顺序由 SQLite 决定。
+/// 空值兜底（SQL 侧 IFNULL(x, CHAR(1114110)) = U+10FFFE）大于汉字哨兵，无专辑/艺人绝对排最后。
+/// 注意：混合串（如「AB张三」）按逐字符映射自然分段，前缀段（字母）先比，行为符合直觉。
+fn pinyin_key(s: &str) -> String {
+    // 汉字域哨兵：大于一切常规文本字符（仅 U+10FFFE/FFFF 非字符在其后，实际文本不出现；
+    // SQL 空值兜底即借用 U+10FFFE，见 commands.rs 排序分支）
+    const HAN_SENTINEL: char = '\u{10FFFD}';
+    /// 数字段定宽位数
+    const NUM_WIDTH: usize = 12;
+    let mut out = String::with_capacity(s.len() * 2);
+    let mut digits = String::new();
+    for c in s.chars() {
+        if c.is_ascii_digit() {
+            digits.push(c);
+            continue;
+        }
+        if !digits.is_empty() {
+            flush_digit_segment(&mut out, &mut digits, NUM_WIDTH);
+        }
+        if let Some(py) = c.to_pinyin() {
+            out.push(HAN_SENTINEL);
+            out.push_str(py.plain());
+        } else {
+            out.extend(c.to_lowercase());
+        }
+    }
+    if !digits.is_empty() {
+        flush_digit_segment(&mut out, &mut digits, NUM_WIDTH);
+    }
+    out
+}
+
+/// 把攒下的数字段以定宽补零形式写入 key（右对齐，前导补 '0'），
+/// 使段间数值序 == 字节序；补零后首字符仍是 '0'，保持数字组排在字母组之前的分组语义。
+fn flush_digit_segment(out: &mut String, digits: &mut String, width: usize) {
+    // 超宽段取末 width 位（ASCII 数字按字节切片安全）
+    let start = digits.len().saturating_sub(width);
+    let seg = &digits[start..];
+    for _ in 0..width - seg.len() {
+        out.push('0');
+    }
+    out.push_str(seg);
+    digits.clear();
+}
 
 const SCHEMA: &str = r#"
 CREATE TABLE IF NOT EXISTS sources (
@@ -145,6 +198,11 @@ pub fn open_conn(path: &Path, init: bool) -> rusqlite::Result<Connection> {
     conn.busy_timeout(std::time::Duration::from_secs(5))?;
     conn.pragma_update(None, "journal_mode", "WAL")?;
     conn.pragma_update(None, "foreign_keys", "ON")?;
+    // 中文按拼音排序：SQLite 内建 NOCASE 只对 ASCII 生效，中文按码点（部首笔画序）排
+    // 不符合直觉，注册自定义 collation 供「按标题/专辑/艺人」等 ORDER BY 使用。
+    // 比较时即时转换（无缓存）：万首规模单次排序在几十 ms 内，够用；
+    // 库规模显著增长后再考虑入库时预计算拼音辅助列。
+    conn.create_collation("PINYIN", |a: &str, b: &str| pinyin_key(a).cmp(&pinyin_key(b)))?;
     if init {
         conn.execute_batch(SCHEMA)?;
         migrate(&conn)?;
