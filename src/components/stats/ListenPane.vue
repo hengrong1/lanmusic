@@ -47,6 +47,8 @@ const topRange = ref<'week' | 'month' | 'all'>('month')
 const top = ref<ListenTopItem[]>([])
 
 const emit = defineEmits<{ loaded: [] }>()
+/** 图表挂载开关：等首次数据就绪再渲染 VChart，避免容器尚未布局完成时 init（DOM 尺寸为 0 警告 + 图空白） */
+const dataReady = ref(false)
 onMounted(async () => {
   try {
     const [s, st, hm, bm, bs, top0, tr0] = await Promise.all([
@@ -65,6 +67,7 @@ onMounted(async () => {
     breakdownSource.value = bs
     top.value = top0
     trend.value = tr0
+    dataReady.value = true
     emit('loaded')
   } catch (e) {
     toast(errorText(e), 'error')
@@ -318,8 +321,10 @@ function goItem(t: ListenTopItem) {
 
 <template>
   <div class="flex flex-col gap-6">
-    <!-- 汇总卡（图标 + 数值） -->
-    <div class="grid grid-cols-2 gap-3 lg:grid-cols-4">
+    <!-- 图表等数据就绪再挂载：避免 ECharts 在容器未布局完成时 init（宽高为 0） -->
+    <template v-if="dataReady">
+      <!-- 汇总卡（图标 + 数值） -->
+      <div class="grid grid-cols-2 gap-3 lg:grid-cols-4">
       <div
         v-for="card in cards"
         :key="card.label"
@@ -470,6 +475,7 @@ function goItem(t: ListenTopItem) {
         ·
         {{ tr('stats.listenDays', { n: summary?.listenDays ?? 0 }) }}
       </p>
+    </template>
     </template>
   </div>
 </template>

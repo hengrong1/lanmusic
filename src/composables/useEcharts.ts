@@ -14,6 +14,7 @@ import {
   TooltipComponent,
   VisualMapComponent,
 } from 'echarts/components'
+import { LegacyGridContainLabel } from 'echarts/features'
 import { computed, type ComputedRef } from 'vue'
 import { useTheme } from '@/composables/useTheme'
 
@@ -29,6 +30,8 @@ export function ensureEcharts(): void {
     TooltipComponent,
     VisualMapComponent,
     LegendComponent,
+    // echarts 6 起 grid.containLabel 移入 legacy 特性，显式注册以保持旧写法
+    LegacyGridContainLabel,
   ])
   registered = true
 }
