@@ -35,6 +35,7 @@ import { useMvPlayer } from '@/composables/useMvPlayer'
 import { useThemeColor } from '@/composables/useThemeColor'
 import { useBackground } from '@/composables/useBackground'
 import { bgUrl } from '@/api/scheme'
+import { api } from '@/api/commands'
 import { toast } from '@/composables/useToast'
 import { t as translate } from '@/i18n/translate'
 
@@ -193,6 +194,29 @@ const viewComponent = computed(() => {
 
 /** 视图切换的 key：路由任一参数变化都触发过渡 */
 const viewKey = computed(() => JSON.stringify(nav.current.value))
+
+// ---- 视图渲染自检保险 ----
+// 现象（用户报告）：从听歌统计切到别的画面后内容区空白。浏览器 mock 环境无法复现，
+// 故此处加保险：切换后延时检查新视图根元素，若「零高或近乎全透明」（GSAP 中断 / 布局异常 /
+// 残留内联样式），强制清理并写前端日志（进 diagnostics 的前端错误计数 + 落盘），
+// 既能自愈又能为下次复现留下确证。
+const mainEl = ref<HTMLElement | null>(null)
+watch(viewKey, () => {
+  window.setTimeout(() => {
+    const node = mainEl.value?.firstElementChild as HTMLElement | null
+    if (!node || node.nodeType !== 1) return
+    const cs = getComputedStyle(node)
+    const invisible = node.offsetHeight === 0 || Number(cs.opacity) < 0.05
+    if (!invisible) return
+    const before = `h=${node.offsetHeight} op=${cs.opacity}`
+    node.style.opacity = ''
+    node.style.transform = ''
+    node.style.translate = ''
+    api
+      .frontendLog('error', `[view-guard] 视图 ${nav.current.value.view} 渲染异常（${before}），已强制恢复`)
+      .catch(() => {})
+  }, 700)
+})
 
 // ---- GSAP 过渡：主视图切换（简短淡入淡出，不做缩放避免文字模糊）----
 // done 兜底：out-in 模式下若 enter 的 GSAP tween 被意外中断（overwrite / 元素被替换），
@@ -376,7 +400,7 @@ window.addEventListener('keydown', (e) => {
       <div class="flex min-w-0 flex-1 flex-col gap-3">
         <TopBar />
         <!-- 内容卡片：白色圆角浮于灰色底框上，与侧栏/顶栏/播放条形成圆角卡片分区 -->
-        <main class="app-surface-blur min-h-0 flex-1 overflow-hidden rounded-2xl bg-(--app-surface)">
+        <main ref="mainEl" class="app-surface-blur min-h-0 flex-1 overflow-hidden rounded-2xl bg-(--app-surface)">
           <Transition :css="false" mode="out-in" @enter="viewEnter" @leave="viewLeave">
             <component :is="viewComponent" :key="viewKey" />
           </Transition>

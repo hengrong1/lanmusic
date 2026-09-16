@@ -5,6 +5,7 @@
   "windows": ["tray"],
   "permissions": [
     "core:default",
-    "core:window:allow-hide"
+    "core:window:allow-hide",
+    "core:window:allow-set-size"
   ]
 }
