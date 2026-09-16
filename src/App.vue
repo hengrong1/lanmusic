@@ -197,26 +197,32 @@ const viewKey = computed(() => JSON.stringify(nav.current.value))
 
 // ---- 视图渲染自检 ----
 // 现象（用户报告）：从听歌统计切到别的画面后内容区空白（侧栏/顶栏正常、必现、前端零报错）。
-// 浏览器实测（生产构建 + 真实规模数据 1436 曲 / 200 专辑卡 / 满格热力图、三个 tab 路径、
-// dev 模式）均无法复现，判断为真实环境特有组合。故：切换后延时检查新视图根元素——
-// 异常（零高/近乎全透明）时强制恢复并记 error；正常时也记一行 info 现场快照。
-// 现场快照含视图名/尺寸/透明度/文本量/窗口尺寸/html class/DOM 摘要，复现一次即可定位；
-// 排查结束后可把 info 那行去掉（error 分支保留作长期保险）。
+// 实测日志定位：切换后 main 里只剩注释占位（Transition 卡在 out-in 的中间态）、此后所有切换
+// 永久空白。故：切换后延时检查 main 首个元素——异常时记 error（含现场快照，便于后续排查）
+// **并置 forcePlainRender 绕过 Transition 直接渲染视图**（静态兜底，内容必定出现）；
+// 正常时记一行 info 现场快照（排查期用，稳定后可去掉）。
 const mainEl = ref<HTMLElement | null>(null)
+/** true = 放弃过渡动画、直接渲染视图（检测到 Transition 卡死时的自愈路径） */
+const forcePlainRender = ref(false)
 watch(viewKey, () => {
   window.setTimeout(() => {
     const view = nav.current.value.view
     const node = mainEl.value?.firstElementChild as HTMLElement | null
+    const env =
+      `win=${window.innerWidth}x${window.innerHeight} html=${document.documentElement.className} ` +
+      `children=${mainEl.value?.childNodes.length ?? -1}`
     if (!node || node.nodeType !== 1) {
-      api.frontendLog('warn', `[view-guard] 视图 ${view} 的 main 内没有元素节点`).catch(() => {})
+      forcePlainRender.value = true
+      api
+        .frontendLog('error', `[view-guard] 视图 ${view} 未渲染（main 无元素），已切换为无过渡渲染 | ${env}`)
+        .catch(() => {})
       return
     }
     const cs = getComputedStyle(node)
     const textLen = (node.innerText || '').length
     const snapshot =
-      `h=${node.offsetHeight} w=${node.offsetWidth} op=${cs.opacity} text=${textLen} ` +
-      `win=${window.innerWidth}x${window.innerHeight} html=${document.documentElement.className} ` +
-      `scroll=${mainEl.value?.scrollHeight ?? -1} dom=${node.outerHTML.slice(0, 200).replace(/\s+/g, ' ')}`
+      `h=${node.offsetHeight} w=${node.offsetWidth} op=${cs.opacity} text=${textLen} ${env} ` +
+      `scroll=${mainEl.value?.scrollHeight ?? -1} dom=${node.outerHTML.slice(0, 160).replace(/\s+/g, ' ')}`
     if (node.offsetHeight === 0 || Number(cs.opacity) < 0.05) {
       node.style.opacity = ''
       node.style.transform = ''
@@ -228,62 +234,12 @@ watch(viewKey, () => {
   }, 900)
 })
 
-// ---- GSAP 过渡：主视图切换（简短淡入淡出，不做缩放避免文字模糊）----
-// done 兜底：out-in 模式下若 enter 的 GSAP tween 被意外中断（overwrite / 元素被替换），
-// onComplete 不会触发、Transition 永久挂起 → 新视图停在 opacity 0（表现为切页后全空白）。
-// 600ms 强制完成兜底，幂等。
-function viewEnter(el: Element, done: () => void) {
-  // 懒加载视图首次进入时可能先渲染注释占位节点：直接完成，避免动画挂在空目标上
-  if (el.nodeType !== 1) {
-    done()
-    return
-  }
-  let finished = false
-  const finish = () => {
-    if (!finished) {
-      finished = true
-      done()
-    }
-  }
-  const guard = window.setTimeout(finish, 600)
-  gsap.fromTo(
-    el,
-    { opacity: 0, y: 18 },
-    {
-      opacity: 1,
-      y: 0,
-      duration: 0.32,
-      ease: 'power2.out',
-      overwrite: 'auto',
-      clearProps: 'all',
-      onComplete: () => {
-        window.clearTimeout(guard)
-        finish()
-      },
-    },
-  )
-}
-function viewLeave(el: Element, done: () => void) {
-  let finished = false
-  const finish = () => {
-    if (!finished) {
-      finished = true
-      done()
-    }
-  }
-  const guard = window.setTimeout(finish, 400)
-  gsap.to(el, {
-    opacity: 0,
-    y: -14,
-    duration: 0.16,
-    ease: 'power1.in',
-    overwrite: 'auto',
-    onComplete: () => {
-      window.clearTimeout(guard)
-      finish()
-    },
-  })
-}
+// ---- 主视图切换过渡 ----
+// 已改为 **CSS 过渡**（见 style.css 的 .view-* 类）：
+// 原 GSAP JS 过渡在部分环境下 leave 的完成回调不触发（实测用户机：leave 动画停在 6.6%、
+// main 里只剩注释占位、且此后所有切换永久空白），out-in 状态机会被永久挂起。
+// CSS 过渡由合成器驱动、由 Vue 内置的 transitionend + 超时兜底接管，不存在「回调不来」的死角。
+// 另见下方 view-guard 的 forcePlainRender：万一仍检测到视图未渲染，直接绕过 Transition 渲染。
 
 // ---- GSAP 过渡：播放页环境背景（进入淡入；退出与内容层同步下滑，全程保持不透明，避免中途透出底层视图）----
 function npBgEnter(el: Element, done: () => void) {
@@ -411,9 +367,11 @@ window.addEventListener('keydown', (e) => {
         <TopBar />
         <!-- 内容卡片：白色圆角浮于灰色底框上，与侧栏/顶栏/播放条形成圆角卡片分区 -->
         <main ref="mainEl" class="app-surface-blur min-h-0 flex-1 overflow-hidden rounded-2xl bg-(--app-surface)">
-          <Transition :css="false" mode="out-in" @enter="viewEnter" @leave="viewLeave">
+          <!-- 常规：CSS 过渡（合成器驱动）；一旦检测到视图未渲染 → 绕过 Transition 直接渲染（自愈） -->
+          <Transition v-if="!forcePlainRender" name="view" mode="out-in">
             <component :is="viewComponent" :key="viewKey" />
           </Transition>
+          <component v-else :is="viewComponent" :key="viewKey" />
         </main>
       </div>
       <QueuePanel :open="queueOpen" :now-playing="nowPlaying" @close="queueOpen = false" />
