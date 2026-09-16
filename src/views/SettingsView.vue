@@ -1775,12 +1775,15 @@ const showWebdavLimits = computed(() => showWebdav.value || library.sources.some
 
             <!-- 听歌统计入口：默认隐藏（用户要求），开关只控制侧栏入口显示，流水始终在记录 -->
             <section>
-              <div class="flex items-center justify-between gap-3">
-                <div class="min-w-0">
-                  <p class="text-zinc-600 dark:text-zinc-300">{{ t('settings.statsEntry') }}</p>
-                  <p class="mt-0.5 text-xs text-zinc-400">{{ t('settings.statsEntryHint') }}</p>
+              <h3 class="mb-2.5 text-sm font-semibold text-zinc-800 dark:text-zinc-100">{{ $t('stats.title') }}</h3>
+              <div class="rounded-xl border border-zinc-200 bg-white p-4 text-sm text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900">
+                <div class="flex items-center justify-between gap-3">
+                  <div class="min-w-0">
+                    <p class="text-zinc-600 dark:text-zinc-300">{{ t('settings.statsEntry') }}</p>
+                    <p class="mt-0.5 text-xs text-zinc-400">{{ t('settings.statsEntryHint') }}</p>
+                  </div>
+                  <BaseSwitch :model-value="statsEnabled" size="sm" @update:model-value="setStatsEntry" />
                 </div>
-                <BaseSwitch :model-value="statsEnabled" size="sm" @update:model-value="setStatsEntry" />
               </div>
             </section>
 

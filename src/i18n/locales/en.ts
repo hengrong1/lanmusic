@@ -156,7 +156,7 @@ export default {
     closeToTray: 'Minimize to tray when closing the window',
     closeToQuit: 'Quit the app when closing the window',
     closeAction: 'On Close', closeActionDesc: 'Choose what happens when clicking the close button',
-    statsEntry: 'Show "Listening Stats" entry', statsEntryHint: 'Show the stats page entry in the sidebar; recording keeps running in the background even when hidden',
+    statsEntry: 'Show sidebar entry', statsEntryHint: 'Show the stats page in the sidebar; recording keeps running in the background even when hidden',
     closeActionTray: 'Minimize to Tray', closeActionQuit: 'Quit App',
     rerunOnboarding: 'Run setup guide again',
     rerunOnboardingDesc: 'Show the first-run setup again (language, appearance preset, add music).',

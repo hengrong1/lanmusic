@@ -149,7 +149,7 @@ export default {
     minimizeToTray: '最小化到托盘', minimizeToTrayDesc: '关闭窗口时最小化到托盘',
     closeToTray: '关闭窗口时将最小化到托盘', closeToQuit: '关闭窗口时将退出应用',
     closeAction: '关闭窗口时', closeActionDesc: '选择点击关闭按钮后的行为',
-    statsEntry: '显示「听歌统计」入口', statsEntryHint: '在侧栏显示听歌统计页入口；关闭后统计仍会在后台记录',
+    statsEntry: '在侧栏显示入口', statsEntryHint: '开启后侧栏出现「听歌统计」页；关闭后统计仍会在后台记录',
     closeActionTray: '最小化到托盘', closeActionQuit: '退出应用',
     rerunOnboarding: '重新运行首次引导',
     rerunOnboardingDesc: '再次显示首次启动的引导流程（语言、外观预设、添加音乐）。',
