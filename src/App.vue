@@ -195,12 +195,11 @@ const viewComponent = computed(() => {
 /** 视图切换的 key：路由任一参数变化都触发过渡 */
 const viewKey = computed(() => JSON.stringify(nav.current.value))
 
-// ---- 视图渲染自检 ----
-// 现象（用户报告）：从听歌统计切到别的画面后内容区空白（侧栏/顶栏正常、必现、前端零报错）。
-// 实测日志定位：切换后 main 里只剩注释占位（Transition 卡在 out-in 的中间态）、此后所有切换
-// 永久空白。故：切换后延时检查 main 首个元素——异常时记 error（含现场快照，便于后续排查）
-// **并置 forcePlainRender 绕过 Transition 直接渲染视图**（静态兜底，内容必定出现）；
-// 正常时记一行 info 现场快照（排查期用，稳定后可去掉）。
+// ---- 视图渲染自检（自愈保险）----
+// 已知故障（2026-09-17 定位）：GSAP JS 过渡的 leave 完成回调在部分环境不触发 → out-in 状态机
+// 永久挂起 → main 只剩注释占位、此后所有切换空白（视图过渡已改 CSS，见 style.css .view-*）。
+// 这里保留最终保险：切换后 900ms 检查 main 首个元素，异常时记 error（含现场快照便于排查）
+// **并置 forcePlainRender 绕过 Transition 直接渲染视图**，保证内容必定出现。
 const mainEl = ref<HTMLElement | null>(null)
 /** true = 放弃过渡动画、直接渲染视图（检测到 Transition 卡死时的自愈路径） */
 const forcePlainRender = ref(false)
@@ -208,29 +207,23 @@ watch(viewKey, () => {
   window.setTimeout(() => {
     const view = nav.current.value.view
     const node = mainEl.value?.firstElementChild as HTMLElement | null
-    const env =
-      `win=${window.innerWidth}x${window.innerHeight} html=${document.documentElement.className} ` +
-      `children=${mainEl.value?.childNodes.length ?? -1}`
-    if (!node || node.nodeType !== 1) {
-      forcePlainRender.value = true
-      api
-        .frontendLog('error', `[view-guard] 视图 ${view} 未渲染（main 无元素），已切换为无过渡渲染 | ${env}`)
-        .catch(() => {})
-      return
+    if (node && node.nodeType === 1 && node.offsetHeight > 0 && Number(getComputedStyle(node).opacity) >= 0.05) {
+      return // 正常渲染，无需干预
     }
-    const cs = getComputedStyle(node)
-    const textLen = (node.innerText || '').length
+    const cs = node && node.nodeType === 1 ? getComputedStyle(node) : null
     const snapshot =
-      `h=${node.offsetHeight} w=${node.offsetWidth} op=${cs.opacity} text=${textLen} ${env} ` +
-      `scroll=${mainEl.value?.scrollHeight ?? -1} dom=${node.outerHTML.slice(0, 160).replace(/\s+/g, ' ')}`
-    if (node.offsetHeight === 0 || Number(cs.opacity) < 0.05) {
+      `h=${node?.offsetHeight ?? -1} w=${node?.offsetWidth ?? -1} op=${cs?.opacity ?? '-'} ` +
+      `text=${(node?.innerText || '').length} win=${window.innerWidth}x${window.innerHeight} ` +
+      `html=${document.documentElement.className} children=${mainEl.value?.childNodes.length ?? -1}`
+    forcePlainRender.value = true
+    if (node && node.nodeType === 1 && Number(cs?.opacity) < 0.05) {
       node.style.opacity = ''
       node.style.transform = ''
       node.style.translate = ''
-      api.frontendLog('error', `[view-guard] 视图 ${view} 不可见，已强制恢复 | ${snapshot}`).catch(() => {})
-    } else {
-      api.frontendLog('info', `[view-guard] ${view} | ${snapshot}`).catch(() => {})
     }
+    api
+      .frontendLog('error', `[view-guard] 视图 ${view} 未正常渲染，已切换为无过渡渲染 | ${snapshot}`)
+      .catch(() => {})
   }, 900)
 })
 
