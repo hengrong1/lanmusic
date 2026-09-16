@@ -22,6 +22,7 @@ const AlbumsView = lazyView(() => import('@/views/AlbumsView.vue'))
 const ArtistsView = lazyView(() => import('@/views/ArtistsView.vue'))
 const PlaylistView = lazyView(() => import('@/views/PlaylistView.vue'))
 const SettingsView = lazyView(() => import('@/views/SettingsView.vue'))
+const StatsView = lazyView(() => import('@/views/StatsView.vue'))
 import { useLibraryStore } from '@/stores/library'
 import { usePlayerStore } from '@/stores/player'
 import { useNav } from '@/composables/useNav'
@@ -183,6 +184,8 @@ const viewComponent = computed(() => {
       return PlaylistView
     case 'settings':
       return SettingsView
+    case 'stats':
+      return StatsView
     default:
       return TracksView
   }

@@ -260,6 +260,23 @@ export const usePlayerStore = defineStore('player', () => {
   const MAX_AUTO_SKIP = 5
   let errorStreak = 0
 
+  // ---------- 听歌统计：实际收听心跳 ----------
+  // 只计「真实在听」的秒数：暂停/缓冲不派发 timeupdate 天然不计，快进跳过的段落不在
+  // 推进时刻内也不计。累计满 30s 落一条流水（play_history），暂停/切歌时把不足 30s 的
+  // 尾巴结算掉——一次连续收听可能对应多条流水，统计口径是 SUM(seconds)，行数无意义。
+  const LISTEN_FLUSH_THRESHOLD = 30
+  let listenTrackId = 0 // 当前累计所属曲目 id（0 = 无）
+  let listenSeconds = 0 // 未结算的累计收听秒数（浮点累加，结算时取整）
+  let lastListenTick = 0 // 上次心跳时刻（performance.now()）
+  /** 结算并上报未落库的收听片段；force=false 时不足阈值就不写（防碎片行） */
+  function flushListen(force = false) {
+    if (!listenTrackId) return
+    const secs = Math.round(listenSeconds)
+    if (secs < (force ? 1 : LISTEN_FLUSH_THRESHOLD)) return
+    api.reportListen(listenTrackId, secs).catch(() => {})
+    listenSeconds = 0
+  }
+
   // ---------- 淡入淡出 ----------
   // 开关存 localStorage lm.fade（**默认开启**：只有显式存 '0' 才算关闭，键不存在时按开启）。
   // 淡入：每曲开头 800ms 从 0 升至目标音量；淡出：暂停/切歌前 600ms 平滑降至 0，避免突兀截断。
@@ -341,6 +358,14 @@ export const usePlayerStore = defineStore('player', () => {
   audio.addEventListener('timeupdate', () => {
     position.value = audio.currentTime
     if (audio.currentTime > 0) localStorage.setItem(LS.lastPos, String(audio.currentTime))
+    // 收听心跳：timeupdate 仅在播放推进时派发（暂停/缓冲不触发，天然不计）；
+    // delta 用墙钟差并钳制 5s，防后台节流/睡眠唤醒后一次补算出巨大时长
+    if (listenTrackId && current.value?.id === listenTrackId) {
+      const delta = Math.min((performance.now() - lastListenTick) / 1000, 5)
+      if (delta > 0) listenSeconds += delta
+      flushListen()
+    }
+    lastListenTick = performance.now()
   })
   audio.addEventListener('durationchange', () => {
     if (Number.isFinite(audio.duration)) duration.value = audio.duration
@@ -349,9 +374,11 @@ export const usePlayerStore = defineStore('player', () => {
     playing.value = true
     buffering.value = false
     errorStreak = 0
+    lastListenTick = performance.now() // 恢复播放：心跳基准重置（暂停期间不计秒）
   })
   audio.addEventListener('pause', () => {
     playing.value = false
+    flushListen(true) // 暂停即结算本片段（恢复后另起一条流水）
   })
   audio.addEventListener('waiting', () => {
     buffering.value = true
@@ -385,6 +412,9 @@ export const usePlayerStore = defineStore('player', () => {
     }
   })
 
+  // 窗口关闭/刷新：尽力结算未落库的收听尾巴（丢失上限 = 一个心跳周期 30s）
+  window.addEventListener('pagehide', () => flushListen(true))
+
   // ---------- 控制 ----------
   /**
    * 发起播放:在调用方（用户手势）内立即调用 play()，数据未就绪时浏览器会挂起直到可播。
@@ -415,6 +445,11 @@ export const usePlayerStore = defineStore('player', () => {
 
   function load(t: Track, autoplay = true) {
     const doLoad = () => {
+      // 换曲：结算上一首未落库的收听尾巴，并切换心跳归属
+      flushListen(true)
+      listenTrackId = t.id
+      listenSeconds = 0
+      lastListenTick = performance.now()
       audio.src = trackStreamUrl(t.id)
       position.value = 0
       duration.value = t.duration ?? 0

@@ -48,6 +48,7 @@
 - **歌词**：`.lrc` / `.qrc` 同名文件 + 内嵌歌词（USLT/LYRICS，本地与 WebDAV 来源都支持）；播放页大封面 + 时间轴滚动歌词（点击行跳转）；QRC 逐字歌词按字高亮（Apple Music 式卡拉OK效果，覆盖播放页歌词面板 / 底部播放条单行歌词 / 桌面歌词浮窗，Rust 侧解析，QQ 音乐加密 .qrc 自动解密——新旧两种加密格式均支持）；**增强版 LRC**（Enhanced LRC / A2，行内 `<mm:ss.xx>` 字级时间戳）**与多标签逐字 LRC**（`[00:00.000]身[00:00.582]骑…`）同样按字高亮，与 QRC 共用一套渲染链路（前端 `parseWordLrc()` 统一解析，两种结构自动识别，可混排）；间奏空行折叠；**歌词来源优先级**可设置（外挂 QRC / 外挂 LRC / 内嵌歌词任意顺序，默认 QRC 优先，设置页「歌词」标签，变更后当前歌曲立即生效）；歌词文件读取自动识别编码（UTF-8 / GBK / GB18030，QQ 生态歌词常见 GBK 不再乱码）；**歌词副行（音译 / 译文）**（按歌词文件的行序排布：音译（罗马字）在上、原文居中、译文在下；同起点的副行自动识别并合并——三行逐字歌词不再显示成三个重复行；音译与译文在播放页歌词区各有文字开关（`音` / `译`），**默认关闭**、按曲目记忆，仅当该曲歌词里确实带这条副行时才出现按钮）
 - **歌词校准**：播放页右下角「后退 / 还原 / 前进」控件（或快捷键 `[` / `]`），每次 ±0.5s、范围 ±10s；偏移按曲目持久化，toast 原地更新累计量（连续点击不叠加提示框）；同一浮层分隔线下方是**歌词副行开关**——`音`（音译 / 罗马字）与 `译`（译文）两个文字按钮，默认关闭，仅当前歌词确实带该副行时才出现（没有的直接不显示），点开后为主题色底 + 主题色字
 - **最近播放**（`play_count` / `last_played_at` 统计）
+- **听歌统计**：侧栏「听歌统计」页——累计 / 今日 / 近 7 天收听时长、近 30 天每日收听柱状图、24 小时收听时段分布、本周 / 本月 / 全部的「听得最多的歌」榜单；统计的是**实际收听秒数**（暂停、快进跳过、缓冲卡顿不计），流水存本地 `play_history` 表，随曲目删除级联清理，数据不出本机
 - **喜欢**（收藏）
 - **多选批量操作**：全部歌曲 / 喜欢 / 最近播放 / 专辑 / 艺人 / 搜索结果与歌单页均支持多选（播放 / 加入队列 / 添加到歌单），歌单页可移出歌单，曲库侧可从曲库移除（不删磁盘文件）；「添加到歌单」的歌单选择菜单从底部操作栏上方弹出（带展开动画）
 - **中文拼音排序**：全部歌曲 / 专辑 / 艺人列表按标题 / 专辑 / 艺人排序（含表头点击升降序）按「数字 → 字母 → 汉字」分组——数字段按数值序（`2` 在 `10` 前）、汉字组内按拼音、英文大小写不敏感；空专辑 / 艺人排最后。实现为 SQLite 自定义 collation（`PINYIN`，见 `db.rs::open_conn`）
@@ -259,7 +260,7 @@ src-tauri/                 # Rust 后端
 | 来源管理 | `add_local_source(path)` · `list_sources()` · `remove_source(id)` · `rescan_source(id, mode: auto\|full)` · `set_source_fast_import(id, enabled)` · `set_source_scan_subdirs(id, enabled)` · `webdav_add_source(url, username, password, name?)` |
 | 曲库查询 | `query_tracks({view, refId, search, sort, page, pageSize, fields, pinyin})` · `query_albums(search, page, pageSize)` · `query_artists(search, page, pageSize)` · `get_track(id)` · `get_tracks_by_ids(ids)` · `get_stream_url(id)` · `library_stats()` · `reveal_track(id)` · `remove_tracks(ids)`（从曲库移除，不删磁盘文件） · `list_removed_tracks()` / `clear_removed_tracks()`（移除记录） · `restore_removed_tracks(ids)`（还原到曲库） |
 | 歌单 | `playlist_list` · `playlist_create(name)` · `playlist_rename(id, name)` · `playlist_delete(id)` · `playlist_get_items(id, sort?)`（sort 同 query_tracks 的文本/时长值，空 = 加入时间倒序） · `playlist_add_tracks(id, trackIds)` · `playlist_remove_track(id, trackId)` · `playlist_remove_tracks(id, trackIds)` · `playlist_set_description(id, description)` · `playlist_cover(id)` · `playlist_reorder(id, trackIds)` |
-| 播放/歌词/喜欢 | `report_play(id)` · `get_lyrics(id)` · `favorite_toggle(id, fav)` · `set_thumbbar_playing(playing)`（Windows 任务栏缩略图按钮图标同步） · `desktop_lyrics_set(enabled)`（桌面歌词浮窗开关） · `list_system_fonts()`（系统字体列表） · `set_prevent_sleep(prevent)`（播放时阻止系统休眠/锁屏） |
+| 播放/歌词/喜欢 | `report_play(id)` · `report_listen(trackId, seconds)`（收听流水，实际秒数） · `listen_stats_summary()` · `listen_top_tracks(range: week\|month\|all, limit?)` · `listen_daily(days?)` · `listen_hourly()`（听歌统计） · `get_lyrics(id)` · `favorite_toggle(id, fav)` · `set_thumbbar_playing(playing)`（Windows 任务栏缩略图按钮图标同步） · `desktop_lyrics_set(enabled)`（桌面歌词浮窗开关） · `list_system_fonts()`（系统字体列表） · `set_prevent_sleep(prevent)`（播放时阻止系统休眠/锁屏） |
 | 设置 | `get_setting(key)` · `set_setting(key, value)` · `get_builtin_skip_dirs()`（内置跳过目录名，设置页用于标出这批「内置」关键字） · `get_artist_separators()` · `set_artist_separators(value)`（保存多艺人分隔符并立即重拆曲库，返回受影响曲目的艺人变更列表） · `normalize_artist_names()`（规整同义艺人名） · `merge_artist(sourceId, targetId)`（自定义合并，旧名记为别名） · `list_artist_aliases()`（已合并名单） |
 
 `query_tracks` 支持的 `sort` 值：`title` `-title` `album` `-album` `artist` `-artist` `added` `duration` `-duration` `recent` `none`（`-` 前缀为降序）。文本列（title/album/artist）按「数字 → 字母 → 汉字（拼音）」分组序比较（见 M2「中文拼音排序」）。
@@ -300,6 +301,7 @@ SQLite（WAL 模式，外键开启），建表与列迁移见 `src-tauri/src/db.
 | `tracks` | 曲目：`path`(来源内唯一)、标签/音频属性、`fav`、`play_count`/`last_played_at`、`meta_state`(0=快速导入待补全) |
 | `playlists` / `playlist_items` | 歌单与条目（`playlists` 新增 `description` 简介列；`playlist_items` 新增 `added_at` 时间戳，按加入时间倒序排列，级联删除） |
 | `lrc_files` | 外挂歌词：`track_id` 主键；`path` 为本地路径（local）或完整 URL（webdav） |
+| `play_history` | 播放历史流水（听歌统计）：`track_id`（级联删除）、`played_at`、`seconds`（实际收听秒数，快进跳过不计） |
 | `app_settings` | KV 设置及内部标记（如封面缓存自愈版本号、封面缓存上限 `covers.max_mb`，默认 500） |
 
 ## 前端持久化（localStorage）

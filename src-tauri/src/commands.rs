@@ -1242,6 +1242,183 @@ pub fn report_play(state: State<'_, AppState>, id: i64) -> Result<(), String> {
     Ok(())
 }
 
+// ---------- 听歌统计 ----------
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListenSummary {
+    pub total_seconds: i64,
+    pub total_plays: i64,
+    pub today_seconds: i64,
+    pub week_seconds: i64,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListenTopTrack {
+    pub track_id: i64,
+    pub title: String,
+    pub artist: Option<String>,
+    pub album_id: Option<i64>,
+    pub seconds: i64,
+    pub plays: i64,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListenDailyPoint {
+    pub day: String,
+    pub seconds: i64,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListenHourPoint {
+    pub hour: String,
+    pub seconds: i64,
+}
+
+/// 记录一段实际收听（前端 player 心跳/结算：暂停、快进跳过的不计秒）。
+/// seconds 钳制到 [1, 3600]，防前端异常写入脏数据；曲目不存在时外键约束自然拒绝。
+#[tauri::command]
+pub fn report_listen(state: State<'_, AppState>, track_id: i64, seconds: i64) -> Result<(), String> {
+    let seconds = seconds.clamp(1, 3600);
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as i64;
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    conn.execute(
+        "INSERT INTO play_history (track_id, played_at, seconds) VALUES (?1, ?2, ?3)",
+        params![track_id, now, seconds],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// 汇总：总收听时长 / 总收听片段数 / 今日时长 / 近 7 天时长（本地时区自然日）。
+#[tauri::command]
+pub fn listen_stats_summary(state: State<'_, AppState>) -> Result<ListenSummary, String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    let (total_seconds, total_plays, today_seconds, week_seconds) = conn
+        .query_row(
+            "SELECT COALESCE(SUM(seconds),0), COUNT(*), \
+             COALESCE(SUM(CASE WHEN played_at >= CAST(strftime('%s','now','localtime','start of day') AS INTEGER) THEN seconds ELSE 0 END),0), \
+             COALESCE(SUM(CASE WHEN played_at >= CAST(strftime('%s','now','localtime','-6 days','start of day') AS INTEGER) THEN seconds ELSE 0 END),0) \
+             FROM play_history",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+        )
+        .map_err(|e| e.to_string())?;
+    Ok(ListenSummary {
+        total_seconds,
+        total_plays,
+        today_seconds,
+        week_seconds,
+    })
+}
+
+/// 收听最多的曲目榜单：range = week(近 7 天滚动) | month(近 30 天) | all；按累计收听秒数降序。
+#[tauri::command]
+pub fn listen_top_tracks(
+    state: State<'_, AppState>,
+    range: String,
+    limit: Option<i64>,
+) -> Result<Vec<ListenTopTrack>, String> {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as i64;
+    let since: Option<i64> = match range.as_str() {
+        "week" => Some(now - 7 * 86400),
+        "month" => Some(now - 30 * 86400),
+        _ => None,
+    };
+    let limit = limit.unwrap_or(20).clamp(1, 100);
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    let mut stmt = conn
+        .prepare(
+            "SELECT h.track_id, t.title, a.name, t.album_id, SUM(h.seconds), COUNT(*) \
+             FROM play_history h \
+             JOIN tracks t ON t.id = h.track_id \
+             LEFT JOIN artists a ON a.id = t.artist_id \
+             WHERE ?1 IS NULL OR h.played_at >= ?1 \
+             GROUP BY h.track_id \
+             ORDER BY 5 DESC, 6 DESC LIMIT ?2",
+        )
+        .map_err(|e| e.to_string())?;
+    let items = stmt
+        .query_map(params![since, limit], |r| {
+            Ok(ListenTopTrack {
+                track_id: r.get(0)?,
+                title: r.get(1)?,
+                artist: r.get(2)?,
+                album_id: r.get(3)?,
+                seconds: r.get(4)?,
+                plays: r.get(5)?,
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+    Ok(items)
+}
+
+/// 每日收听时长（本地时区自然日），days 为回看天数（滚动窗口）；前端负责补零画图。
+#[tauri::command]
+pub fn listen_daily(
+    state: State<'_, AppState>,
+    days: Option<i64>,
+) -> Result<Vec<ListenDailyPoint>, String> {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as i64;
+    let since = now - days.unwrap_or(30).clamp(1, 365) * 86400;
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    let mut stmt = conn
+        .prepare(
+            "SELECT date(played_at,'unixepoch','localtime') d, SUM(seconds) \
+             FROM play_history WHERE played_at >= ?1 \
+             GROUP BY d ORDER BY d",
+        )
+        .map_err(|e| e.to_string())?;
+    let items = stmt
+        .query_map(params![since], |r| {
+            Ok(ListenDailyPoint {
+                day: r.get(0)?,
+                seconds: r.get(1)?,
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+    Ok(items)
+}
+
+/// 24 小时收听分布（本地时区），全量聚合；前端负责补齐 0-23 小时空桶。
+#[tauri::command]
+pub fn listen_hourly(state: State<'_, AppState>) -> Result<Vec<ListenHourPoint>, String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    let mut stmt = conn
+        .prepare(
+            "SELECT strftime('%H', played_at,'unixepoch','localtime') h, SUM(seconds) \
+             FROM play_history GROUP BY h ORDER BY h",
+        )
+        .map_err(|e| e.to_string())?;
+    let items = stmt
+        .query_map([], |r| {
+            Ok(ListenHourPoint {
+                hour: r.get(0)?,
+                seconds: r.get(1)?,
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+    Ok(items)
+}
+
 #[tauri::command]
 pub fn get_lyrics(app: AppHandle, id: i64) -> Result<Option<String>, String> {
     crate::lyrics::fetch(&app, id)

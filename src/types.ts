@@ -109,6 +109,36 @@ export interface LibraryStats {
   favorites: number
 }
 
+/** 听歌统计：汇总（seconds 均为实际收听秒数，play_history 流水聚合） */
+export interface ListenSummary {
+  totalSeconds: number
+  totalPlays: number
+  todaySeconds: number
+  weekSeconds: number
+}
+
+/** 听歌统计：榜单行（按累计收听秒数排序） */
+export interface ListenTopTrack {
+  trackId: number
+  title: string
+  artist: string | null
+  albumId: number | null
+  seconds: number
+  plays: number
+}
+
+/** 听歌统计：每日收听时长点（day = YYYY-MM-DD 本地时区；缺失日期由前端补零） */
+export interface ListenDailyPoint {
+  day: string
+  seconds: number
+}
+
+/** 听歌统计：24 小时分布点（hour = "00".."23" 本地时区；缺失小时由前端补零） */
+export interface ListenHourPoint {
+  hour: string
+  seconds: number
+}
+
 export interface ScanProgress {
   sourceId: number
   /** "enumerate" = 正在枚举目录（total 未知）；"parse" = 解析入库中 */
@@ -139,7 +169,7 @@ export interface TrackQuery {
   pinyin?: boolean
 }
 
-export type ViewName = 'tracks' | 'albums' | 'artists' | 'playlist' | 'settings'
+export type ViewName = 'tracks' | 'albums' | 'artists' | 'playlist' | 'settings' | 'stats'
 
 export interface NavRoute {
   view: ViewName

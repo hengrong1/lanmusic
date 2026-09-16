@@ -7,6 +7,10 @@ import type {
   ArtistNormalizeChange,
   ArtistSplitChange,
   LibraryStats,
+  ListenDailyPoint,
+  ListenHourPoint,
+  ListenSummary,
+  ListenTopTrack,
   Page,
   Playlist,
   QrcLine,
@@ -60,6 +64,14 @@ export const api = {
   /** 下载更新安装包（SHA-256 校验；进度见 update:download-progress 事件），返回落地路径 */
   downloadUpdateInstaller: (url: string, sha256Url: string | null, size: number | null) =>
     invoke<string>('download_update_installer', { url, sha256Url, size }),
+  /** 听歌统计：上报一段实际收听（秒）。暂停/快进跳过的不计。 */
+  reportListen: (trackId: number, seconds: number) =>
+    invoke<void>('report_listen', { trackId, seconds }),
+  listenStatsSummary: () => invoke<ListenSummary>('listen_stats_summary'),
+  listenTopTracks: (range: 'week' | 'month' | 'all', limit?: number) =>
+    invoke<ListenTopTrack[]>('listen_top_tracks', { range, limit: limit ?? null }),
+  listenDaily: (days?: number) => invoke<ListenDailyPoint[]>('listen_daily', { days: days ?? null }),
+  listenHourly: () => invoke<ListenHourPoint[]>('listen_hourly'),
   /** 运行已下载的安装包（静默安装 + 装完自动重启），随后应用退出 */
   installUpdateAndRestart: (path: string) =>
     invoke<void>('install_update_and_restart', { path }),

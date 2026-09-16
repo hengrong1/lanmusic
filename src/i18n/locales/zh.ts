@@ -18,7 +18,18 @@ export default {
   nav: {
     library: '歌曲库', albums: '专辑', artists: '艺人',
     playlists: '歌单', settings: '设置', nowPlaying: '正在播放', queue: '播放队列',
-    recent: '最近播放', liked: '我喜欢的',
+    recent: '最近播放', liked: '我喜欢的', stats: '听歌统计',
+  },
+  stats: {
+    title: '听歌统计', subtitle: '基于本地播放记录，数据仅保存在本机',
+    totalTime: '累计收听', today: '今日', week: '近 7 天', sessions: '收听片段',
+    dailyTitle: '近 30 天收听时长', hourlyTitle: '收听时段分布',
+    topTitle: '听得最多的歌',
+    rangeWeek: '近 7 天', rangeMonth: '近 30 天', rangeAll: '全部',
+    playsWithCount: '播放 {count} 次',
+    hoursMinutes: '{h} 小时 {m} 分', minutesSeconds: '{m} 分 {s} 秒', secondsOnly: '{s} 秒',
+    emptyTitle: '还没有收听记录', emptyDesc: '播放歌曲后，这里会统计你的收听时长与偏好',
+    emptyRange: '该时间范围内没有收听记录',
   },
   player: {
     play: '播放', pause: '暂停', next: '下一首', prev: '上一首', shuffle: '随机播放',

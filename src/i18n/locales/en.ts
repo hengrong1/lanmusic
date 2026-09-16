@@ -18,7 +18,18 @@ export default {
   nav: {
     library: 'Library', albums: 'Albums', artists: 'Artists',
     playlists: 'Playlists', settings: 'Settings', nowPlaying: 'Now Playing', queue: 'Queue',
-    recent: 'Recent', liked: 'Liked',
+    recent: 'Recent', liked: 'Liked', stats: 'Listening Stats',
+  },
+  stats: {
+    title: 'Listening Stats', subtitle: 'Based on local play records, data never leaves this device',
+    totalTime: 'Total listening', today: 'Today', week: 'Last 7 days', sessions: 'Sessions',
+    dailyTitle: 'Daily listening (30 days)', hourlyTitle: 'Listening by hour',
+    topTitle: 'Most played',
+    rangeWeek: '7 days', rangeMonth: '30 days', rangeAll: 'All',
+    playsWithCount: '{count} plays',
+    hoursMinutes: '{h} h {m} min', minutesSeconds: '{m} min {s} s', secondsOnly: '{s} s',
+    emptyTitle: 'No listening data yet', emptyDesc: 'Play some songs and your stats will show up here',
+    emptyRange: 'No listening records in this range',
   },
   player: {
     play: 'Play', pause: 'Pause', next: 'Next', prev: 'Previous', shuffle: 'Shuffle',

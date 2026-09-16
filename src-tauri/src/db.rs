@@ -173,6 +173,17 @@ CREATE TABLE IF NOT EXISTS removed_tracks (
   removed_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_removed_tracks_at ON removed_tracks(removed_at DESC, id DESC);
+
+-- 播放历史流水（听歌统计）：每次实际收听片段写一行（前端 player 心跳 + 切歌/暂停结算，
+-- seconds 为该片段的真实收听秒数，快进跳过的不计入）。曲目被移除时级联删除对应历史。
+CREATE TABLE IF NOT EXISTS play_history (
+  id INTEGER PRIMARY KEY,
+  track_id INTEGER NOT NULL REFERENCES tracks(id) ON DELETE CASCADE,
+  played_at INTEGER NOT NULL,
+  seconds INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_play_history_time ON play_history(played_at);
+CREATE INDEX IF NOT EXISTS idx_play_history_track ON play_history(track_id);
 "#;
 
 /// 移除记录上限：超出时按时间从旧到新裁剪

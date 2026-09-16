@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { HistoryIcon as HistoryBold } from '@solar-icons/vue/bold/history'
+import { GraphUpIcon as GraphUpBold } from '@solar-icons/vue/bold/graph-up'
 import { HeartIcon as HeartBold } from '@solar-icons/vue/bold/heart'
 import { MicrophoneIcon as MicBold } from '@solar-icons/vue/bold/microphone'
 import { MusicNoteIcon as MusicBold } from '@solar-icons/vue/bold/music-note'
@@ -8,6 +9,7 @@ import { VinylRecordIcon as Disc3Bold } from '@solar-icons/vue/bold/vinyl-record
 import { VinylRecordIcon as Disc3 } from '@solar-icons/vue/linear/vinyl-record'
 import { HeartIcon as Heart } from '@solar-icons/vue/linear/heart'
 import { HistoryIcon as History } from '@solar-icons/vue/linear/history'
+import { GraphUpIcon as GraphUp } from '@solar-icons/vue/linear/graph-up'
 import { MicrophoneIcon as Mic } from '@solar-icons/vue/linear/microphone'
 import { MusicNoteIcon as Music } from '@solar-icons/vue/linear/music-note'
 import { AddIcon as Plus } from '@solar-icons/vue/linear/add'
@@ -151,6 +153,7 @@ const entries = computed<NavEntry[]>(() => [
   { route: { view: 'albums' }, label: t('library.albums'), icon: Disc3, iconActive: Disc3Bold, count: () => library.stats.albums },
   { route: { view: 'artists' }, label: t('library.artists'), icon: Mic, iconActive: MicBold, count: () => library.stats.artists },
   { route: { view: 'tracks', recent: true }, label: t('nav.recent'), icon: History, iconActive: HistoryBold },
+  { route: { view: 'stats' }, label: t('nav.stats'), icon: GraphUp, iconActive: GraphUpBold },
 ])
 
 /** 导航图标配色：默认跟随主题色（violet），喜欢入口固定红色系（悬停/选中红，未选中中性灰） */
@@ -178,6 +181,9 @@ function isActive(e: NavEntry) {
     if (e.route.favorites) return r.view === 'tracks' && !!r.favorites && !r.search
     if (e.route.recent) return r.view === 'tracks' && !!r.recent && !r.search
     return r.view === 'tracks' && !r.albumId && !r.artistId && !r.recent && !r.favorites && !r.search
+  }
+  if (e.route.view === 'stats') {
+    return r.view === 'stats'
   }
   if (e.route.view === 'settings') {
     return r.view === e.route.view
