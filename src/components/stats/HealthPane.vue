@@ -224,8 +224,8 @@ onUnmounted(() => {
 
 <template>
   <div class="flex flex-col gap-6">
-    <!-- 概览卡 -->
-    <div class="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
+    <!-- 概览卡：最多 3 列（6 卡两行），避免宽屏 6 列挤压导致文字换行 -->
+    <div class="grid grid-cols-2 gap-3 lg:grid-cols-3">
       <div
         v-for="card in overview"
         :key="card.label"
@@ -236,7 +236,7 @@ onUnmounted(() => {
         </div>
         <div class="min-w-0">
           <p class="truncate text-xs text-zinc-400">{{ card.label }}</p>
-          <p class="mt-0.5 text-lg font-semibold tabular-nums leading-tight text-zinc-900 dark:text-zinc-50">{{ card.value }}</p>
+          <p class="mt-0.5 truncate text-lg font-semibold tabular-nums leading-tight text-zinc-900 dark:text-zinc-50">{{ card.value }}</p>
         </div>
       </div>
     </div>
