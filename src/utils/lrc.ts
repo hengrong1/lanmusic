@@ -4,6 +4,8 @@ export interface LrcLine {
   /** 秒 */
   time: number
   text: string
+  /** 行尾时间戳标记的本句结束时间（秒）：`[00:26.76]我站在屋顶[00:32.45]` → end=32.45；无则留空 */
+  end?: number
   /** 音译（罗马字）副行：显示在原文上方；无则留空 */
   transliteration?: string
   /** 译文副行：显示在原文下方；无则留空 */
@@ -51,8 +53,16 @@ function foldLrcTranslations(lines: LrcLine[]): LrcLine[] {
   return out
 }
 
+/** 单个时间标签 → 秒；非法返回 NaN */
+function tagTime(m: RegExpMatchArray): number {
+  const mm = Number(m[1])
+  const ss = Number(m[2])
+  const frac = m[3] ? Number(`0.${m[3]}`) : 0
+  return Number.isNaN(mm) || Number.isNaN(ss) ? NaN : mm * 60 + ss + frac
+}
+
 /**
- * 解析 LRC 歌词。支持多时间标签 `[00:12.5][01:20.0]歌词`。
+ * 解析 LRC 歌词。支持多时间标签 `[00:12.5][01:20.0]歌词`（同一文本多次演唱）。
  * 返回 synced=false 表示纯文本歌词（无时间轴）。
  */
 export function parseLrc(raw: string): { lines: LrcLine[]; synced: boolean } {
@@ -61,12 +71,28 @@ export function parseLrc(raw: string): { lines: LrcLine[]; synced: boolean } {
     const tags = [...rawLine.matchAll(TIME_TAG)]
     if (!tags.length) continue
     const text = rawLine.replace(TIME_TAG, '').trim()
+    // 行尾时间戳行（[start]文本[end]）：最后一个标签之后没有文本 → 它标记本句的
+    // 结束时间，而不是「同一文本的第二次演唱」。只产出一行（带 end）——否则同文本
+    // 副本行会与下一句同起点，被 foldLrcTranslations 误判成下一句的译文（亮起
+    // 「译」图标）、还会造成歌词重复显示。
+    const lastTag = tags[tags.length - 1]
+    if (tags.length >= 2 && !rawLine.slice(lastTag.index! + lastTag[0].length).trim()) {
+      const first = tags[0]
+      const between = rawLine
+        .slice(first.index! + first[0].length, lastTag.index)
+        .replace(TIME_TAG, '')
+        .trim()
+      const t0 = tagTime(first)
+      const t1 = tagTime(lastTag)
+      if (between && !Number.isNaN(t0) && !Number.isNaN(t1) && t1 > t0) {
+        lines.push({ time: t0, end: t1, text: between })
+        continue
+      }
+    }
     for (const m of tags) {
-      const mm = Number(m[1])
-      const ss = Number(m[2])
-      const frac = m[3] ? Number(`0.${m[3]}`) : 0
-      if (Number.isNaN(mm) || Number.isNaN(ss)) continue
-      lines.push({ time: mm * 60 + ss + frac, text })
+      const time = tagTime(m)
+      if (Number.isNaN(time)) continue
+      lines.push({ time, text })
     }
   }
   if (!lines.length) return { lines: [], synced: false }
