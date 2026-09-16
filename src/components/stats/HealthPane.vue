@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import VChart from 'vue-echarts'
 import {
@@ -26,6 +26,8 @@ const scans = ref<ScanHistoryItem[]>([])
 const loading = ref(true)
 
 const emit = defineEmits<{ loaded: [] }>()
+/** 图表挂载门控：数据就绪后等两帧布局稳定再挂 VChart（避免容器宽度未稳定时 init） */
+const chartsReady = ref(false)
 onMounted(async () => {
   try {
     const [h, s] = await Promise.all([api.libraryHealth(), api.scanHistoryList()])
@@ -35,6 +37,12 @@ onMounted(async () => {
     toast(errorText(e), 'error')
   } finally {
     loading.value = false
+    await nextTick()
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => {
+        chartsReady.value = true
+      }),
+    )
     emit('loaded')
   }
 })
@@ -228,6 +236,11 @@ function distOption(rows: { label: string; count: number }[]) {
         ]" :key="group.title">
           <h3 class="text-xs font-medium text-zinc-500">{{ group.title }}</h3>
           <div v-if="!group.rows.length" class="mt-2 text-xs text-zinc-400">{{ $t('stats.distEmpty') }}</div>
+          <div
+            v-else-if="!chartsReady"
+            class="mt-1"
+            :style="{ height: `${group.rows.length * 26 + 10}px` }"
+          />
           <VChart
             v-else
             class="mt-1 w-full"

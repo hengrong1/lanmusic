@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import VChart from 'vue-echarts'
 import {
@@ -47,8 +47,13 @@ const topRange = ref<'week' | 'month' | 'all'>('month')
 const top = ref<ListenTopItem[]>([])
 
 const emit = defineEmits<{ loaded: [] }>()
-/** 图表挂载开关：等首次数据就绪再渲染 VChart，避免容器尚未布局完成时 init（DOM 尺寸为 0 警告 + 图空白） */
+/**
+ * 图表挂载门控（两级）：dataReady = 首次数据就绪；chartsReady = 再等两帧布局稳定。
+ * 懒加载视图 + out-in 过渡的组合下，DOM 插入后容器宽度要晚一拍才稳定，ECharts 在
+ * 宽度为 0 时 init 会告警（Can't get DOM width or height）。双 rAF 保证跨越完整渲染管线。
+ */
 const dataReady = ref(false)
+const chartsReady = ref(false)
 onMounted(async () => {
   try {
     const [s, st, hm, bm, bs, top0, tr0] = await Promise.all([
@@ -68,6 +73,12 @@ onMounted(async () => {
     top.value = top0
     trend.value = tr0
     dataReady.value = true
+    await nextTick()
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => {
+        chartsReady.value = true
+      }),
+    )
     emit('loaded')
   } catch (e) {
     toast(errorText(e), 'error')
@@ -321,8 +332,8 @@ function goItem(t: ListenTopItem) {
 
 <template>
   <div class="flex flex-col gap-6">
-    <!-- 图表等数据就绪再挂载：避免 ECharts 在容器未布局完成时 init（宽高为 0） -->
-    <template v-if="dataReady">
+    <!-- 图表等数据就绪 + 两帧布局稳定后再挂载：避免 ECharts 宽度为 0 时 init -->
+    <template v-if="dataReady && chartsReady">
       <!-- 汇总卡（图标 + 数值） -->
       <div class="grid grid-cols-2 gap-3 lg:grid-cols-4">
       <div
