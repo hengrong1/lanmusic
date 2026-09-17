@@ -12,12 +12,15 @@ import { errorText } from '@/i18n/error'
 import { dialogOverlayClass, dialogPanelTransition, dialogDraggable } from '@/composables/useDialogPrefs'
 
 /**
- * 歌单弹层（新建 / 编辑双模式）：集中修改名称、简介；只读展示创建时间 / 歌曲数 / 封面；删除歌单。
- * 不传 playlistId = 新建模式：只有名称输入，隐藏元信息 / 简介与删除按钮（见「注意：新建无删除」），
- * 保存时创建并 emit('created') 由上层跳转；编辑模式保存只提交有变化的字段，
- * 删除成功后 emit('deleted') 由上层负责跳转。
+ * 歌单弹层（新建 / 编辑 / 仅重命名三模式）：集中修改名称、简介；只读展示创建时间 / 歌曲数 / 封面；删除歌单。
+ * - 不传 playlistId = 新建模式：只有名称输入，隐藏元信息 / 简介与删除按钮（见「注意：新建无删除」），
+ *   保存时创建并 emit('created') 由上层跳转；
+ * - renameOnly = 仅重命名模式（侧栏右键「重命名」）：与新建同款轻量形态，只改名称，
+ *   不显示元信息 / 简介 / 删除（那些在「编辑歌单」里，删除在右键菜单里已有独立入口）；
+ * - 默认（有 playlistId 无 renameOnly）= 编辑模式：保存只提交有变化的字段，
+ *   删除成功后 emit('deleted') 由上层负责跳转。
  */
-const props = defineProps<{ playlistId?: number }>()
+const props = defineProps<{ playlistId?: number; renameOnly?: boolean }>()
 const emit = defineEmits<{ close: []; saved: [name?: string]; created: [{ id: number; name: string }]; deleted: [] }>()
 
 const { t, locale } = useI18n()
@@ -25,6 +28,8 @@ const library = useLibraryStore()
 
 /** 新建模式：无 playlistId */
 const isCreate = computed(() => props.playlistId == null)
+/** 仅重命名模式：有目标歌单但只改名字 */
+const isRenameOnly = computed(() => props.renameOnly === true && !isCreate.value)
 
 const meta = computed(() => library.playlists.find((p) => p.id === props.playlistId) ?? null)
 const metaDesc = computed(() => meta.value?.description ?? '')
@@ -151,14 +156,14 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
           class="flex shrink-0 items-center justify-between border-b border-zinc-200 px-5 py-4 dark:border-zinc-800"
           :class="dialogDraggable() ? 'cursor-move select-none' : ''"
         >
-          <h2 class="text-base font-semibold text-zinc-900 dark:text-zinc-50">{{ isCreate ? $t('playlist.createNew') : $t('playlist.edit') }}</h2>
+          <h2 class="text-base font-semibold text-zinc-900 dark:text-zinc-50">{{ isCreate ? $t('playlist.createNew') : isRenameOnly ? $t('common.rename') : $t('playlist.edit') }}</h2>
           <BaseButton variant="ghost" size="xs" :icon="X" data-no-drag v-tooltip="$t('common.close')" :aria-label="$t('common.close')" @click="emit('close')" />
         </div>
 
       <!-- 表单 -->
       <div class="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
-        <!-- 封面 + 元信息（新建模式无此区块） -->
-        <div v-if="!isCreate" class="flex items-center gap-4">
+        <!-- 封面 + 元信息（新建 / 仅重命名模式无此区块） -->
+        <div v-if="!isCreate && !isRenameOnly" class="flex items-center gap-4">
           <CoverImg :album-id="meta?.coverAlbumId ?? null" rounded="h-16 w-16 shrink-0 rounded-lg" />
           <div class="min-w-0 text-xs text-zinc-500 dark:text-zinc-400">
             <p>{{ createdLabel }}</p>
@@ -177,7 +182,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
           />
         </div>
 
-        <div v-if="!isCreate">
+        <div v-if="!isCreate && !isRenameOnly">
           <label class="mb-1 block text-xs font-medium text-zinc-500 dark:text-zinc-400">{{ $t('common.description') }}</label>
           <BaseTextarea
             v-model="descDraft"
@@ -187,8 +192,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
           />
         </div>
 
-        <!-- 删除歌单：仅编辑模式（新建无可删之物） -->
-        <div v-if="!isCreate" class="border-t border-zinc-100 pt-3 dark:border-zinc-800">
+        <!-- 删除歌单：仅编辑模式（新建无可删之物，仅重命名模式走右键菜单的独立入口） -->
+        <div v-if="!isCreate && !isRenameOnly" class="border-t border-zinc-100 pt-3 dark:border-zinc-800">
           <BaseButton variant="ghost" tone="danger" size="xs" :icon="Trash2" @click="remove">
             {{ $t('playlist.delete') }}
           </BaseButton>

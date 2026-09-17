@@ -13,7 +13,6 @@ import { GraphUpIcon as GraphUp } from '@solar-icons/vue/linear/graph-up'
 import { MicrophoneIcon as Mic } from '@solar-icons/vue/linear/microphone'
 import { MusicNoteIcon as Music } from '@solar-icons/vue/linear/music-note'
 import { AddIcon as Plus } from '@solar-icons/vue/linear/add'
-import { CloseIcon as X } from '@solar-icons/vue/linear/close'
 import { useStatsEntry } from '@/composables/useStatsEntry'
 import { useI18n } from 'vue-i18n'
 import gsap from 'gsap'
@@ -42,7 +41,7 @@ const ICON_SCALE_COLLAPSED = 20 / 16
 // 会让 32px 封面瞬跳 6px。用 GSAP 把这 6px 融进宽度动画（.playlist-cover 的 x 补偿，见下）
 const COVER_SHIFT = 6
 
-const { t, locale } = useI18n()
+const { t } = useI18n()
 /** 带参翻译在 setup 内生成（模板 `$t` 无带参重载） */
 const songCount = (n: number) => t('common.songsCount', { count: n })
 const library = useLibraryStore()
@@ -195,43 +194,23 @@ function isActive(e: NavEntry) {
   return false
 }
 
-// ---- 歌单：新建（弹窗）/ 重命名（内联输入行）/ 删除 ----
-const editing = ref<{ id: number; value: string } | null>(null)
-/** 新建歌单弹窗（与编辑弹窗同款 PlaylistEditDialog，新建模式不带删除按钮） */
+// ---- 歌单：新建 / 重命名（同一个 PlaylistEditDialog 弹窗）/ 删除 ----
+/** 新建歌单弹窗（PlaylistEditDialog 新建模式，无删除按钮） */
 const createOpen = ref(false)
-const inputEl = ref<HTMLInputElement | null>(null)
-/** 提交进行中：防止回车提交后的失焦再触发一次（await 期间输入框尚未卸载） */
-const committing = ref(false)
+/** 重命名歌单弹窗（同一弹窗的仅重命名模式：与新建同款轻量形态，只改名称，不带简介 / 删除） */
+const renameTarget = ref<{ id: number; name: string } | null>(null)
 
-function startRename(id: number, name: string) {
-  editing.value = { id, value: name }
-  void nextTick(() => inputEl.value?.focus())
-}
-/** 空输入的默认名：未命名歌单 + 按当前语言的本地化日期（如「未命名歌单 2026/9/13」） */
-function defaultName(): string {
-  return `${t('playlist.untitled')} ${new Date().toLocaleDateString(locale.value)}`
-}
-async function confirmEdit() {
-  const e = editing.value
-  if (!e || committing.value) return
-  committing.value = true
-  try {
-    // 回车 / 点击输入框以外（失焦）都会提交；没输入则用「未命名 + 日期」
-    await library.renamePlaylist(e.id, e.value.trim() || defaultName())
-    if (current.value.playlistId === e.id) {
-      const name = e.value.trim() || defaultName()
-      current.value = { ...current.value, playlistName: name }
-    }
-  } catch (err) {
-    toast(errorText(err), 'error')
-  } finally {
-    committing.value = false
-    editing.value = null
-  }
-}
-/** 新建成功：跳转到新歌单（与原内联新建行为一致） */
+/** 新建成功：跳转到新歌单 */
 function onCreated(p: { id: number; name: string }) {
   go({ view: 'playlist', playlistId: p.id, playlistName: p.name })
+}
+/** 重命名成功：正在看这个歌单时同步页面标题上的名字（侧栏列表由 store 自行刷新） */
+function onRenamed(name?: string) {
+  const target = renameTarget.value
+  if (!target || !name) return
+  if (current.value.playlistId === target.id) {
+    current.value = { ...current.value, playlistName: name }
+  }
 }
 
 const playlistMenu = ref<{ x: number; y: number; id: number; name: string } | null>(null)
@@ -241,7 +220,7 @@ function openPlaylistMenu(e: MouseEvent, p: { id: number; name: string }) {
   e.stopPropagation()
   playlistMenu.value = { x: e.clientX, y: e.clientY, id: p.id, name: p.name }
   playlistMenuItems.value = [
-    { label: t('common.rename'), action: () => startRename(p.id, p.name) },
+    { label: t('common.rename'), action: () => (renameTarget.value = { id: p.id, name: p.name }) },
     {
       label: t('playlist.delete'),
       danger: true,
@@ -326,36 +305,8 @@ function openPlaylistMenu(e: MouseEvent, p: { id: number; name: string }) {
         </button>
       </div>
 
-      <!-- 重命名输入行（新建已改为弹窗，此行仅供右键菜单重命名使用）：
-           回车或点击输入框以外（失焦）提交，Esc / ✕ 取消（✕ 用 mousedown.prevent 防止先触发失焦提交） -->
-      <div
-        v-if="editing"
-        class="sidebar-fade mb-1 flex h-10 items-center gap-1.5 rounded-lg bg-white px-2 ring-1 ring-violet-400 dark:bg-zinc-800"
-        :class="{ 'pointer-events-none': collapsed }"
-      >
-        <input
-          ref="inputEl"
-          v-model="editing.value"
-          class="min-w-0 flex-1 bg-transparent text-sm text-zinc-800 outline-none dark:text-zinc-100"
-          :placeholder="$t('playlist.namePlaceholder')"
-          maxlength="25"
-          @keydown.enter="confirmEdit"
-          @keydown.esc="editing = null"
-          @blur="confirmEdit"
-        />
-        <button
-          class="cursor-pointer text-zinc-400 hover:text-zinc-600"
-          :aria-label="$t('common.cancel')"
-          @mousedown.prevent
-          @click="editing = null"
-        >
-          <X class="h-3.5 w-3.5" />
-        </button>
-      </div>
-
       <div v-for="p in library.playlists" :key="p.id">
         <button
-          v-if="editing?.id !== p.id"
           v-tooltip:right="p.name"
           class="group mb-1 flex h-10 w-full cursor-pointer items-center rounded-lg text-sm transition"
           :class="[
@@ -380,7 +331,7 @@ function openPlaylistMenu(e: MouseEvent, p: { id: number; name: string }) {
           </span>
         </button>
       </div>
-      <p v-if="showText && !library.playlists.length && !editing" class="sidebar-fade px-2.5 py-2 text-sm text-zinc-400 dark:text-zinc-600">
+      <p v-if="showText && !library.playlists.length" class="sidebar-fade px-2.5 py-2 text-sm text-zinc-400 dark:text-zinc-600">
         {{ $t('library.noPlaylistsHint') }}
       </p>
     </div>
@@ -393,8 +344,15 @@ function openPlaylistMenu(e: MouseEvent, p: { id: number; name: string }) {
       @close="playlistMenu = null"
     />
 
-    <!-- 新建歌单弹窗：与「编辑歌单」同款（PlaylistEditDialog 新建模式，无删除按钮） -->
+    <!-- 新建 / 重命名歌单弹窗：同一组件的两种模式（重命名走 rename-only，只改名称） -->
     <PlaylistEditDialog v-if="createOpen" @close="createOpen = false" @created="onCreated" />
+    <PlaylistEditDialog
+      v-if="renameTarget"
+      :playlist-id="renameTarget.id"
+      rename-only
+      @close="renameTarget = null"
+      @saved="onRenamed"
+    />
   </nav>
 </template>
 
