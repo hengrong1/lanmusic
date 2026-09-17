@@ -83,6 +83,7 @@ export default {
     noLyrics: '暂无歌词', noLyricsHint: '未找到歌词文件', hiRes: 'Hi-Res',
     lossless: '无损', highQuality: '高品质', standard: '标准',
     notPlaying: '未在播放', collapseNowPlaying: '收起播放页', expandNowPlaying: '展开播放页',
+    moreArtists: '等 {n} 位',
     buffering: '缓冲中…', playPauseHint: '播放/暂停 (空格)', rateHint: '播放倍速 {rate}x（点击切换）',
     mutedHint: '已静音（音量 {vol}%）', volumeHint: '音量 {vol}%，可滚轮调节',
     nowPlayingPrefix: '正在播放：', hiResHint: '高解析度音频（≥88.2kHz 或 ≥24bit）',

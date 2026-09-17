@@ -82,19 +82,28 @@ const subToggleOn =
       :class="align === 'left' ? 'items-start text-left' : 'items-center text-center'"
     >
       <h1 class="max-w-full truncate text-2xl font-bold text-white">{{ player.current?.title ?? $t('player.notPlaying') }}</h1>
-      <p class="mt-1 max-w-full truncate text-sm text-white/60">
-        <!-- 多艺人：每个名字独立可点击（区分每一个艺人） -->
-        <template v-for="(a, i) in currentArtistLinks" :key="a.id ?? `na-${i}`">
+      <!-- 多艺人：每个名字独立可点击（区分每一个艺人）。
+           合唱曲目动辄十几位，整行 truncate 会把后面的合唱者直接吃掉 → 这里按 flex-wrap 换行；
+           每个「名字 + 后面的分隔符」绑成一组，避免「/」被甩到行首单独占位 -->
+      <div
+        class="mt-1 flex max-w-full flex-wrap gap-x-1.5 gap-y-0.5 text-sm leading-snug text-white/60"
+        :class="align === 'left' ? 'justify-start' : 'justify-center'"
+      >
+        <span
+          v-for="(a, i) in currentArtistLinks"
+          :key="a.id ?? `na-${i}`"
+          class="inline-flex max-w-full min-w-0 items-baseline gap-1.5"
+        >
           <button
             v-if="a.id != null"
-            class="cursor-pointer transition hover:text-white hover:underline"
+            class="max-w-full cursor-pointer truncate transition hover:text-white hover:underline"
             v-tooltip="artistTip(a.name)"
             @click="openArtist(a)"
           >{{ a.name }}</button>
-          <span v-else>{{ a.name }}</span>
-          <span v-if="i < currentArtistLinks.length - 1" class="opacity-40"> / </span>
-        </template>
-      </p>
+          <span v-else class="max-w-full truncate">{{ a.name }}</span>
+          <span v-if="i < currentArtistLinks.length - 1" class="shrink-0 opacity-40">/</span>
+        </span>
+      </div>
       <button
         v-if="player.current?.albumId != null"
         class="mt-0.5 max-w-full cursor-pointer truncate text-xs text-white/40 transition hover:text-white/80"

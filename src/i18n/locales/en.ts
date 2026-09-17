@@ -83,6 +83,7 @@ export default {
     noLyrics: 'No lyrics', noLyricsHint: 'No lyrics file found', hiRes: 'Hi-Res',
     lossless: 'Lossless', highQuality: 'High Quality', standard: 'Standard',
     notPlaying: 'Not Playing', collapseNowPlaying: 'Collapse Now Playing', expandNowPlaying: 'Expand Now Playing',
+    moreArtists: '+{n} more',
     buffering: 'Buffering…', playPauseHint: 'Play/Pause (Space)', rateHint: 'Playback speed {rate}x (click to switch)',
     mutedHint: 'Muted (volume {vol}%)', volumeHint: 'Volume {vol}%, scroll to adjust',
     nowPlayingPrefix: 'Now playing: ', hiResHint: 'High-resolution audio (≥88.2kHz or ≥24bit)',

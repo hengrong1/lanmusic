@@ -286,6 +286,88 @@ function goArtist(artist: { id: number | null; name: string }) {
   if (props.nowPlayingOpen) emit('toggleNowPlaying')
 }
 
+/** 合唱曲目动辄十几位艺人，全平铺会把左区挤成一条斜杠长龙（如「我爱你中国」16 位）：
+ *  只平铺前 N 位，其余折进「等 N 位」，悬停弹出完整名单（名单内每一项仍可点进艺人页） */
+const VISIBLE_ARTISTS = 2
+const headArtists = computed(() => currentArtistLinks.value.slice(0, VISIBLE_ARTISTS))
+const hiddenArtists = computed(() => currentArtistLinks.value.slice(VISIBLE_ARTISTS))
+const moreArtistsLabel = computed(() => tr('player.moreArtists', { n: hiddenArtists.value.length }))
+
+/** 浮层里的悬停主色：播放页用封面主色，普通页为 null（回落主题紫类）。
+ *  浮层 Teleport 到 body，继承不到底栏 footer 上的 --accent，必须自己带一份写进 style。 */
+const popAccent = computed(() => (props.nowPlayingOpen ? (palette.value?.accent ?? '#a78bfa') : null))
+
+// ---- 「等 N 位」浮层 ----
+// 播放条贴着窗口下沿，浮层一律向上弹；必须 Teleport 到 body——主玻璃卡片内部会形成
+// backdrop root，子浮层的 backdrop-filter 必然失效（见 style.css 的玻璃配方说明）。
+const moreArtistsEl = ref<HTMLElement | null>(null)
+const artistsPopEl = ref<HTMLElement | null>(null)
+const artistsPopOpen = ref(false)
+const artistsPopPos = ref({ left: 0, bottom: 0, maxHeight: 320 })
+let artistsPopTimer: ReturnType<typeof setTimeout> | undefined
+
+const ARTISTS_POP_GAP = 8
+const EDGE = 8
+
+/** 按触发点摆放浮层：右侧放不下则左收拢，上方空间不足则内部滚动 */
+function placeArtistsPop() {
+  const trigger = moreArtistsEl.value
+  const pop = artistsPopEl.value
+  if (!trigger || !pop) return
+  const r = trigger.getBoundingClientRect()
+  const maxHeight = Math.max(96, r.top - ARTISTS_POP_GAP - EDGE)
+  const width = pop.offsetWidth
+  const left = Math.min(
+    Math.max(EDGE, r.left),
+    Math.max(EDGE, window.innerWidth - width - EDGE),
+  )
+  artistsPopPos.value = { left, bottom: window.innerHeight - r.top + ARTISTS_POP_GAP, maxHeight }
+}
+
+function openArtistsPop() {
+  if (!hiddenArtists.value.length) return
+  clearTimeout(artistsPopTimer)
+  // 先按触发点给一版位置，避免首帧落在窗口左下角闪一下；挂载后再按实际宽度收拢
+  const r = moreArtistsEl.value?.getBoundingClientRect()
+  if (r) {
+    artistsPopPos.value = {
+      left: r.left,
+      bottom: window.innerHeight - r.top + ARTISTS_POP_GAP,
+      maxHeight: Math.max(96, r.top - ARTISTS_POP_GAP - EDGE),
+    }
+  }
+  artistsPopOpen.value = true
+  void nextTick(placeArtistsPop)
+}
+
+function cancelArtistsPopClose() {
+  clearTimeout(artistsPopTimer)
+}
+
+/** 触发点与浮层之间有间隙，延迟收起避免鼠标穿越间隙时闪断 */
+function scheduleArtistsPopClose() {
+  clearTimeout(artistsPopTimer)
+  artistsPopTimer = setTimeout(() => (artistsPopOpen.value = false), 140)
+}
+
+function pickArtist(artist: { id: number | null; name: string }) {
+  artistsPopOpen.value = false
+  goArtist(artist)
+}
+
+// 切歌 / 关窗 / 缩放时收起：浮层是 fixed 定位、不跟随元素，留着就是错位
+watch(
+  () => player.current?.id,
+  () => {
+    artistsPopOpen.value = false
+  },
+)
+window.addEventListener('resize', scheduleArtistsPopClose)
+onUnmounted(() => {
+  clearTimeout(artistsPopTimer)
+  window.removeEventListener('resize', scheduleArtistsPopClose)
+})
+
 /** 当前歌词行（无时间轴歌词/无歌词时退化为专辑名） */
 const currentLyricLine = computed(() => {
   if (player.lyricsLines?.length) {
@@ -502,7 +584,7 @@ const theme = computed(() =>
       class="pointer-events-none absolute bottom-full left-1/2 h-10 w-2/3 -translate-x-1/2"
     ></canvas>
     <!-- 左：当前曲目 -->
-    <div class="flex w-56 min-w-0 items-center gap-3">
+    <div class="flex w-80 min-w-0 items-center gap-3">
       <button
         class="group relative cursor-pointer rounded-lg transition"
         :class="props.nowPlayingOpen ? '' : 'hover:opacity-90'"
@@ -520,17 +602,19 @@ const theme = computed(() =>
         </span>
       </button>
       <div class="flex min-w-0 flex-col justify-center gap-0.5">
-        <!-- 行1：歌名 – 歌手 -->
-        <div class="flex min-w-0 items-baseline gap-1.5 text-sm">
+        <!-- 行1：歌名 – 歌手。歌名让出更多宽度给歌手区：合唱曲目要放下「前两位 + 等 N 位」 -->
+        <div class="flex min-w-0 items-baseline gap-1 text-sm">
           <span
             v-if="player.current"
-            class="max-w-[58%] shrink-0 truncate font-medium transition-colors duration-500"
+            class="max-w-[40%] shrink-0 truncate font-medium transition-colors duration-500"
             :class="theme.title"
           >{{ player.current.title }}</span>
           <span v-else class="truncate font-medium" :class="theme.title">{{ $t('player.notPlaying') }}</span>
           <span v-if="player.current" class="shrink-0 opacity-40">–</span>
-          <!-- 多艺人：每个名字独立可点击（区分每一个艺人）；播放页悬停色跟随封面主色（--accent），普通页保持主题紫 -->
-          <template v-for="(a, i) in currentArtistLinks" :key="a.id ?? `na-${i}`">
+          <!-- 多艺人：默认只平铺前两位（合唱曲目动辄十几位，全平铺会挤成长龙），
+               其余折进「等 N 位」——悬停弹出完整名单，名单内每一项仍可点进艺人页。
+               每个名字独立可点击；播放页悬停色跟随封面主色（--accent），普通页保持主题紫 -->
+          <template v-for="(a, i) in headArtists" :key="a.id ?? `na-${i}`">
             <button
               v-if="a.id != null"
               class="min-w-0 cursor-pointer truncate transition hover:underline"
@@ -539,8 +623,17 @@ const theme = computed(() =>
               @click.stop="goArtist(a)"
             >{{ a.name }}</button>
             <span v-else class="min-w-0 truncate" :class="theme.artist">{{ a.name }}</span>
-            <span v-if="i < currentArtistLinks.length - 1" class="shrink-0 opacity-40"> / </span>
+            <span v-if="i < headArtists.length - 1" class="shrink-0 opacity-40"> / </span>
           </template>
+          <button
+            v-if="hiddenArtists.length"
+            ref="moreArtistsEl"
+            class="shrink-0 cursor-pointer whitespace-nowrap underline decoration-dotted underline-offset-2 transition"
+            :class="[theme.artist, artistsPopOpen ? 'opacity-100' : 'opacity-70 hover:opacity-100']"
+            @mouseenter="openArtistsPop"
+            @mouseleave="scheduleArtistsPopClose"
+            @click="openArtistsPop"
+          >{{ moreArtistsLabel }}</button>
         </div>
         <!-- 行2：当前歌词——逐字行按进度渐变填充（已唱强调色/未唱半透明），
              行级歌词过长滚动，无歌词时显示专辑名；纯展示，不响应点击 -->
@@ -902,6 +995,42 @@ const theme = computed(() =>
         <ListMusic class="h-4 w-4" />
       </button>
     </div>
+
+    <!-- 「等 N 位」完整名单：浮层向上弹（播放条贴窗口下沿），多位艺人按三列网格铺开
+         （十几位名字排成一列会拖成一根长条），窄屏放不下时内部滚动。
+         表面走和右键菜单 / 下拉同一套配方（.app-surface-blur + bg-(--app-surface)）：
+         无背景图是实色白/深，设了自定义背景图则转深玻璃并自动映射白字——
+         用 .app-float 的磨砂白会在满屏深玻璃里亮成一块白板。
+         Teleport 到 body 是必须的：主玻璃卡片内部会形成 backdrop root，子浮层的
+         backdrop-filter 必然失效（style.css 里已注明这个坑） -->
+    <Teleport to="body">
+      <div
+        v-if="artistsPopOpen"
+        ref="artistsPopEl"
+        class="app-surface-blur fixed z-[80] grid w-[228px] grid-cols-3 gap-x-0.5 overflow-y-auto overscroll-contain rounded-lg border border-white/15 bg-(--app-surface) py-1 shadow-xl"
+        :style="{
+          left: `${artistsPopPos.left}px`,
+          bottom: `${artistsPopPos.bottom}px`,
+          maxHeight: `${artistsPopPos.maxHeight}px`,
+          ...(popAccent ? { '--accent': popAccent } : {}),
+        }"
+        @mouseenter="cancelArtistsPopClose"
+        @mouseleave="scheduleArtistsPopClose"
+      >
+        <button
+          v-for="(a, i) in currentArtistLinks"
+          :key="a.id ?? `pa-${i}`"
+          :disabled="a.id == null"
+          class="min-w-0 cursor-pointer truncate rounded-md px-2 py-1.5 text-left text-xs text-zinc-700 transition-colors disabled:cursor-default disabled:hover:bg-transparent disabled:hover:text-zinc-700 dark:text-zinc-200 dark:disabled:hover:bg-transparent dark:disabled:hover:text-zinc-200"
+          :class="
+            popAccent
+              ? 'hover:bg-[color-mix(in_srgb,var(--accent)_18%,transparent)] hover:text-[var(--accent)]'
+              : 'hover:bg-violet-500/10 hover:text-violet-600 dark:hover:text-violet-300'
+          "
+          @click="pickArtist(a)"
+        >{{ a.name }}</button>
+      </div>
+    </Teleport>
   </footer>
 </template>
 
