@@ -214,26 +214,34 @@ html.has-bg .app-surface-blur .group:hover .group-hover\:bg-zinc-200\/80 {
 html.has-bg .app-surface-blur .focus\:bg-white:focus {
   background-color: rgb(255 255 255 / 0.14);
 }
-/* 顶栏搜索框三态专属映射（用户反馈 has-bg 下「透背景」）：类映射的 0.1 白雾 +
-   0.12/0.14 三态几乎全透。id 特异性 (1,x,x) 压过所有类映射（含 hover/focus 变体），
-   三态提为可辨识的实底，亮暗同配方 */
+/* ---- 顶栏搜索框 / 搜索下拉在 has-bg 下必须自带实底，不能指望 backdrop-filter ----
+   has-bg 给 .app-surface-blur 挂了 backdrop-filter，TopBar 因此成为 backdrop root，
+   其 DOM 子树内的 backdrop-filter 一律采不到后面的底图（2026-09-20 实测：同一个玻璃块
+   放进 header 内，底下黑白条纹原样透出；放进 body 才被模糊）。搜索框与搜索下拉都长在
+   TopBar 子树里，于是都只能靠自身底色遮挡：底色偏白时弹层内又是白字映射，越亮越糊。
+   故两者统一改为暗雾底 + 白字，与 has-bg 深玻璃主题（卡片/浮层）同一套观感。
+   注：#search-input 这里只设 background-color，别顺手加 border-color —— id 特异性 (1,2,1)
+   会压掉 .focus\:border-violet-400:focus 的聚焦主题色映射（那条只有 (0,4,1)）。 */
 html.has-bg .app-surface-blur #search-input {
-  background-color: rgb(255 255 255 / 0.22);
+  background-color: rgb(24 24 27 / 0.5);
 }
 html.has-bg .app-surface-blur #search-input:hover {
-  background-color: rgb(255 255 255 / 0.28);
+  background-color: rgb(24 24 27 / 0.58);
 }
 html.has-bg .app-surface-blur #search-input:focus {
-  background-color: rgb(255 255 255 / 0.32);
+  background-color: rgb(24 24 27 / 0.66);
 }
-/* 顶栏搜索下拉（最近搜索 / 搜索结果弹层）：无 Teleport，挂在 TopBar 深玻璃子树内
-   → bg-white 被映射成 0.06 白雾，而弹层背后是主界面内容（非纯背景图），全透不可读。
-   给弹层自身配深玻璃（压暗 + 模糊）+ 暗雾底，弹层内文字继续走白字映射 */
+/* 顶栏搜索下拉（最近搜索 / 搜索结果弹层）：无 Teleport（定位依赖输入框 rect），
+   永远落在 TopBar 的 backdrop root 内 → 下面这份深玻璃 backdrop-filter 形同虚设，
+   压暗与模糊一点都拿不到，真正起作用的只有 background-color 这一层。
+   0.5 时用户的自定义背景图与背后的曲库表格会明显透出来（「搜索透背景」复现点），
+   故提到 0.92 让它读起来是一块浮层表面。
+   → 若日后把它也 Teleport 到 body，可把底色降回 0.5，让玻璃自己压暗模糊。 */
 html.has-bg .app-surface-blur .search-pop {
   --glass-pop: blur(16px) saturate(1.1) brightness(0.8);
   -webkit-backdrop-filter: var(--glass-pop);
   backdrop-filter: var(--glass-pop);
-  background-color: rgb(24 24 27 / 0.5);
+  background-color: rgb(24 24 27 / 0.92);
 }
 /* 输入框 placeholder 走 ::placeholder 伪元素，.text-zinc-400 类映射不命中 → 单独提亮 */
 html.has-bg .app-surface-blur .placeholder\:text-zinc-400::placeholder {
