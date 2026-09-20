@@ -302,6 +302,27 @@ onMounted(() => {
 })
 
 // 全局快捷键
+/**
+ * 焦点是不是「鼠标点出来的」。
+ * 鼠标点过的元素，随后按下任意一个键，Chromium 都会把它标成 :focus-visible（键盘聚焦态）
+ * → 按钮 / 侧栏项上凭空冒出聚焦框（用户反馈「按空格会显示 focus 聚焦并暂停/播放」：
+ * 点过「全部歌曲」再按空格，那一项就被套上浏览器默认聚焦框）。
+ * 实测按键处理的那一刻 :focus-visible 就已经是 true（鼠标态、Tab 态都一样），处理器里分不出来，
+ * 所以自己记来源：pointerdown 视为鼠标，Tab 视为键盘。纯输入控件与 body 永远不动。
+ */
+let focusFromPointer = false
+window.addEventListener('pointerdown', () => (focusFromPointer = true), true)
+window.addEventListener('keydown', (e) => e.key === 'Tab' && (focusFromPointer = false), true)
+
+function blurShortcutFocus() {
+  // Tab 导航出来的焦点本来就该看得见，不清（清了键盘用户会丢失自己的位置）
+  if (!focusFromPointer) return
+  const el = document.activeElement as HTMLElement | null
+  if (!el || el === document.body) return
+  if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable) return
+  el.blur()
+}
+
 window.addEventListener('keydown', (e) => {
   const target = e.target as HTMLElement
   const typing = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable
@@ -311,24 +332,31 @@ window.addEventListener('keydown', (e) => {
   // Esc 也交由弹窗自己处理（各弹窗均有自己的 Esc 关闭逻辑）
   if (document.querySelector('[data-dialog-panel]')) return
   if (e.key === 'Escape' && nowPlaying.value) {
+    blurShortcutFocus()
     nowPlaying.value = false
     return
   }
   if (e.key === ' ' && !typing) {
     e.preventDefault()
+    blurShortcutFocus()
     player.toggle()
   } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'f') {
     e.preventDefault()
+    blurShortcutFocus()
     document.getElementById('search-input')?.focus()
   } else if (!typing && !e.metaKey && !e.ctrlKey && !e.altKey && e.key.toLowerCase() === 'n') {
+    blurShortcutFocus()
     player.next()
   } else if (!typing && !e.metaKey && !e.ctrlKey && !e.altKey && e.key.toLowerCase() === 'p') {
+    blurShortcutFocus()
     player.prev()
   } else if (!typing && !e.metaKey && !e.ctrlKey && !e.altKey && e.key === '[') {
     // 歌词校准：提前 0.5s（歌词显示慢了按这个）
+    blurShortcutFocus()
     player.setLyricOffset(-0.5)
   } else if (!typing && !e.metaKey && !e.ctrlKey && !e.altKey && e.key === ']') {
     // 歌词校准：延后 0.5s（歌词显示快了按这个）
+    blurShortcutFocus()
     player.setLyricOffset(0.5)
   }
 })
