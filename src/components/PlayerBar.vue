@@ -141,7 +141,7 @@ watch(skinOpen, (v) => {
 })
 onUnmounted(() => document.removeEventListener('click', onSkinDocClick, true))
 
-// ---- 树状频谱：绘制在播放条上沿（随播放条一起被专注模式动画带动） ----
+// ---- 树状频谱：绘制在播放条上沿；画布 Teleport 到 body，专注模式下不被播放条位移带出窗口 ----
 const treeCanvas = ref<HTMLCanvasElement | null>(null)
 const treeFreq = new Uint8Array(256)
 let treeRaf = 0
@@ -577,12 +577,18 @@ const theme = computed(() =>
     :class="theme.bar"
     :style="accentVarStyle"
   >
-    <!-- 树状频谱：悬于播放条上沿，占 2/3 宽并居中（不遮挡播放条内容） -->
-    <canvas
-      v-if="props.nowPlayingOpen && skin.on && skin.style === 'tree'"
-      ref="treeCanvas"
-      class="pointer-events-none absolute bottom-full left-1/2 h-10 w-2/3 -translate-x-1/2"
-    ></canvas>
+    <!-- 树状频谱：悬于播放条上沿，占 2/3 宽并居中（不遮挡播放条内容）。
+         Teleport 到 body：播放条专注模式隐藏是 gsap transform 整体位移，画布若留在播放条内部
+         会被一起带出窗口（专注模式下频谱消失）；移出后专注时落到窗口下缘继续显示。
+         z-30 高于应用主体与播放页环境层（z-15），低于 Toast（60）/ 弹窗（70） -->
+    <Teleport to="body">
+      <canvas
+        v-if="props.nowPlayingOpen && skin.on && skin.style === 'tree'"
+        ref="treeCanvas"
+        class="pointer-events-none fixed left-1/2 z-30 h-10 w-2/3 -translate-x-1/2 transition-[bottom]"
+        :class="props.focusHidden ? 'bottom-0 duration-[600ms] ease-in' : 'bottom-23 duration-[400ms] ease-out'"
+      ></canvas>
+    </Teleport>
     <!-- 左：当前曲目 -->
     <div class="flex w-80 min-w-0 items-center gap-3">
       <button
