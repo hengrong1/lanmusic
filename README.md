@@ -370,6 +370,7 @@ SQLite（WAL 模式，外键开启），建表与列迁移见 `src-tauri/src/db.
 - **不要再写 `hover:border-zinc-*` 或 `hover:border-violet-*`**：`has-bg` 下静态 `border-zinc-*` 的白雾映射特异性 (0,2,1) 会压过 Tailwind 的 hover 工具类 (0,2,0)，颜色会不生效
 - 颜色由 `--color-violet-*` 给出、随用户主题色变化：浅色取 400、深色（无背景图）取 500、`has-bg` 深玻璃取 300
 - 优先级内置：聚焦 > 悬停（`:not(:focus-within)`，打字时描边仍是聚焦色）、禁用态无反馈（`:not(:disabled)`）
+- 本来**没有描边**的列表行 / 卡片 / 封面同理：`hover-accent-line`（1px 主色内描边，inset 阴影，不占位不裁剪）/ `group-hover-accent-ring`（元素常驻 `border border-transparent`，悬停只换色，用于封面这类内部被铺满的块）。**别给它们加真 border**——0→1px 会让内容抖 1px，虚拟列表的行高尤其敏感
 
 **运行与调试**：
 - `pnpm start`（Rust 改动会自动重编译；前端 HMR 端口 1420/1421；Rust 日志在 dev 模式下同步输出到终端）

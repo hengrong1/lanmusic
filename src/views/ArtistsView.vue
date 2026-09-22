@@ -83,7 +83,7 @@ function initial(name: string) {
       <div
         v-for="a in artists"
         :key="a.id"
-        class="group flex cursor-pointer flex-col items-center gap-2 rounded-xl p-3 transition hover:bg-zinc-100 dark:hover:bg-zinc-800/60"
+        class="group hover-accent-line flex cursor-pointer flex-col items-center gap-2 rounded-xl p-3 transition hover:bg-zinc-100 dark:hover:bg-zinc-800/60"
         @click="nav.go({ view: 'tracks', artistId: a.id, artistName: a.name })"
       >
         <div class="flex h-24 w-24 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-violet-400 to-indigo-500 text-white shadow-sm transition group-hover:shadow-md">

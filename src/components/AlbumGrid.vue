@@ -17,7 +17,10 @@ defineEmits<{ open: [album: AlbumItem]; play: [album: AlbumItem] }>()
       @click="$emit('open', album)"
     >
       <div class="relative">
-        <CoverImg :album-id="album.id" class="aspect-square w-full rounded-xl shadow-sm transition group-hover:shadow-lg" />
+        <CoverImg
+          :album-id="album.id"
+          class="group-hover-accent-ring aspect-square w-full rounded-xl border border-transparent shadow-sm transition group-hover:shadow-lg"
+        />
         <button
           class="absolute right-2 bottom-2 flex h-10 w-10 cursor-pointer items-center justify-center rounded-lg bg-violet-500 text-white shadow-lg transition hover:scale-105 hover:bg-violet-400"
           :class="album.trackCount === 0 ? 'hidden' : ''"

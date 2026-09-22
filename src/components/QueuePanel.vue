@@ -60,7 +60,8 @@ const activeRowClass = computed(() =>
     : 'queue-active-row mx-1 rounded-xl bg-gradient-to-r from-violet-100 via-violet-50/50 to-transparent shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--color-violet-500)_15%,transparent),0_2px_8px_-2px_color-mix(in_srgb,var(--color-violet-500)_20%,transparent)] dark:from-violet-500/20 dark:via-violet-500/10 dark:to-transparent dark:shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--color-violet-500)_25%,transparent),0_2px_8px_-2px_color-mix(in_srgb,var(--color-violet-500)_30%,transparent)]',
 )
 const inactiveRowClass = computed(() =>
-  themed.value ? 'mx-1 rounded-xl hover:bg-white/10' : 'mx-1 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-800/60',
+  // 非主题色模式才补主色描边：themed（播放页随封面配色）下强调色是 --accent，不是软件主色
+  themed.value ? 'mx-1 rounded-xl hover:bg-white/10' : 'hover-accent-line mx-1 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-800/60',
 )
 
 // 点击面板外部 / 按 Esc 关闭
@@ -259,7 +260,7 @@ watch(
         >
           <template #default="{ item: t, index: i }">
             <div
-              class="group flex h-full cursor-default items-center gap-3 px-4 py-2 text-sm transition-colors duration-300"
+              class="group flex h-full cursor-default items-center gap-3 px-4 py-2 text-sm transition-all duration-300"
               :class="i === player.index ? activeRowClass : inactiveRowClass"
               :style="rowStyle(i)"
               @dblclick="i === player.index ? player.toggle() : player.playAt(i)"

@@ -277,7 +277,7 @@ function openPlaylistMenu(e: MouseEvent, p: { id: number; name: string }) {
           showText ? 'gap-2.5 px-2.5' : 'justify-center px-0',
           isActive(e)
             ? 'bg-violet-100 font-medium text-violet-700 dark:bg-violet-500/15 dark:text-violet-300'
-            : 'text-zinc-600 hover:bg-zinc-200/60 dark:text-zinc-300 dark:hover:bg-zinc-800/60',
+            : 'hover-accent-line text-zinc-600 hover:bg-zinc-200/60 dark:text-zinc-300 dark:hover:bg-zinc-800/60',
         ]"
         @click="go(e.route)"
       >
@@ -313,7 +313,7 @@ function openPlaylistMenu(e: MouseEvent, p: { id: number; name: string }) {
             showText ? 'gap-2.5 px-2' : 'justify-center px-0',
             current.view === 'playlist' && current.playlistId === p.id
               ? 'bg-violet-100 font-medium text-violet-700 dark:bg-violet-500/15 dark:text-violet-300'
-              : 'text-zinc-600 hover:bg-zinc-200/60 dark:text-zinc-300 dark:hover:bg-zinc-800/60',
+              : 'hover-accent-line text-zinc-600 hover:bg-zinc-200/60 dark:text-zinc-300 dark:hover:bg-zinc-800/60',
           ]"
           @click="go({ view: 'playlist', playlistId: p.id, playlistName: p.name })"
           @contextmenu="openPlaylistMenu($event, p)"
