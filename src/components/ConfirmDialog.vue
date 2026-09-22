@@ -1,16 +1,24 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted } from 'vue'
+import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { DangerTriangleIcon as TriangleAlert } from '@solar-icons/vue/linear/danger-triangle'
 import { BaseButton } from '@/components/ui'
 import { useConfirmState } from '@/composables/useConfirm'
-import { dialogOverlayClass, dialogPanelTransition, dialogDraggable } from '@/composables/useDialogPrefs'
+import { dialogOverlayClass, dialogPanelTransition, dialogDraggable, PROMPT_Z } from '@/composables/useDialogPrefs'
+import { topDialogPanel } from '@/directives/focusTrap'
 
 const { state, answer } = useConfirmState()
 
+const panelEl = ref<HTMLElement | null>(null)
+
 function onKey(e: KeyboardEvent) {
   if (!state.value.open) return
-  if (e.key === 'Escape') answer(false)
-  else if (e.key === 'Enter') answer(true)
+  if (e.key === 'Escape') {
+    // 叠窗时只有最上层响应 Esc（本框在 PROMPT_Z 层，正常就是最上层；这里防的是
+    // 关闭确认框盖在它之上时，Esc 把下面的确认也一起取消）
+    if (topDialogPanel() === panelEl.value) answer(false)
+  } else if (e.key === 'Enter') {
+    answer(true)
+  }
 }
 onMounted(() => window.addEventListener('keydown', onKey))
 onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
@@ -26,11 +34,12 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
       leave-from-class="opacity-100"
       leave-to-class="opacity-0"
     >
-      <div v-if="state.open" :class="dialogOverlayClass()" @click.self="answer(false)">
+      <div v-if="state.open" :class="dialogOverlayClass(PROMPT_Z)" @click.self="answer(false)">
         <Transition v-bind="dialogPanelTransition">
           <div
             v-if="state.open"
             v-focus-trap
+            ref="panelEl"
             data-dialog-panel
             class="app-surface-blur w-[380px] rounded-2xl border border-white/15 bg-(--app-surface) p-5 shadow-2xl"
           >

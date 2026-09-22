@@ -8,7 +8,9 @@ const { toasts } = useToast()
 
 <template>
   <Teleport to="body">
-    <div class="pointer-events-none fixed bottom-24 left-1/2 z-[60] flex -translate-x-1/2 flex-col items-center gap-2">
+    <!-- z-100：Toast 必须能压在弹窗之上（下载完成提示、清空记录成功等都是在弹窗操作后立刻弹的，
+         原来在 z-60 比弹窗的 z-70 低，提示直接躲在弹窗后面看不见）。层叠表见 useDialogPrefs.ts -->
+    <div class="pointer-events-none fixed bottom-24 left-1/2 z-[100] flex -translate-x-1/2 flex-col items-center gap-2">
       <TransitionGroup
         enter-active-class="transition duration-200 ease-out"
         enter-from-class="opacity-0 translate-y-2"

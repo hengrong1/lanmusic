@@ -167,7 +167,7 @@ onBeforeUnmount(() => {
   <!-- Teleport 到 body：脱离 App 主卡片（app-surface-blur）的 DOM 子树，
        否则 has-bg 的白字/白雾映射会命中弹窗内部（磨砂白底 + 白字 = 看不清） -->
   <Teleport to="body">
-  <div :class="[dialogOverlayClass('z-50'), 'p-6']" @click.self="emit('close')">
+  <div :class="[dialogOverlayClass(), 'p-6']" @click.self="emit('close')">
     <Transition v-bind="dialogPanelTransition" appear>
     <div
       v-focus-trap

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { AltArrowDownIcon as ArrowDown } from '@solar-icons/vue/linear/alt-arrow-down'
 import { LinkMinimalisticIcon as LinkIcon } from '@solar-icons/vue/linear/link-minimalistic'
 import { RefreshIcon as LoaderCircle } from '@solar-icons/vue/linear/refresh'
@@ -7,6 +7,7 @@ import { RestartIcon as RotateCcw } from '@solar-icons/vue/linear/restart'
 import { BaseButton } from '@/components/ui'
 import { useUpdater } from '@/composables/useUpdater'
 import { dialogOverlayClass, dialogPanelTransition, dialogDraggable } from '@/composables/useDialogPrefs'
+import { topDialogPanel } from '@/directives/focusTrap'
 import { openUrl } from '@tauri-apps/plugin-opener'
 
 const updater = useUpdater()
@@ -29,9 +30,12 @@ const progressPct = computed(() =>
     : -1,
 )
 
+const panelEl = ref<HTMLElement | null>(null)
+
 function onKey(e: KeyboardEvent) {
   if (!updater.dialogOpen.value) return
-  if (e.key === 'Escape') updater.closeUpdateDialog()
+  // 叠窗时只有最上层响应 Esc（如关闭确认框盖在更新弹窗之上）
+  if (e.key === 'Escape' && topDialogPanel() === panelEl.value) updater.closeUpdateDialog()
 }
 onMounted(() => window.addEventListener('keydown', onKey))
 onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
@@ -51,6 +55,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
           <div
             v-if="updater.dialogOpen.value"
             v-focus-trap
+            ref="panelEl"
             data-dialog-panel
             class="app-surface-blur w-[420px] rounded-2xl border border-white/15 bg-(--app-surface) p-5 shadow-2xl"
           >

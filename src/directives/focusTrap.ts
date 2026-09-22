@@ -12,6 +12,15 @@ import type { Directive } from 'vue'
 /** 当前激活（未销毁）的弹窗面板栈，栈顶 = 最上层弹窗 */
 const stack: HTMLElement[] = []
 
+/**
+ * 最上层弹窗面板（栈顶）。给「关闭当前弹窗」这类动作（Esc）用：
+ * 叠窗时只有最上层该响应，否则「已移除歌曲弹窗 → 清空记录确认框」按一次 Esc
+ * 会把两层一起关掉（两个组件各自监听 window keydown，都会认为自己该关）。
+ */
+export function topDialogPanel(): HTMLElement | null {
+  return stack[stack.length - 1] ?? null
+}
+
 const FOCUSABLE_SELECTOR = [
   'a[href]',
   'button:not([disabled])',

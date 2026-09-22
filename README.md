@@ -372,6 +372,11 @@ SQLite（WAL 模式，外键开启），建表与列迁移见 `src-tauri/src/db.
 - 优先级内置：聚焦 > 悬停（`:not(:focus-within)`，打字时描边仍是聚焦色）、禁用态无反馈（`:not(:disabled)`）
 - 本来**没有描边**的列表行 / 卡片 / 封面同理：`hover-accent-line`（1px 主色内描边，inset 阴影，不占位不裁剪）/ `group-hover-accent-ring`（元素常驻 `border border-transparent`，悬停只换色，用于封面这类内部被铺满的块）。**别给它们加真 border**——0→1px 会让内容抖 1px，虚拟列表的行高尤其敏感
 
+**弹窗与浮层的层叠（z 值别现填）**：取值看 `src/composables/useDialogPrefs.ts` 文件头的层叠表 —— 50 非模态浮层（右键菜单/搜索下拉/队列面板/MV）、70 普通弹窗、80 弹窗内下拉面板、90 二次确认与关闭确认、100 Toast、9999 tooltip。
+- 遮罩一律用 `dialogOverlayClass(z)`；`BaseModal` 用 `layer="dialog" | "prompt"`（`prompt` = 必须压在**任何**普通弹窗之上，如关闭确认）
+- **同一层里谁压谁由 DOM 顺序决定，而 Teleport 的顺序取决于组件挂载顺序**（视图是导航后才挂载的）⇒ 同层等于随机，凡可能叠在一起的两样东西必须分层。踩过两次：设置页「已移除歌曲」弹窗里点「清空记录」，确认框与主弹窗同为 z-70，确认框被压在后面；下载完成的 Toast 在 z-60（低于弹窗 z-70），提示被更新弹窗挡住
+- 叠窗时 **Esc 只关最上层**：用 `focusTrap.ts` 的 `topDialogPanel()` 判断，别只看自己的 `open`（否则一次关掉两层）
+
 **运行与调试**：
 - `pnpm start`（Rust 改动会自动重编译；前端 HMR 端口 1420/1421；Rust 日志在 dev 模式下同步输出到终端）
 - `pnpm test` — `scheme.rs` 中有跨平台 URI 解析的单测，改协议相关代码请补测试

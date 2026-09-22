@@ -143,7 +143,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 <template>
   <!-- Teleport 到 body：脱离 app-surface-blur 主卡片 DOM 子树，避免 has-bg 映射误伤弹窗内部 -->
   <Teleport to="body">
-  <div :class="[dialogOverlayClass('z-50'), 'p-6']" @click.self="emit('close')">
+  <div :class="[dialogOverlayClass(), 'p-6']" @click.self="emit('close')">
     <Transition v-bind="dialogPanelTransition" appear>
       <div
         v-focus-trap

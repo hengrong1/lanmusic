@@ -48,7 +48,8 @@ async function confirm() {
 </script>
 
 <template>
-  <BaseModal :open="open" :title="t('closeDialog.title')" size="sm" @close="open = false">
+  <!-- layer=prompt：窗口关闭确认必须能压在别的一切弹窗之上（例如设置里开着「已移除歌曲」时点关闭） -->
+  <BaseModal :open="open" :title="t('closeDialog.title')" size="sm" layer="prompt" @close="open = false">
     <p class="text-sm leading-relaxed text-zinc-500 dark:text-zinc-300">{{ t('closeDialog.desc') }}</p>
 
     <!-- 行为选项：点卡片即选中，选中态 violet 描边 -->

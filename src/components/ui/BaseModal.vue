@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import { CloseIcon as X } from '@solar-icons/vue/linear/close'
-import { dialogOverlayClass, dialogDraggable } from '@/composables/useDialogPrefs'
+import { dialogOverlayClass, dialogDraggable, DIALOG_Z, PROMPT_Z } from '@/composables/useDialogPrefs'
+import { topDialogPanel } from '@/directives/focusTrap'
 
 const props = withDefaults(
   defineProps<{
@@ -9,10 +10,15 @@ const props = withDefaults(
     title?: string
     closable?: boolean
     size?: 'sm' | 'md' | 'lg'
+    /** 层：dialog = 普通弹窗（有别的弹窗开着时，它盖住对方）；
+     *  prompt = 确认类弹窗，必须压在**任何**普通弹窗之上（如关闭确认、设置里的二次确认）。
+     *  层值见 useDialogPrefs.ts 的层叠表，别在这里手填 z 类。 */
+    layer?: 'dialog' | 'prompt'
   }>(),
   {
     closable: true,
     size: 'md',
+    layer: 'dialog',
   },
 )
 
@@ -31,7 +37,8 @@ const sizeClasses = {
 }
 
 function onKey(e: KeyboardEvent) {
-  if (e.key === 'Escape' && props.open) close()
+  // 叠窗时只有最上层响应 Esc，否则确认框盖在弹窗上时按一次 Esc 会把两层一起关掉
+  if (e.key === 'Escape' && props.open && topDialogPanel() === panelEl.value) close()
 }
 
 onMounted(() => window.addEventListener('keydown', onKey))
@@ -63,7 +70,11 @@ watch(
       leave-from-class="opacity-100"
       leave-to-class="opacity-0"
     >
-      <div v-if="open" :class="dialogOverlayClass()" @click.self="closable && close()">
+      <div
+        v-if="open"
+        :class="dialogOverlayClass(layer === 'prompt' ? PROMPT_Z : DIALOG_Z)"
+        @click.self="closable && close()"
+      >
         <Transition
           enter-active-class="transition duration-200 ease-out"
           enter-from-class="opacity-0 scale-95"
