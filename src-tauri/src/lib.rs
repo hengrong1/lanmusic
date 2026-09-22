@@ -5,6 +5,7 @@ mod diagnostics;
 mod error;
 #[cfg(windows)]
 mod fonts;
+mod global_shortcuts;
 mod keyring;
 mod lyrics;
 mod metadata;
@@ -77,6 +78,9 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_process::init())
+        // 全局快捷键：系统级热键（设置页可配置，默认关闭；触发时经 global-shortcut 事件
+        // 分发给主窗口，见 global_shortcuts.rs；注册由前端命令驱动，无需 capability 权限）
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .setup(move |app| {
             // panic 钩子：release 版无控制台，panic 默认只写 stderr = 完全丢失。
             // 启动路径的 .expect（数据目录 / DB 打开）正是「应用打不开」的高发点，
@@ -405,7 +409,10 @@ pub fn run() {
             commands::check_github_update,
             commands::download_update_installer,
             commands::install_update_and_restart,
-            commands::get_mv_url
+            commands::get_mv_url,
+            commands::global_shortcut_apply,
+            commands::global_shortcut_clear,
+            commands::global_shortcut_is_registered
         ])
         .run(tauri::generate_context!())
     {

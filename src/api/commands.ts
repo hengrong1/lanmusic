@@ -131,6 +131,16 @@ export const api = {
   // 获取 MV 视频流 URL（同名视频文件不存在时返回 null）
   getMvUrl: (trackId: number) => invoke<string | null>('get_mv_url', { trackId }),
 
+  // 全局快捷键（Rust 侧注册系统热键；触发后经 global-shortcut 事件分发，见 useShortcuts.ts）
+  /** 整体替换注册（先注销旧注册）；任一组合被其他程序占用则整体失败并返回错误 */
+  globalShortcutsApply: (bindings: { action: string; shortcut: string }[]) =>
+    invoke<void>('global_shortcut_apply', { bindings }),
+  /** 注销本应用注册的全部全局快捷键 */
+  globalShortcutsClear: () => invoke<void>('global_shortcut_clear'),
+  /** 检测快捷键是否已被本应用注册（被其他程序占用只能在注册时报错） */
+  globalShortcutIsRegistered: (shortcut: string) =>
+    invoke<boolean>('global_shortcut_is_registered', { shortcut }),
+
   // 设置（M2/M3）
   getSetting: (key: string) => invoke<string | null>('get_setting', { key }),
   setSetting: (key: string, value: string) => invoke<void>('set_setting', { key, value }),

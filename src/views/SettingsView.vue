@@ -37,6 +37,20 @@ import { getPreventSleep, setPreventSleepSetting } from '@/composables/usePowerG
 import { useUpdater } from '@/composables/useUpdater'
 import { useStatsEntry } from '@/composables/useStatsEntry'
 import { useNav } from '@/composables/useNav'
+import {
+  SHORTCUT_DEFS,
+  GLOBAL_DEFS,
+  useShortcuts,
+  useGlobalShortcuts,
+  setShortcut,
+  resetShortcuts,
+  comboFromEvent,
+  accelFromEvent,
+  formatCombo,
+  formatAccel,
+  type ShortcutAction,
+  type GlobalAction,
+} from '@/composables/useShortcuts'
 import { usePlayerStore } from '@/stores/player'
 import { api } from '@/api/commands'
 import { getSearchSettings, setSearchSettings, type SearchSettings } from '@/composables/useSearchSettings'
@@ -157,6 +171,125 @@ onMounted(() => {
     })
     .catch(() => {})
 })
+
+// ---- 快捷键（应用内 + 全局，见 useShortcuts.ts）----
+const appShortcuts = useShortcuts()
+const gs = useGlobalShortcuts()
+const globalEnabled = gs.enabled
+const globalBindings = gs.bindings
+const appRows = SHORTCUT_DEFS
+const globalRows = GLOBAL_DEFS
+
+/** 恢复全部应用内默认快捷键 */
+function onResetShortcuts() {
+  resetShortcuts()
+  toast(t('settings.shortcutSaved'), 'info', 'settings.shortcut')
+}
+
+async function onGlobalToggle(val: boolean) {
+  await gs.setEnabled(val)
+}
+
+// 录制器：点击键位按钮进入录制，下一个按键即写入（Esc 取消 / Backspace 清除）。
+// 用 window capture 监听：先于 App.vue 的 bubble 快捷键触发，preventDefault + stopPropagation
+// 保证录制期间不会误触发播放/切歌等动作。
+const recording = ref<string | null>(null) // 'app:{action}' | 'global:{action}'
+let recordListener: ((e: KeyboardEvent) => void) | null = null
+const RECORD_IGNORED_KEYS = ['Control', 'Meta', 'Alt', 'Shift', 'CapsLock', 'NumLock', 'ScrollLock', 'Tab']
+
+function isRecording(kind: 'app' | 'global', action: string) {
+  return recording.value === `${kind}:${action}`
+}
+
+function startRecording(kind: 'app' | 'global', action: string) {
+  stopRecording()
+  recording.value = `${kind}:${action}`
+  recordListener = (e: KeyboardEvent) => onRecordKeydown(kind, action, e)
+  window.addEventListener('keydown', recordListener, true)
+}
+
+function stopRecording() {
+  recording.value = null
+  if (recordListener) {
+    window.removeEventListener('keydown', recordListener, true)
+    recordListener = null
+  }
+}
+onBeforeUnmount(stopRecording)
+
+/**
+ * 录制中失焦（点击其他位置 / Tab 切走 / 点击别处按钮）：结束录制。
+ * 录制期间按钮内始终显示当前键位；若已录到新组合则显示新值，否则保持原值。
+ */
+function onRecordBlur() {
+  stopRecording()
+}
+
+function onRecordKeydown(kind: 'app' | 'global', action: string, e: KeyboardEvent) {
+  if (e.key === 'Escape') {
+    e.preventDefault()
+    e.stopPropagation()
+    stopRecording()
+    return
+  }
+  // 单独按修饰键（及 Tab）：等待主键，不结束录制
+  if (RECORD_IGNORED_KEYS.includes(e.key)) return
+  e.preventDefault()
+  e.stopPropagation()
+  if (e.key === 'Backspace') {
+    void saveRecorded(kind, action, null)
+    return
+  }
+  if (kind === 'app') {
+    const combo = comboFromEvent(e)
+    if (combo) void saveRecorded(kind, action, combo)
+  } else {
+    const accel = accelFromEvent(e)
+    if (!accel) {
+      toast(t('settings.shortcutUnsupported'), 'error')
+      return
+    }
+    void saveRecorded(kind, action, accel)
+  }
+}
+
+async function saveRecorded(kind: 'app' | 'global', action: string, value: string | null) {
+  stopRecording()
+  if (kind === 'app') {
+    const act = action as ShortcutAction
+    // 冲突检测：与其他应用内动作重复则拒绝
+    if (value) {
+      const clash = appRows.find(
+        (d) =>
+          d.action !== act &&
+          appShortcuts.value[d.action] &&
+          value.toLowerCase() === (appShortcuts.value[d.action] ?? '').toLowerCase(),
+      )
+      if (clash) {
+        toast(t('settings.shortcutTaken', { name: t(clash.labelKey) }), 'error')
+        return
+      }
+    }
+    setShortcut(act, value)
+    toast(t('settings.shortcutSaved'), 'info', 'settings.shortcut')
+  } else {
+    const act = action as GlobalAction
+    // 冲突检测：与其他全局动作重复则拒绝
+    if (value) {
+      const clash = globalRows.find(
+        (d) => d.action !== act && globalBindings.value[d.action] && value === globalBindings.value[d.action],
+      )
+      if (clash) {
+        toast(t('settings.shortcutTaken', { name: t(clash.labelKey) }), 'error')
+        return
+      }
+    }
+    // 启用状态下即时重新注册（被其他程序占用时 composable 内回滚并提示）
+    if (await gs.setBinding(act, value)) {
+      toast(t('settings.shortcutGlobalSaved'), 'info', 'settings.globalShortcut')
+    }
+  }
+}
 
 // ---- 歌词来源优先级（设置 → 歌词）----
 // 值为逗号分隔的来源顺序，Rust 侧取歌词时按此顺序尝试（见 src-tauri/src/lyrics.rs lyric_priority）
@@ -1769,6 +1902,83 @@ const showWebdavLimits = computed(() => showWebdav.value || library.sources.some
                     size="sm"
                     @update:model-value="setCloseAction"
                   />
+                </div>
+              </div>
+            </section>
+
+            <!-- 快捷键：应用内快捷键（可录制）+ 全局快捷键（默认关闭，见 useShortcuts.ts） -->
+            <section>
+              <h3 class="mb-2.5 text-sm font-semibold text-zinc-800 dark:text-zinc-100">{{ t('settings.shortcuts') }}</h3>
+              <div class="rounded-xl border border-zinc-200 bg-white p-4 text-sm dark:border-zinc-800 dark:bg-zinc-900">
+                <!-- 应用内快捷键 -->
+                <div class="flex items-center justify-between gap-3">
+                  <div class="min-w-0">
+                    <p class="text-zinc-600 dark:text-zinc-300">{{ t('settings.shortcutsInApp') }}</p>
+                    <p class="mt-0.5 text-xs text-zinc-400">{{ t('settings.shortcutsInAppDesc') }}</p>
+                  </div>
+                  <BaseButton variant="ghost" size="sm" :icon="RotateCcw" @click="onResetShortcuts">
+                    {{ t('settings.shortcutReset') }}
+                  </BaseButton>
+                </div>
+                <div class="mt-2 space-y-0.5">
+                  <div
+                    v-for="def in appRows"
+                    :key="def.action"
+                    class="flex items-center justify-between gap-3 rounded-lg px-2 py-1.5 transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-800/60"
+                  >
+                    <span class="min-w-0 truncate text-zinc-500 dark:text-zinc-400">{{ t(def.labelKey) }}</span>
+                    <button
+                      type="button"
+                      class="shrink-0 rounded-md border px-2.5 py-1 font-mono text-xs transition-colors"
+                      :class="
+                        isRecording('app', def.action)
+                          ? 'animate-pulse border-violet-300 bg-violet-50 text-violet-600 dark:border-violet-500/40 dark:bg-violet-500/15 dark:text-violet-300'
+                          : 'border-zinc-200 bg-zinc-50 text-zinc-600 hover:border-violet-300 hover:text-violet-600 dark:border-zinc-700 dark:bg-zinc-800/60 dark:text-zinc-300 dark:hover:text-violet-300'
+                      "
+                      v-tooltip="isRecording('app', def.action) ? t('settings.shortcutRecordHint') : ''"
+                      @click="startRecording('app', def.action)"
+                      @blur="onRecordBlur"
+                    >
+                      <template v-if="appShortcuts[def.action]">{{ formatCombo(appShortcuts[def.action]!) }}</template>
+                      <template v-else>{{ t('settings.shortcutNone') }}</template>
+                    </button>
+                  </div>
+                </div>
+
+                <!-- 全局快捷键：系统级热键，默认关闭 -->
+                <div class="mt-5 border-t border-zinc-100 pt-4 dark:border-zinc-800">
+                  <div class="flex items-center justify-between gap-3">
+                    <div class="min-w-0">
+                      <p class="text-zinc-600 dark:text-zinc-300">{{ t('settings.shortcutsGlobal') }}</p>
+                      <p class="mt-0.5 text-xs text-zinc-400">{{ t('settings.shortcutsGlobalDesc') }}</p>
+                    </div>
+                    <BaseSwitch :model-value="globalEnabled" size="sm" @update:model-value="onGlobalToggle" />
+                  </div>
+                  <div class="mt-2 space-y-0.5">
+                    <div
+                      v-for="def in globalRows"
+                      :key="def.action"
+                      class="flex items-center justify-between gap-3 rounded-lg px-2 py-1.5 transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-800/60"
+                    >
+                      <span class="min-w-0 truncate text-zinc-500 dark:text-zinc-400">{{ t(def.labelKey) }}</span>
+                      <button
+                        type="button"
+                        class="shrink-0 rounded-md border px-2.5 py-1 font-mono text-xs transition-colors"
+                        :class="
+                          isRecording('global', def.action)
+                            ? 'animate-pulse border-violet-300 bg-violet-50 text-violet-600 dark:border-violet-500/40 dark:bg-violet-500/15 dark:text-violet-300'
+                            : 'border-zinc-200 bg-zinc-50 text-zinc-600 hover:border-violet-300 hover:text-violet-600 dark:border-zinc-700 dark:bg-zinc-800/60 dark:text-zinc-300 dark:hover:text-violet-300'
+                        "
+                        v-tooltip="isRecording('global', def.action) ? t('settings.shortcutRecordHint') : ''"
+                        @click="startRecording('global', def.action)"
+                        @blur="onRecordBlur"
+                      >
+                        <template v-if="globalBindings[def.action]">{{ formatAccel(globalBindings[def.action]!) }}</template>
+                        <template v-else>{{ t('settings.shortcutNone') }}</template>
+                      </button>
+                    </div>
+                  </div>
+                  <p class="mt-3 text-xs leading-relaxed text-zinc-400">{{ t('settings.shortcutsGlobalHint') }}</p>
                 </div>
               </div>
             </section>

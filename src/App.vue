@@ -38,11 +38,21 @@ import { bgUrl } from '@/api/scheme'
 import { api } from '@/api/commands'
 import { toast } from '@/composables/useToast'
 import { t as translate } from '@/i18n/translate'
+import {
+  SHORTCUT_DEFS,
+  useShortcuts,
+  useGlobalShortcuts,
+  eventMatches,
+  type ShortcutAction,
+} from '@/composables/useShortcuts'
 
 const library = useLibraryStore()
 const player = usePlayerStore()
 const nav = useNav()
 const mv = useMvPlayer()
+// 快捷键：应用内快捷键表（设置 → 通用 → 快捷键）；全局快捷键在此初始化（事件分发 + 启动恢复）
+const shortcuts = useShortcuts()
+useGlobalShortcuts()
 const { palette, setAlbum } = useAmbient()
 // 自定义背景：设置 → 外观选择图片（useBackground 模块级单例，设置页改后这里即时生效）
 const { file: bgFile, blur: bgBlur, set: setBg } = useBackground()
@@ -323,6 +333,32 @@ function blurShortcutFocus() {
   el.blur()
 }
 
+/** 执行快捷键动作（应用内快捷键与全局快捷键共用动作表，见 useShortcuts.ts） */
+function runShortcut(action: ShortcutAction) {
+  switch (action) {
+    case 'toggle':
+      player.toggle()
+      break
+    case 'search':
+      document.getElementById('search-input')?.focus()
+      break
+    case 'next':
+      player.next()
+      break
+    case 'prev':
+      player.prev()
+      break
+    case 'lyricForward':
+      // 歌词校准：提前 0.5s（歌词显示慢了按这个）
+      player.setLyricOffset(-0.5)
+      break
+    case 'lyricBack':
+      // 歌词校准：延后 0.5s（歌词显示快了按这个）
+      player.setLyricOffset(0.5)
+      break
+  }
+}
+
 window.addEventListener('keydown', (e) => {
   const target = e.target as HTMLElement
   const typing = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable
@@ -336,28 +372,15 @@ window.addEventListener('keydown', (e) => {
     nowPlaying.value = false
     return
   }
-  if (e.key === ' ' && !typing) {
+  // 应用内快捷键全部来自可配置表（设置 → 通用 → 快捷键），默认行为与旧硬编码一致：
+  // 空格播放/暂停、Ctrl/Cmd+F 聚焦搜索、N/P 切歌、[ ] 歌词校准；清空（null）即禁用
+  for (const def of SHORTCUT_DEFS) {
+    if (!eventMatches(e, shortcuts.value[def.action])) continue
+    if (typing && !def.ignoresTyping) continue
     e.preventDefault()
     blurShortcutFocus()
-    player.toggle()
-  } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'f') {
-    e.preventDefault()
-    blurShortcutFocus()
-    document.getElementById('search-input')?.focus()
-  } else if (!typing && !e.metaKey && !e.ctrlKey && !e.altKey && e.key.toLowerCase() === 'n') {
-    blurShortcutFocus()
-    player.next()
-  } else if (!typing && !e.metaKey && !e.ctrlKey && !e.altKey && e.key.toLowerCase() === 'p') {
-    blurShortcutFocus()
-    player.prev()
-  } else if (!typing && !e.metaKey && !e.ctrlKey && !e.altKey && e.key === '[') {
-    // 歌词校准：提前 0.5s（歌词显示慢了按这个）
-    blurShortcutFocus()
-    player.setLyricOffset(-0.5)
-  } else if (!typing && !e.metaKey && !e.ctrlKey && !e.altKey && e.key === ']') {
-    // 歌词校准：延后 0.5s（歌词显示快了按这个）
-    blurShortcutFocus()
-    player.setLyricOffset(0.5)
+    runShortcut(def.action)
+    return
   }
 })
 </script>

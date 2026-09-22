@@ -1975,6 +1975,44 @@ pub fn get_builtin_skip_dirs() -> Vec<String> {
     scanner::BUILTIN_SKIP_DIRS.iter().map(|s| s.to_string()).collect()
 }
 
+// ---------- 全局快捷键（设置 → 通用 → 快捷键，见 global_shortcuts.rs） ----------
+
+/// 全局快捷键绑定：action 为前端动作名（toggle/next/prev），shortcut 为热键描述串
+/// （如 "CommandOrControl+Alt+P"，解析规则见 global-hotkey crate）
+#[derive(Deserialize)]
+pub struct GlobalShortcutBinding {
+    pub action: String,
+    pub shortcut: String,
+}
+
+/// 整体替换注册全局快捷键：先注销旧注册再逐一注册；
+/// 任一失败（通常为组合已被其他程序占用）则全部回滚并返回错误，供前端提示。
+#[tauri::command]
+pub fn global_shortcut_apply(
+    app: AppHandle,
+    bindings: Vec<GlobalShortcutBinding>,
+) -> Result<(), String> {
+    crate::global_shortcuts::apply(
+        &app,
+        bindings
+            .into_iter()
+            .map(|b| (b.shortcut, b.action))
+            .collect(),
+    )
+}
+
+/// 注销本应用注册的全部全局快捷键（关闭全局快捷键开关时调用）
+#[tauri::command]
+pub fn global_shortcut_clear(app: AppHandle) -> Result<(), String> {
+    crate::global_shortcuts::clear(&app)
+}
+
+/// 检测快捷键是否已被本应用注册（true = 已注册）
+#[tauri::command]
+pub fn global_shortcut_is_registered(app: AppHandle, shortcut: String) -> Result<bool, String> {
+    crate::global_shortcuts::is_registered(&app, &shortcut)
+}
+
 // ---------- 自定义背景 ----------
 
 /// 允许作为背景图的扩展名

@@ -25,6 +25,8 @@ serde_json = "1"
 tauri-plugin-dialog = "2.7.2"
 tauri-plugin-single-instance = "2"
 tauri-plugin-process = "2"
+# 全局快捷键：系统级热键注册 / 触发（设置页可配置，默认关闭；见 global_shortcuts.rs）
+tauri-plugin-global-shortcut = "2"
 # 落盘日志：初始化见 lib.rs（系统日志目录 + 开发期 stdout），业务代码统一用 log 宏
 tauri-plugin-log = "2"
 # 日志门面（与 tauri 传递依赖同版本 0.4，不额外编译）
