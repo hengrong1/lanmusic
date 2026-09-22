@@ -365,6 +365,12 @@ SQLite（WAL 模式，外键开启），建表与列迁移见 `src-tauri/src/db.
 - 指令直接挂在元素上，**不产生额外盒子**，因此 flex / grid 子项、`truncate` 文本、`BaseButton` 等单根组件都能安全使用（气泡 Teleport 到 body，不会被 `overflow-hidden` 裁切）
 - 例外：`EmptyState` / `BaseModal` / `BaseColorPicker` 的 `title` 是组件 prop（标题文案），不是 tooltip，不要替换
 
+**悬停主色描边**：带描边的可交互组件一律用全局类 **`hover-accent-border`**（勾选控件的方框/圆点用 `group-hover-accent-border`，因为悬停落在整行 `label`/`.group` 上），悬停时描边转主色并带 0.2s 过渡。定义见 `src/style.css` 的「悬停主色描边」段。
+- 覆盖范围：`BaseInput` / `BaseTextarea` / `BaseTagInput` / `BaseSelect` 触发器 / `BaseColorPicker` / `BaseButton(variant=outline)` / `BaseCard(hoverable)` / 勾选控件 / 顶栏搜索框与标签钮 / 引导页与关闭确认的选项卡 / 设置页带框卡片
+- **不要再写 `hover:border-zinc-*` 或 `hover:border-violet-*`**：`has-bg` 下静态 `border-zinc-*` 的白雾映射特异性 (0,2,1) 会压过 Tailwind 的 hover 工具类 (0,2,0)，颜色会不生效
+- 颜色由 `--color-violet-*` 给出、随用户主题色变化：浅色取 400、深色（无背景图）取 500、`has-bg` 深玻璃取 300
+- 优先级内置：聚焦 > 悬停（`:not(:focus-within)`，打字时描边仍是聚焦色）、禁用态无反馈（`:not(:disabled)`）
+
 **运行与调试**：
 - `pnpm start`（Rust 改动会自动重编译；前端 HMR 端口 1420/1421；Rust 日志在 dev 模式下同步输出到终端）
 - `pnpm test` — `scheme.rs` 中有跨平台 URI 解析的单测，改协议相关代码请补测试

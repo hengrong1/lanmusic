@@ -46,7 +46,7 @@ function select() {
         sizeMap[size].box,
         isChecked
           ? 'border-violet-500 group-hover:border-violet-600'
-          : 'border-zinc-300 group-hover:border-zinc-400 dark:border-zinc-600 dark:group-hover:border-zinc-500',
+          : 'group-hover-accent-border border-zinc-300 dark:border-zinc-600',
       ]"
     >
       <span

@@ -28,7 +28,7 @@ const sizeMap = {
       sizeMap[size].box,
       modelValue
         ? 'border-violet-500 bg-violet-500 group-hover:border-violet-600 group-hover:bg-violet-600'
-        : 'border-zinc-300 bg-transparent group-hover:border-zinc-400 dark:border-zinc-600 dark:group-hover:border-zinc-500',
+        : 'group-hover-accent-border border-zinc-300 bg-transparent dark:border-zinc-600',
     ]"
   >
     <svg

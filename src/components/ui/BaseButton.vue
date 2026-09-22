@@ -41,7 +41,8 @@ const variantClasses: Record<ButtonVariant, string> = {
   ghost:
     'text-zinc-600 hover:bg-zinc-200/70 active:bg-zinc-200 dark:text-zinc-300 dark:hover:bg-zinc-700 dark:active:bg-zinc-600',
   outline:
-    'border border-zinc-300 text-zinc-700 hover:bg-zinc-50 active:bg-zinc-100 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800 dark:active:bg-zinc-700',
+    // 描边按钮是唯一自带描边的 variant → 悬停时描边转主色（danger 色调仍走红，见下）
+    'hover-accent-border border border-zinc-300 text-zinc-700 hover:bg-zinc-50 active:bg-zinc-100 dark:border-zinc-600 dark:text-zinc-200 dark:hover:bg-zinc-800 dark:active:bg-zinc-700',
 }
 
 /** danger 色调下各强调级别改用红色系 */

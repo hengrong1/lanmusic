@@ -37,7 +37,9 @@ function onInput(e: Event) {
       :class="[
         error
           ? 'border-red-400 bg-red-50/50 dark:border-red-500/50 dark:bg-red-500/5'
-          : 'border-zinc-200 bg-white hover:border-zinc-300 focus-within:border-violet-500 focus-within:ring-2 focus-within:ring-violet-500/10 dark:border-zinc-700 dark:bg-zinc-800 dark:hover:border-zinc-600 dark:focus-within:border-violet-500',
+          : 'border-zinc-200 bg-white focus-within:border-violet-500 focus-within:ring-2 focus-within:ring-violet-500/10 dark:border-zinc-700 dark:bg-zinc-800 dark:focus-within:border-violet-500',
+        // 悬停主色描边：错误态（红）与禁用态不参与，见 style.css
+        !error && !disabled ? 'hover-accent-border' : '',
         disabled ? 'opacity-50 cursor-not-allowed' : '',
       ]"
     >

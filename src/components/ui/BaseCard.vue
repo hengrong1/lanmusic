@@ -23,9 +23,7 @@ const paddingClasses = {
     class="rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900"
     :class="[
       paddingClasses[padding],
-      hoverable
-        ? 'transition-all duration-150 hover:border-zinc-300 hover:shadow-md dark:hover:border-zinc-700'
-        : '',
+      hoverable ? 'hover-accent-border hover:shadow-md' : '',
     ]"
   >
     <slot />

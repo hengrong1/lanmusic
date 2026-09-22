@@ -215,7 +215,7 @@ defineExpose({ focusSearch })
         id="search-input"
         v-model="input"
         autocomplete="off"
-        class="h-9 w-full rounded-full border border-zinc-200/70 bg-zinc-100 pr-8 pl-9 text-sm text-zinc-800 outline-none transition placeholder:text-zinc-400 hover:border-zinc-300 hover:bg-zinc-200/60 focus:border-violet-400 focus:bg-white dark:border-transparent dark:bg-zinc-800/70 dark:text-zinc-100 dark:hover:bg-zinc-800 dark:focus:bg-zinc-800"
+        class="hover-accent-border h-9 w-full rounded-full border border-zinc-200/70 bg-zinc-100 pr-8 pl-9 text-sm text-zinc-800 outline-none transition placeholder:text-zinc-400 hover:bg-zinc-200/60 focus:border-violet-400 focus:bg-white dark:border-transparent dark:bg-zinc-800/70 dark:text-zinc-100 dark:hover:bg-zinc-800 dark:focus:bg-zinc-800"
         :placeholder="$t('library.searchPlaceholder') + ' (Ctrl+F)'"
         @focus="onFocus"
         @blur="onBlur"
@@ -258,7 +258,7 @@ defineExpose({ focusSearch })
             <button
               v-for="s in recentSearches"
               :key="s"
-              class="cursor-pointer truncate rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1 text-xs text-zinc-600 transition hover:border-violet-300 hover:bg-violet-50 hover:text-violet-600 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-300 dark:hover:border-violet-500 dark:hover:bg-zinc-600 dark:hover:text-violet-300"
+              class="hover-accent-border cursor-pointer truncate rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1 text-xs text-zinc-600 transition hover:bg-violet-50 hover:text-violet-600 dark:border-zinc-600 dark:bg-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-600 dark:hover:text-violet-300"
               v-tooltip="s"
               @mousedown.prevent="applyRecent(s)"
             >

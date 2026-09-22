@@ -59,7 +59,7 @@ async function confirm() {
         :class="
           action === 'tray'
             ? 'border-violet-400 bg-violet-50 dark:border-violet-500/60 dark:bg-violet-500/10'
-            : 'border-zinc-200 hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-800/60'
+            : 'hover-accent-border border-zinc-200 hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-800/60'
         "
         @click="action = 'tray'"
       >
@@ -72,7 +72,7 @@ async function confirm() {
         :class="
           action === 'quit'
             ? 'border-violet-400 bg-violet-50 dark:border-violet-500/60 dark:bg-violet-500/10'
-            : 'border-zinc-200 hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-800/60'
+            : 'hover-accent-border border-zinc-200 hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-800/60'
         "
         @click="action = 'quit'"
       >

@@ -246,7 +246,9 @@ onBeforeUnmount(() => {
         sizeClasses[size],
         open
           ? 'border-violet-500 ring-2 ring-violet-500/10'
-          : 'border-zinc-200 hover:border-zinc-300 dark:border-zinc-700 dark:hover:border-zinc-600',
+          : 'border-zinc-200 dark:border-zinc-700',
+        // 展开态保持主色实边 + 环，收起时才有悬停主色描边
+        !open && !disabled ? 'hover-accent-border' : '',
         'bg-white dark:bg-zinc-800',
         disabled ? 'opacity-50 cursor-not-allowed' : '',
       ]"

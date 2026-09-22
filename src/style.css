@@ -284,6 +284,67 @@ html.has-bg .app-surface-blur .queue-active-row {
   animation: queue-shimmer 3s ease-in-out infinite;
 }
 
+/* ==================================================================
+   悬停主色描边（hover-accent-border / group-hover-accent-border）
+   ------------------------------------------------------------------
+   用途：**带描边的可交互组件**统一口径——悬停时描边转主色，带过渡动画。
+   覆盖：BaseInput / BaseTextarea / BaseTagInput / BaseSelect / BaseColorPicker /
+        BaseButton(outline) / BaseCard(hoverable) / 勾选控件 / 带框卡片与标签钮。
+   为什么不直接在各组件写 `hover:border-violet-400`：
+     ① has-bg 下静态 `.border-zinc-*` 被映射成白雾，映射选择器是 (0,2,1)，会压过
+        Tailwind 的 hover:border-* (0,2,0)——与 focus 边框踩过的是同一个坑；
+     ② 浅色 / 深色 / has-bg 三态各自要一档颜色，散在几十处没法统一维护。
+   主色一律走 --color-violet-*（useThemeColor 已按用户主题色覆盖全档），禁硬编码。
+   动画只声明 border-color / background-color / color / box-shadow / transform，
+   不写 transition-all：宿主的尺寸变化不该被带动（也避免打断既有动画）。
+   悬停条件里的 :where() 不贡献特异性，只做三条排除（顺序即优先级）：
+     · :not(:disabled) —— 禁用态不给悬停反馈（原生 :disabled 只匹配表单控件，
+       普通 div 天然命中，故对 div 宿主也安全）；
+     · :not(:focus) / :not(:focus-within) —— 聚焦优先于悬停：鼠标停在输入框上打字时，
+       描边该是聚焦的 violet-500，而不是被 hover 的 400 盖掉。
+   ================================================================== */
+.hover-accent-border {
+  transition:
+    border-color 0.2s ease-out,
+    background-color 0.2s ease-out,
+    color 0.2s ease-out,
+    box-shadow 0.2s ease-out,
+    transform 0.2s ease-out;
+}
+/* 浅色：静态描边是 zinc-200/300（很淡），主色取 400 档最柔和不刺眼 */
+.hover-accent-border:hover:where(:not(:disabled):not(:focus):not(:focus-within)) {
+  border-color: var(--color-violet-400);
+}
+/* 深色（无背景图）：底是 zinc-900，400 档偏灰，取 500 档才有主色感 */
+html.dark:not(.has-bg) .hover-accent-border:hover:where(:not(:disabled):not(:focus):not(:focus-within)) {
+  border-color: var(--color-violet-500);
+}
+/* has-bg 深玻璃：静态描边已是白雾，主色要走最亮档才够对比。
+   兜底那份给不在 .app-surface-blur 子树里的元素（(0,2,1) 与既有映射同档，
+   靠声明顺序胜出，故本块必须留在上面那些映射之后）；下面 .app-surface-blur
+   那份用 (0,3,1) 稳压白雾映射，不依赖顺序。 */
+html.has-bg .hover-accent-border:hover:where(:not(:disabled):not(:focus):not(:focus-within)) {
+  border-color: var(--color-violet-300);
+}
+html.has-bg .app-surface-blur .hover-accent-border:hover:where(:not(:disabled):not(:focus):not(:focus-within)) {
+  border-color: var(--color-violet-300);
+}
+/* 勾选控件（CheckboxIndicator / BaseRadio）：指针悬停落在 label / 整行（.group）上，
+   控件自身不一定 :hover → 单独给一份 group 版本（与既有 group-hover:border-zinc-400 同域）。
+   宿主自带 `transition-all duration-150`，这里不再声明过渡。 */
+.group:hover .group-hover-accent-border {
+  border-color: var(--color-violet-400);
+}
+html.dark:not(.has-bg) .group:hover .group-hover-accent-border {
+  border-color: var(--color-violet-500);
+}
+html.has-bg .group:hover .group-hover-accent-border {
+  border-color: var(--color-violet-300);
+}
+html.has-bg .app-surface-blur .group:hover .group-hover-accent-border {
+  border-color: var(--color-violet-300);
+}
+
 html,
 body,
 #app {
