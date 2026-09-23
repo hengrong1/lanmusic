@@ -71,7 +71,7 @@ export function useNowPlaying() {
       // 诊断留痕：系统侧状态与本地不一致（如「暂停了 SMTC 还显示播放」）时，
       // 用此日志对照推送是否发生/是否报错
       void api
-        .frontendLog('info', `now-playing 状态推送: ${v ? 'Playing' : 'Paused'} @${Math.round(player.position * 1000)}ms`)
+        .frontendLog('info', `[smtc] 状态推送: ${v ? 'Playing' : 'Paused'} @${Math.round(player.position * 1000)}ms`)
         .catch(() => {})
       pushState()
     },
