@@ -5,7 +5,7 @@
 > 产品设计文档见 [docs/产品设计文档.md](docs/产品设计文档.md)。
 > 当前进度：**本地播放闭环 / 歌单 / 歌词 / 最近播放 / 托盘 / WebDAV 源已完成**，应用已进入稳定维护阶段。
 >
-> 主要能力：本地与 WebDAV 音乐库、歌词（外挂 .lrc / 内嵌）、歌单、智能歌单、文件夹视图、最近播放、均衡器与音量归一化、播放倍速与淡入淡出、睡眠定时器、系统级「正在播放」（SMTC / Now Playing / MPRIS）与全局媒体键、专注模式、桌面歌词浮窗、封面缓存、Windows 任务栏缩略图控制、系统托盘、应用内更新（GitHub Releases）。
+> 主要能力：本地与 WebDAV 音乐库、歌词（外挂 .lrc / 内嵌）、歌单、文件夹视图、最近播放、均衡器与音量归一化、播放倍速与淡入淡出、睡眠定时器、系统级「正在播放」（SMTC / Now Playing / MPRIS）与全局媒体键、专注模式、桌面歌词浮窗、封面缓存、Windows 任务栏缩略图控制、系统托盘、应用内更新（GitHub Releases）。
 
 ## 界面预览
 
@@ -46,7 +46,6 @@
   - 批量操作：多选模式支持播放/加入队列/移出歌单
   - 编辑集中化：通过统一弹层管理名称、简介、删除
   - 新建与重命名走同一个弹层：新建只填名称；侧栏右键「重命名」弹出的弹层预填当前名字、只改名称（简介与删除留给「编辑歌单」与右键删除入口）
-- **智能歌单**：侧栏「智能歌单」页，按规则即时生成曲目列表（不入库、不落盘，随曲库变化自动反映）——**最近添加**（按入库时间倒序）、**最近播放**（有播放记录、按最后播放时间倒序）、**常听**（按播放次数倒序）、**我喜欢**（收藏曲目）、**从未播放**（播放次数为 0）、**随机漫游**（每次进入重新洗牌）；每类上限 200 首（后端 `smart_playlist(kind, limit)`，可调 1–5000）；切换规则用顶部标签，列表复用曲库的虚拟滚动表格（可右键、可多选、可整列播放）
 - **文件夹视图**：侧栏「文件夹」页，按音乐文件在磁盘上的**实际目录结构**浏览（区别于按标签聚合的专辑/艺人视图）——面包屑显示当前路径、可逐级点回上层；目录项显示名称与该目录下的曲目数；进入目录列出直属曲目（子目录另起分组），列表复用曲库表格。目录树由曲目 `path` 直接推导（`query_folders(parent)` / `query_tracks_by_folder(folder)`，按目录名拼音排序），无需额外建表，也不受标签缺失影响
 - **歌词**：`.lrc` / `.qrc` 同名文件 + 内嵌歌词（USLT/LYRICS，本地与 WebDAV 来源都支持）；播放页大封面 + 时间轴滚动歌词（点击行跳转）；QRC 逐字歌词按字高亮（Apple Music 式卡拉OK效果，覆盖播放页歌词面板 / 底部播放条单行歌词 / 桌面歌词浮窗，Rust 侧解析，QQ 音乐加密 .qrc 自动解密——新旧两种加密格式均支持）；**增强版 LRC**（Enhanced LRC / A2，行内 `<mm:ss.xx>` 字级时间戳）**与多标签逐字 LRC**（`[00:00.000]身[00:00.582]骑…`）同样按字高亮，与 QRC 共用一套渲染链路（前端 `parseWordLrc()` 统一解析，两种结构自动识别，可混排）；间奏空行折叠；**歌词来源优先级**可设置（外挂 QRC / 外挂 LRC / 内嵌歌词任意顺序，默认 QRC 优先，设置页「歌词」标签，变更后当前歌曲立即生效）；歌词文件读取自动识别编码（UTF-8 / GBK / GB18030，QQ 生态歌词常见 GBK 不再乱码）；**歌词副行（音译 / 译文）**（按歌词文件的行序排布：音译（罗马字）在上、原文居中、译文在下；同起点的副行自动识别并合并——三行逐字歌词不再显示成三个重复行；音译与译文在播放页歌词区各有文字开关（`音` / `译`），**默认关闭**、按曲目记忆，仅当该曲歌词里确实带这条副行时才出现按钮）
 - **歌词校准**：播放页右下角「后退 / 还原 / 前进」控件（或快捷键 `[` / `]`），每次 ±0.5s、范围 ±10s；偏移按曲目持久化，toast 原地更新累计量（连续点击不叠加提示框）；同一浮层分隔线下方是**歌词副行开关**——`音`（音译 / 罗马字）与 `译`（译文）两个文字按钮，默认关闭，仅当前歌词确实带该副行时才出现（没有的直接不显示），点开后为主题色底 + 主题色字
@@ -192,7 +191,7 @@ src/                       # Vue 3 前端
 │   ├── player.ts          # 播放状态机：队列/模式/歌词/恢复/错误重试
 │   └── library.ts         # 库数据：来源/扫描进度/歌单/分页查询
 ├── components/            # PlayerBar / TrackTable(虚拟滚动) / TrackPicker(选歌面板) / PlaylistEditDialog / AudioEffectsPanel / QueuePanel / NowPlayingView(容器+Np*布局拆件) ...
-├── views/                 # Tracks / Albums / Artists / Playlist / Folder / SmartPlaylist / Settings
+├── views/                 # Tracks / Albums / Artists / Playlist / Folder / Settings
 ├── composables/           # useNav / useTheme / useSkin / useAudioGraph(共享音频图:EQ+归一化+频谱) / useLoudness / useSleepTimer / useMediaControls / useSpectrum / useAmbient / useToast ...
 ├── directives/            # tooltip 指令（全项目唯一的气泡提示实现，见下表）
 ├── utils/                 # lrc 解析 / 取色 / 平台判断
@@ -274,7 +273,7 @@ src-tauri/                 # Rust 后端
 | 分组 | 命令 |
 |---|---|
 | 来源管理 | `add_local_source(path)` · `list_sources()` · `remove_source(id)` · `rescan_source(id, mode: auto\|full)` · `set_source_fast_import(id, enabled)` · `set_source_scan_subdirs(id, enabled)` · `webdav_add_source(url, username, password, name?)` |
-| 曲库查询 | `query_tracks({view, refId, search, sort, page, pageSize, fields, pinyin})` · `query_albums(search, page, pageSize)` · `query_artists(search, page, pageSize)` · `query_folders(parent?)`（某目录下的直接子目录 + 各自曲目数） · `query_tracks_by_folder(folder?)`（某目录下的直属曲目） · `smart_playlist(kind, limit?)`（智能歌单：recent/recentPlayed/frequent/favorite/neverPlayed/random） · `get_track(id)` · `get_tracks_by_ids(ids)` · `get_stream_url(id)` · `library_stats()` · `reveal_track(id)` · `remove_tracks(ids)`（从曲库移除，不删磁盘文件） · `list_removed_tracks()` / `clear_removed_tracks()`（移除记录） · `restore_removed_tracks(ids)`（还原到曲库） |
+| 曲库查询 | `query_tracks({view, refId, search, sort, page, pageSize, fields, pinyin})` · `query_albums(search, page, pageSize)` · `query_artists(search, page, pageSize)` · `query_folders(parent?)`（某目录下的直接子目录 + 各自曲目数） · `query_tracks_by_folder(folder?)`（某目录下的直属曲目） · `get_track(id)` · `get_tracks_by_ids(ids)` · `get_stream_url(id)` · `library_stats()` · `reveal_track(id)` · `remove_tracks(ids)`（从曲库移除，不删磁盘文件） · `list_removed_tracks()` / `clear_removed_tracks()`（移除记录） · `restore_removed_tracks(ids)`（还原到曲库） |
 | 歌单 | `playlist_list` · `playlist_create(name)` · `playlist_rename(id, name)` · `playlist_delete(id)` · `playlist_get_items(id, sort?)`（sort 同 query_tracks 的文本/时长值，空 = 加入时间倒序） · `playlist_add_tracks(id, trackIds)` · `playlist_remove_track(id, trackId)` · `playlist_remove_tracks(id, trackIds)` · `playlist_set_description(id, description)` · `playlist_cover(id)` · `playlist_reorder(id, trackIds)` |
 | 播放/歌词/喜欢 | `report_play(id)` · `report_listen(trackId, seconds, mode?)`（收听流水，实际秒数 + 播放模式） · `listen_stats_summary()`（汇总/独立数/首末收听） · `listen_top_tracks(kind: track\|artist\|album\|genre, range: week\|month\|all, limit?)` · `listen_daily(days?, granularity?: day\|week\|month)`（收听趋势） · `listen_hourly()` · `listen_heatmap()`（星期×小时） · `listen_streak()`（当前/最长连续天数） · `library_health()`（音乐库体检） · `scan_history_list()`（最近扫描） · `get_lyrics(id)` · `favorite_toggle(id, fav)` · `set_thumbbar_playing(playing)`（Windows 任务栏缩略图按钮图标同步） · `desktop_lyrics_set(enabled)`（桌面歌词浮窗开关） · `list_system_fonts()`（系统字体列表） · `set_prevent_sleep(prevent)`（播放时阻止系统休眠/锁屏） |
 | 音效 / 媒体键 | `save_loudness(id, gainDb, peak)`（写入曲目响度分析结果，供音量归一化使用；分析在前端 Web Audio 完成） · `media_controls_enable(enabled)`（注册/注销全局媒体键，仅 Windows 生效；返回注册失败的键名列表，前端据此提示「被其他程序占用」） · `now_playing_set(meta \| null)`（推送当前曲目元数据给系统媒体控件，null 清空；封面路径由 Rust 按 `covers/{albumId}.jpg` 解析，`spawn_blocking` 执行） · `now_playing_state(playing, positionMs)`（推送播放状态与进度，前端 1Hz 心跳） · `now_playing_enable(enabled)`（启用/禁用系统媒体控件，重新启用恢复上次显示） |

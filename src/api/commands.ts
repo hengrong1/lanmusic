@@ -64,9 +64,6 @@ export const api = {
   queryFolders: (parent: string | null) => invoke<FolderItem[]>('query_folders', { parent }),
   queryTracksByFolder: (folder: string | null) =>
     invoke<Track[]>('query_tracks_by_folder', { folder }),
-  // 智能歌单：按规则动态生成（recent/recentPlayed/frequent/favorite/neverPlayed/random）
-  smartPlaylist: (kind: string, limit?: number) =>
-    invoke<Track[]>('smart_playlist', { kind, limit: limit ?? null }),
 
   // 其他
   revealTrack: (id: number) => invoke<void>('reveal_track', { id }),

@@ -19,25 +19,11 @@ export default {
     library: 'Library', albums: 'Albums', artists: 'Artists',
     playlists: 'Playlists', settings: 'Settings', nowPlaying: 'Now Playing', queue: 'Queue',
     recent: 'Recent', liked: 'Liked', stats: 'Listening Stats',
-    folder: 'Folders', smart: 'Smart Playlists',
+    folder: 'Folders',
   },
   folder: {
     root: 'All Folders',
     folderCount: '{count} folders',
-  },
-  smart: {
-    kind: {
-      recent: 'Recently Added', recentPlayed: 'Recently Played', frequent: 'Most Played',
-      favorite: 'Liked', neverPlayed: 'Never Played', random: 'Shuffle All',
-    },
-    desc: {
-      recent: 'The newest tracks in your library',
-      recentPlayed: 'Tracks you listened to recently',
-      frequent: 'Tracks you play the most',
-      favorite: 'Tracks you liked',
-      neverPlayed: 'Tracks you have not played yet',
-      random: 'A random pick from your library',
-    },
   },
   effects: {
     eq: 'Equalizer', eqEnable: 'Enable', eqDesc: 'Adjust the gain of each band to shape the sound. Affects playback only; files are never modified.',
@@ -555,7 +541,6 @@ export default {
     libraryFolderHint: 'They will appear here after adding a music folder and completing a scan.',
     folderTitle: 'No songs here',
     folderHint: 'This folder has no playable songs directly; try opening a subfolder.',
-    smartTitle: 'No songs', smartHint: 'Try another rule, or listen to a few songs first.',
   },
   a11y: {
     play: 'Play', pause: 'Pause', next: 'Next', prev: 'Previous', mute: 'Mute', unmute: 'Unmute',

@@ -281,7 +281,6 @@ export type ViewName =
   | 'settings'
   | 'stats'
   | 'folder'
-  | 'smart'
 
 export interface NavRoute {
   view: ViewName
@@ -296,8 +295,6 @@ export interface NavRoute {
   search?: string
   /** 文件夹视图：当前目录（相对来源根的路径，空 = 根目录） */
   folderPath?: string
-  /** 智能歌单：规则标识（recent / recentPlayed / frequent / favorite / neverPlayed / random） */
-  smartKind?: string
 }
 
 /** 文件夹视图：一个子目录节点 */

@@ -19,25 +19,11 @@ export default {
     library: '歌曲库', albums: '专辑', artists: '艺人',
     playlists: '歌单', settings: '设置', nowPlaying: '正在播放', queue: '播放队列',
     recent: '最近播放', liked: '我喜欢的', stats: '听歌统计',
-    folder: '文件夹', smart: '智能歌单',
+    folder: '文件夹',
   },
   folder: {
     root: '全部文件夹',
     folderCount: '{count} 个文件夹',
-  },
-  smart: {
-    kind: {
-      recent: '最近添加', recentPlayed: '最近播放', frequent: '最常播放',
-      favorite: '我喜欢的', neverPlayed: '从未播放', random: '随机漫游',
-    },
-    desc: {
-      recent: '最新入库的歌曲',
-      recentPlayed: '你最近听过的歌曲',
-      frequent: '播放次数最多的歌曲',
-      favorite: '标记为喜欢的歌曲',
-      neverPlayed: '还没有播放过的歌曲',
-      random: '从曲库中随机挑选',
-    },
   },
   effects: {
     eq: '均衡器', eqEnable: '启用', eqDesc: '调整各频段增益，改变音色。仅影响本机播放，不修改文件。',
@@ -547,7 +533,6 @@ export default {
     libraryFolderHint: '添加音乐文件夹并完成扫描后会显示在这里。',
     folderTitle: '这里没有歌曲',
     folderHint: '这个文件夹里没有可直接播放的歌曲，试试进入子文件夹。',
-    smartTitle: '暂无歌曲', smartHint: '换个规则试试，或先去听几首歌。',
   },
   a11y: {
     play: '播放', pause: '暂停', next: '下一首', prev: '上一首', mute: '静音', unmute: '取消静音',

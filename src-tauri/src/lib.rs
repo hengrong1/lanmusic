@@ -384,7 +384,6 @@ pub fn run() {
             commands::query_artists,
             commands::query_folders,
             commands::query_tracks_by_folder,
-            commands::smart_playlist,
             commands::save_loudness,
             commands::media_controls_enable,
             commands::now_playing_set,

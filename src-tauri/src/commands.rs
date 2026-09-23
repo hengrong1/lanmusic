@@ -826,46 +826,6 @@ pub fn query_tracks_by_folder(
     Ok(items)
 }
 
-/// 智能歌单：按规则动态生成的曲目列表（不落库，每次进入重新计算）。
-/// kind: recent(最近添加) / recentPlayed(最近播放) / frequent(最常播放) /
-/// favorite(我喜欢的) / neverPlayed(从未播放) / random(随机漫游)
-#[tauri::command]
-pub fn smart_playlist(
-    state: State<'_, AppState>,
-    kind: String,
-    limit: Option<i64>,
-) -> Result<Vec<Track>, String> {
-    let conn = state.db.lock().map_err(|e| e.to_string())?;
-    let limit = limit.unwrap_or(200).clamp(1, 5000);
-    let (where_sql, order_sql) = match kind.as_str() {
-        "recent" => ("", "ORDER BY t.id DESC"),
-        "recentPlayed" => (
-            "WHERE t.last_played_at IS NOT NULL",
-            "ORDER BY t.last_played_at DESC",
-        ),
-        "frequent" => (
-            "WHERE IFNULL(t.play_count, 0) > 0",
-            "ORDER BY t.play_count DESC, t.last_played_at DESC",
-        ),
-        "favorite" => (
-            "WHERE t.fav = 1",
-            "ORDER BY CASE WHEN t.last_played_at IS NULL THEN 1 ELSE 0 END, t.last_played_at DESC",
-        ),
-        "neverPlayed" => ("WHERE IFNULL(t.play_count, 0) = 0", "ORDER BY t.id DESC"),
-        "random" => ("", "ORDER BY RANDOM()"),
-        _ => ("", "ORDER BY t.id DESC"),
-    };
-    let sql = format!("{TRACK_SELECT} {where_sql} {order_sql} LIMIT {limit}");
-    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
-    let mut items: Vec<Track> = stmt
-        .query_map([], row_track)
-        .map_err(|e| e.to_string())?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| e.to_string())?;
-    attach_artists(&conn, &mut items)?;
-    Ok(items)
-}
-
 /// 写入某曲目的响度分析结果（ReplayGain 轨道增益 dB + 峰值）。
 /// 分析在前端用 Web Audio 完成（见 src/composables/useLoudness.ts），此处只负责落库。
 #[tauri::command]

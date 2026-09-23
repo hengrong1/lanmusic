@@ -16,8 +16,7 @@ export function useNav() {
       a.search === b.search &&
       a.recent === b.recent &&
       a.favorites === b.favorites &&
-      a.folderPath === b.folderPath &&
-      a.smartKind === b.smartKind
+      a.folderPath === b.folderPath
     )
   }
 

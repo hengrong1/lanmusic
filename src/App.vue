@@ -24,7 +24,6 @@ const PlaylistView = lazyView(() => import('@/views/PlaylistView.vue'))
 const SettingsView = lazyView(() => import('@/views/SettingsView.vue'))
 const StatsView = lazyView(() => import('@/views/StatsView.vue'))
 const FolderView = lazyView(() => import('@/views/FolderView.vue'))
-const SmartPlaylistView = lazyView(() => import('@/views/SmartPlaylistView.vue'))
 import { useLibraryStore } from '@/stores/library'
 import { usePlayerStore } from '@/stores/player'
 import { useNav } from '@/composables/useNav'
@@ -207,8 +206,6 @@ const viewComponent = computed(() => {
       return StatsView
     case 'folder':
       return FolderView
-    case 'smart':
-      return SmartPlaylistView
     default:
       return TracksView
   }
