@@ -6,6 +6,7 @@ import { DatabaseIcon as HardDriveBold } from '@solar-icons/vue/bold/database'
 import { MagnifierIcon as SearchBold } from '@solar-icons/vue/bold/magnifier'
 import { PaletteIcon as PaletteBold } from '@solar-icons/vue/bold/palette'
 import { PlayIcon as PlayBold } from '@solar-icons/vue/bold/play'
+import { MusicNote2Icon as MusicNoteBold } from '@solar-icons/vue/bold/music-note-2'
 import { SettingsIcon as SettingsBold } from '@solar-icons/vue/bold/settings'
 import { SubtitlesIcon as SubtitlesBold } from '@solar-icons/vue/bold/subtitles'
 import { VerifiedCheckIcon as Check } from '@solar-icons/vue/linear/verified-check'
@@ -17,6 +18,7 @@ import { DatabaseIcon as HardDrive } from '@solar-icons/vue/linear/database'
 import { MagnifierIcon as Search } from '@solar-icons/vue/linear/magnifier'
 import { PaletteIcon as Palette } from '@solar-icons/vue/linear/palette'
 import { PlayIcon as Play } from '@solar-icons/vue/linear/play'
+import { MusicNote2Icon as MusicNote } from '@solar-icons/vue/linear/music-note-2'
 import { RefreshIcon as LoaderCircle } from '@solar-icons/vue/linear/refresh'
 import { RestartIcon as RotateCcw } from '@solar-icons/vue/linear/restart'
 import { RefreshIcon as RefreshCw } from '@solar-icons/vue/linear/refresh'
@@ -104,7 +106,7 @@ const categories = computed(() => [
   { id: 'search' as const, icon: Search, iconActive: SearchBold, label: t('settings.search'), desc: t('settings.searchDesc') },
   { id: 'lyrics' as const, icon: Subtitles, iconActive: SubtitlesBold, label: t('settings.lyrics'), desc: t('settings.lyricsDesc') },
   { id: 'general' as const, icon: Settings, iconActive: SettingsBold, label: t('settings.general'), desc: t('settings.generalDesc') },
-  { id: 'audio' as const, icon: Play, iconActive: PlayBold, label: t('settings.audio'), desc: t('settings.audioDesc') },
+  { id: 'audio' as const, icon: MusicNote, iconActive: MusicNoteBold, label: t('settings.audio'), desc: t('settings.audioDesc') },
 ])
 
 // ---- 语言 ----
@@ -992,18 +994,18 @@ const showWebdavLimits = computed(() => showWebdav.value || library.sources.some
         {{ t('settings.preferences') }}
       </h1>
       <nav
-        class="flex min-w-0 items-center gap-1 overflow-x-auto pl-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        class="flex min-w-0 items-center gap-1 overflow-x-auto rounded-xl bg-zinc-100/70 p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden dark:bg-zinc-800/60"
         :aria-label="t('settings.title')"
       >
         <button
           v-for="c in categories"
           :key="c.id"
           type="button"
-          class="flex shrink-0 items-center gap-2 rounded-lg px-3 py-1.5 text-left text-sm transition-colors"
+          class="flex shrink-0 cursor-pointer items-center gap-2 rounded-lg px-3 py-1.5 text-left text-sm transition-colors"
           :class="
             active === c.id
-              ? 'bg-violet-50 font-medium text-violet-600 dark:bg-violet-500/10 dark:text-violet-300'
-              : 'text-zinc-600 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-800'
+              ? 'bg-white font-medium text-violet-600 shadow-sm dark:bg-zinc-700 dark:text-violet-300'
+              : 'text-zinc-500 hover:bg-white/60 hover:text-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-700/60 dark:hover:text-zinc-100'
           "
           :aria-current="active === c.id ? 'page' : undefined"
           @click="scrollToSection(c.id)"
@@ -1017,12 +1019,17 @@ const showWebdavLimits = computed(() => showWebdav.value || library.sources.some
 
     <!-- 全部分区纵向铺开，随滚动浏览；顶部目录点击跳转 -->
     <div ref="contentEl" class="min-h-0 flex-1 overflow-y-auto px-6 pt-5 pb-8" @scroll.passive="onContentScroll">
-      <div class="mx-auto max-w-2xl">
+      <div class="mx-auto max-w-3xl">
       <!-- ===== 音乐库 ===== -->
         <section :id="`settings-section-library`" data-settings-section="library" class="scroll-mt-4">
-          <header data-stagger class="mb-5">
-            <h2 class="text-lg font-semibold text-zinc-900 dark:text-zinc-50">{{ t('settings.library') }}</h2>
-            <p class="mt-0.5 text-xs text-zinc-400">{{ t('settings.libraryDesc') }}</p>
+          <header data-stagger class="mb-5 flex items-center gap-3.5">
+            <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-50 text-violet-500 dark:bg-violet-500/10 dark:text-violet-300">
+              <HardDrive class="h-5 w-5" />
+            </div>
+            <div class="min-w-0">
+              <h2 class="text-lg font-semibold text-zinc-900 dark:text-zinc-50">{{ t('settings.library') }}</h2>
+              <p class="mt-0.5 text-xs text-zinc-400">{{ t('settings.libraryDesc') }}</p>
+            </div>
           </header>
           <div class="space-y-6">
             <!-- 音乐来源 -->
@@ -1044,7 +1051,7 @@ const showWebdavLimits = computed(() => showWebdav.value || library.sources.some
                 <div
                   v-for="s in library.sources"
                   :key="s.id"
-                  class="rounded-xl hover-accent-border border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900"
+                  class="rounded-2xl shadow-sm hover-accent-border border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900"
                 >
                   <!-- 图标跨「名称+地址」两行垂直居中；内容列：行1 名称+开关+按钮，行2 地址+曲目/时间 -->
                   <div class="flex items-center gap-3">
@@ -1155,14 +1162,14 @@ const showWebdavLimits = computed(() => showWebdav.value || library.sources.some
                   </div>
                 </div>
 
-                <p v-if="!library.sources.length" class="rounded-xl border border-dashed border-zinc-300 p-4 text-center text-sm text-zinc-400 dark:border-zinc-700">
+                <p v-if="!library.sources.length" class="rounded-2xl border border-dashed border-zinc-300 p-4 text-center text-sm text-zinc-400 dark:border-zinc-700">
                   {{ t('settings.noSources') }}
                 </p>
               </div>
 
               <!-- 跳过目录：NAS 回收站 / 系统目录内置跳过，可按目录名追加；修改后重新扫描生效 -->
               <!-- mt-6：与各区块间 space-y-6 同距，避免卡片贴着来源列表与相邻卡片 -->
-              <div class="mt-6 rounded-xl hover-accent-border border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
+              <div class="mt-6 rounded-2xl hover-accent-border border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
                 <p class="text-sm font-semibold text-zinc-800 dark:text-zinc-100">{{ t('settings.skipDirs') }}</p>
                 <p class="mt-1 text-xs leading-relaxed text-zinc-400">{{ t('settings.skipDirsHint') }}</p>
                 <!-- 内置关键字标记：等宽字体 + 浅底做成「标记」样式，并加「内置」徽标与说明气泡，
@@ -1185,11 +1192,10 @@ const showWebdavLimits = computed(() => showWebdav.value || library.sources.some
                   class="mt-3"
                   :placeholder="t('settings.skipDirsPlaceholder')"
                 />
-              </div>
 
-              <!-- 已移除歌曲：手动移除 / 扫描消失的记录（仅曲目信息，便于找回文件位置）；数量多，列表收在弹出窗里 -->
-              <div class="mt-6 rounded-xl hover-accent-border border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
-                <div class="flex flex-wrap items-center justify-between gap-2">
+                <!-- 已移除歌曲：手动移除 / 扫描消失的记录（仅曲目信息，便于找回文件位置）；数量多，列表收在弹出窗里。
+                     与跳过目录同卡：两节都是「库维护」性质，合并减少零碎小卡 -->
+                <div class="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-zinc-100 pt-4 dark:border-zinc-800">
                   <p class="text-sm font-semibold text-zinc-800 dark:text-zinc-100">
                     {{ t('settings.removedTracks') }}
                     <span v-if="removedTracksLoaded && removedTracks.length" class="ml-1 text-xs font-normal text-zinc-400">
@@ -1278,7 +1284,7 @@ const showWebdavLimits = computed(() => showWebdav.value || library.sources.some
               </div>
               <form
                 v-if="showWebdav"
-                class="space-y-3 rounded-xl hover-accent-border border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900"
+                class="space-y-3 rounded-2xl hover-accent-border border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900"
                 @submit.prevent="submitWebdav"
               >
                 <p class="flex items-center gap-1.5 text-xs text-zinc-400">
@@ -1302,7 +1308,7 @@ const showWebdavLimits = computed(() => showWebdav.value || library.sources.some
               <!-- 云端（WebDAV）来源的已知限制：常驻展示，避免「为什么云端新歌不出现 / 没有 MV / 缺时长」被当成 bug -->
               <div
                 v-if="showWebdavLimits"
-                class="mt-2.5 rounded-xl border border-zinc-200 bg-zinc-50/70 p-4 dark:border-zinc-800 dark:bg-zinc-900/50"
+                class="mt-2.5 rounded-2xl border border-zinc-200 bg-zinc-50/70 p-4 dark:border-zinc-800 dark:bg-zinc-900/50"
               >
                 <p class="mb-2 flex items-center gap-1.5 text-xs font-medium text-zinc-600 dark:text-zinc-300">
                   <InfoCircle class="h-3.5 w-3.5 shrink-0" />
@@ -1321,7 +1327,7 @@ const showWebdavLimits = computed(() => showWebdav.value || library.sources.some
             <!-- 多艺人分隔符 -->
             <section>
               <h3 class="mb-2.5 text-sm font-semibold text-zinc-800 dark:text-zinc-100">{{ t('settings.artistSeparators') }}</h3>
-              <div class="rounded-xl hover-accent-border border border-zinc-200 bg-white p-4 text-sm dark:border-zinc-800 dark:bg-zinc-900">
+              <div class="rounded-2xl shadow-sm hover-accent-border border border-zinc-200 bg-white p-4 text-sm dark:border-zinc-800 dark:bg-zinc-900">
                 <div class="flex flex-wrap items-center justify-between gap-3">
                   <div class="flex w-full flex-wrap justify-end gap-2">
                     <BaseButton
@@ -1355,7 +1361,7 @@ const showWebdavLimits = computed(() => showWebdav.value || library.sources.some
                         <span class="text-zinc-400">：</span>
                         <span class="text-zinc-400 line-through">{{ c.oldArtists.join(' / ') }}</span>
                         <span class="text-violet-500">→</span>
-                        <span class="text-zinc-600 dark:text-zinc-300">{{ c.newArtists.join(' / ') }}</span>
+                        <span class="text-zinc-700 dark:text-zinc-200">{{ c.newArtists.join(' / ') }}</span>
                       </li>
                     </ul>
                     <p v-if="splitChanges.length > 200" class="mt-1 text-xs text-zinc-400">
@@ -1369,7 +1375,7 @@ const showWebdavLimits = computed(() => showWebdav.value || library.sources.some
             <!-- 艺人名规整：合并同义艺人（如「陈奕迅（Eason Chan）」→「陈奕迅」）-->
             <section>
               <h3 class="mb-2.5 text-sm font-semibold text-zinc-800 dark:text-zinc-100">{{ t('settings.artistNormalize') }}</h3>
-              <div class="rounded-xl hover-accent-border border border-zinc-200 bg-white p-4 text-sm dark:border-zinc-800 dark:bg-zinc-900">
+              <div class="rounded-2xl shadow-sm hover-accent-border border border-zinc-200 bg-white p-4 text-sm dark:border-zinc-800 dark:bg-zinc-900">
                 <div class="flex flex-wrap items-center justify-between gap-3">
                   <p class="max-w-md text-xs leading-relaxed text-zinc-400">{{ t('settings.artistNormalizeDesc') }}</p>
                   <BaseButton
@@ -1469,21 +1475,26 @@ const showWebdavLimits = computed(() => showWebdav.value || library.sources.some
 
       <!-- ===== 外观 ===== -->
 
-        <section :id="`settings-section-appearance`" data-settings-section="appearance" class="mt-8 scroll-mt-4 border-t border-zinc-100 pt-8 dark:border-zinc-800">
-          <header data-stagger class="mb-5">
-            <h2 class="text-lg font-semibold text-zinc-900 dark:text-zinc-50">{{ t('settings.appearance') }}</h2>
-            <p class="mt-0.5 text-xs text-zinc-400">{{ t('settings.appearanceDesc') }}</p>
+        <section :id="`settings-section-appearance`" data-settings-section="appearance" class="mt-14 scroll-mt-4">
+          <header data-stagger class="mb-5 flex items-center gap-3.5">
+            <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-50 text-violet-500 dark:bg-violet-500/10 dark:text-violet-300">
+              <Palette class="h-5 w-5" />
+            </div>
+            <div class="min-w-0">
+              <h2 class="text-lg font-semibold text-zinc-900 dark:text-zinc-50">{{ t('settings.appearance') }}</h2>
+              <p class="mt-0.5 text-xs text-zinc-400">{{ t('settings.appearanceDesc') }}</p>
+            </div>
           </header>
           <div class="space-y-6">
             <section>
-              <div class="space-y-4 rounded-xl hover-accent-border border border-zinc-200 bg-white p-4 text-sm dark:border-zinc-800 dark:bg-zinc-900">
+              <div class="space-y-4 rounded-2xl hover-accent-border border border-zinc-200 bg-white p-4 text-sm dark:border-zinc-800 dark:bg-zinc-900">
                 <div class="flex items-center justify-between gap-3">
-                  <span class="text-zinc-600 dark:text-zinc-300">{{ t('settings.theme') }}</span>
+                  <span class="text-zinc-700 dark:text-zinc-200">{{ t('settings.theme') }}</span>
                   <BaseButtonGroup :model-value="mode" :items="themeItems" size="sm" @update:model-value="onThemeChange" />
                 </div>
                 <!-- 主题色：Ant Design 色板预设，覆盖 --color-violet-* 变量全局换肤（见 useThemeColor.ts） -->
                 <div class="flex items-center justify-between gap-3">
-                  <span class="shrink-0 text-zinc-600 dark:text-zinc-300">{{ t('settings.themeColor') }}</span>
+                  <span class="shrink-0 text-zinc-700 dark:text-zinc-200">{{ t('settings.themeColor') }}</span>
                   <div class="flex flex-wrap items-center justify-end gap-1.5">
                     <button
                       v-for="p in presets"
@@ -1508,7 +1519,7 @@ const showWebdavLimits = computed(() => showWebdav.value || library.sources.some
                 </div>
                 <!-- 全局字体：应用于整个软件（含桌面歌词），从系统读取；系统字体多，开启搜索过滤 -->
                 <div class="flex items-center justify-between gap-3 border-t border-zinc-100 pt-4 dark:border-zinc-800">
-                  <span class="text-zinc-600 dark:text-zinc-300">{{ t('settings.fontFamily') }}</span>
+                  <span class="text-zinc-700 dark:text-zinc-200">{{ t('settings.fontFamily') }}</span>
                   <div class="max-w-[280px] flex-1">
                     <BaseSelect
                       :model-value="appFont"
@@ -1522,14 +1533,14 @@ const showWebdavLimits = computed(() => showWebdav.value || library.sources.some
                 <!-- 弹窗可拖动：按住标题栏拖动位置 -->
                 <div class="flex items-center justify-between gap-3 border-t border-zinc-100 pt-4 dark:border-zinc-800">
                   <div class="min-w-0">
-                    <p class="text-zinc-600 dark:text-zinc-300">{{ t('settings.dialogDrag') }}</p>
+                    <p class="text-zinc-700 dark:text-zinc-200">{{ t('settings.dialogDrag') }}</p>
                     <p class="mt-0.5 text-xs text-zinc-400">{{ t('settings.dialogDragHint') }}</p>
                   </div>
                   <BaseSwitch :model-value="dialogDragOn" size="sm" @update:model-value="setDialogDrag" />
                 </div>
                 <!-- 弹窗背景模糊度 -->
                 <div class="flex items-center justify-between gap-3 border-t border-zinc-100 pt-4 dark:border-zinc-800">
-                  <span class="text-zinc-600 dark:text-zinc-300">{{ t('settings.dialogBlur') }}</span>
+                  <span class="text-zinc-700 dark:text-zinc-200">{{ t('settings.dialogBlur') }}</span>
                   <div class="w-28">
                     <BaseSelect
                       :model-value="dialogBlurLevel"
@@ -1542,7 +1553,7 @@ const showWebdavLimits = computed(() => showWebdav.value || library.sources.some
                 <!-- 自定义背景：本机图片复制到应用数据目录（bg:// 协议），铺满底色区，卡片浮于其上 -->
                 <div class="flex items-center justify-between gap-3 border-t border-zinc-100 pt-4 dark:border-zinc-800">
                   <div class="min-w-0">
-                    <p class="text-zinc-600 dark:text-zinc-300">{{ t('settings.bgImage') }}</p>
+                    <p class="text-zinc-700 dark:text-zinc-200">{{ t('settings.bgImage') }}</p>
                     <p class="mt-0.5 text-xs text-zinc-400">{{ t('settings.bgImageHint') }}</p>
                   </div>
                   <div class="flex shrink-0 items-center gap-2">
@@ -1561,7 +1572,7 @@ const showWebdavLimits = computed(() => showWebdav.value || library.sources.some
                   </div>
                 </div>
                 <div v-if="bgFile" class="flex items-center justify-between gap-3 border-t border-zinc-100 pt-4 dark:border-zinc-800">
-                  <span class="text-zinc-600 dark:text-zinc-300">{{ t('settings.bgBlur') }}</span>
+                  <span class="text-zinc-700 dark:text-zinc-200">{{ t('settings.bgBlur') }}</span>
                   <div class="w-28">
                     <BaseSelect
                       :model-value="String(bgBlur)"
@@ -1578,25 +1589,30 @@ const showWebdavLimits = computed(() => showWebdav.value || library.sources.some
 
       <!-- ===== 播放 ===== -->
 
-        <section :id="`settings-section-playback`" data-settings-section="playback" class="mt-8 scroll-mt-4 border-t border-zinc-100 pt-8 dark:border-zinc-800">
-          <header data-stagger class="mb-5">
-            <h2 class="text-lg font-semibold text-zinc-900 dark:text-zinc-50">{{ t('settings.playback') }}</h2>
-            <p class="mt-0.5 text-xs text-zinc-400">{{ t('settings.playbackDesc') }}</p>
+        <section :id="`settings-section-playback`" data-settings-section="playback" class="mt-14 scroll-mt-4">
+          <header data-stagger class="mb-5 flex items-center gap-3.5">
+            <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-50 text-violet-500 dark:bg-violet-500/10 dark:text-violet-300">
+              <Play class="h-5 w-5" />
+            </div>
+            <div class="min-w-0">
+              <h2 class="text-lg font-semibold text-zinc-900 dark:text-zinc-50">{{ t('settings.playback') }}</h2>
+              <p class="mt-0.5 text-xs text-zinc-400">{{ t('settings.playbackDesc') }}</p>
+            </div>
           </header>
           <div class="space-y-6">
             <section>
-              <div class="space-y-4 rounded-xl hover-accent-border border border-zinc-200 bg-white p-4 text-sm dark:border-zinc-800 dark:bg-zinc-900">
+              <div class="space-y-4 rounded-2xl hover-accent-border border border-zinc-200 bg-white p-4 text-sm dark:border-zinc-800 dark:bg-zinc-900">
                 <!-- 播放页专注模式：播放中鼠标停顿自动隐藏顶栏与播放条 -->
                 <div>
                   <div class="flex items-center justify-between gap-3">
                     <div class="min-w-0">
-                      <span class="text-zinc-600 dark:text-zinc-300">{{ t('settings.focusMode') }}</span>
+                      <span class="text-zinc-700 dark:text-zinc-200">{{ t('settings.focusMode') }}</span>
                       <p class="mt-0.5 text-xs leading-relaxed text-zinc-400">{{ t('settings.focusModeHint') }}</p>
                     </div>
                     <BaseSwitch :model-value="focusModeOn" size="sm" @update:model-value="setFocusMode" />
                   </div>
                   <div v-if="focusModeOn" class="mt-3 flex items-center justify-between gap-3 border-t border-zinc-100 pt-3 dark:border-zinc-800">
-                    <span class="text-zinc-600 dark:text-zinc-300">{{ t('settings.focusDelay') }}</span>
+                    <span class="text-zinc-700 dark:text-zinc-200">{{ t('settings.focusDelay') }}</span>
                     <div class="w-28">
                       <BaseSelect
                         :model-value="focusDelay"
@@ -1610,7 +1626,7 @@ const showWebdavLimits = computed(() => showWebdav.value || library.sources.some
                 <!-- 淡入淡出 -->
                 <div class="border-t border-zinc-100 pt-4 dark:border-zinc-800">
                   <div class="flex items-center justify-between gap-3">
-                    <span class="text-zinc-600 dark:text-zinc-300">{{ t('settings.fadeInOut') }}</span>
+                    <span class="text-zinc-700 dark:text-zinc-200">{{ t('settings.fadeInOut') }}</span>
                     <BaseSwitch
                       :model-value="fadeOn"
                       size="sm"
@@ -1624,7 +1640,7 @@ const showWebdavLimits = computed(() => showWebdav.value || library.sources.some
                 <!-- 阻止系统休眠 -->
                 <div class="border-t border-zinc-100 pt-4 dark:border-zinc-800">
                   <div class="flex items-center justify-between gap-3">
-                    <span class="text-zinc-600 dark:text-zinc-300">{{ t('settings.preventSleep') }}</span>
+                    <span class="text-zinc-700 dark:text-zinc-200">{{ t('settings.preventSleep') }}</span>
                     <BaseSwitch
                       :model-value="preventSleepOn"
                       size="sm"
@@ -1641,14 +1657,19 @@ const showWebdavLimits = computed(() => showWebdav.value || library.sources.some
 
       <!-- ===== 搜索 ===== -->
 
-        <section :id="`settings-section-search`" data-settings-section="search" class="mt-8 scroll-mt-4 border-t border-zinc-100 pt-8 dark:border-zinc-800">
-          <header data-stagger class="mb-5">
-            <h2 class="text-lg font-semibold text-zinc-900 dark:text-zinc-50">{{ t('settings.search') }}</h2>
-            <p class="mt-0.5 text-xs text-zinc-400">{{ t('settings.searchDesc') }}</p>
+        <section :id="`settings-section-search`" data-settings-section="search" class="mt-14 scroll-mt-4">
+          <header data-stagger class="mb-5 flex items-center gap-3.5">
+            <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-50 text-violet-500 dark:bg-violet-500/10 dark:text-violet-300">
+              <Search class="h-5 w-5" />
+            </div>
+            <div class="min-w-0">
+              <h2 class="text-lg font-semibold text-zinc-900 dark:text-zinc-50">{{ t('settings.search') }}</h2>
+              <p class="mt-0.5 text-xs text-zinc-400">{{ t('settings.searchDesc') }}</p>
+            </div>
           </header>
           <div class="space-y-6">
             <section>
-              <div class="space-y-4 rounded-xl hover-accent-border border border-zinc-200 bg-white p-4 text-sm dark:border-zinc-800 dark:bg-zinc-900">
+              <div class="space-y-4 rounded-2xl hover-accent-border border border-zinc-200 bg-white p-4 text-sm dark:border-zinc-800 dark:bg-zinc-900">
                 <!-- 搜索范围 -->
                 <div>
                   <p class="mb-2 text-xs font-medium text-zinc-400">{{ t('settings.searchScope') }}</p>
@@ -1669,7 +1690,7 @@ const showWebdavLimits = computed(() => showWebdav.value || library.sources.some
                 <!-- 拼音搜索 -->
                 <div class="border-t border-zinc-100 pt-4 dark:border-zinc-800">
                   <div class="flex items-center justify-between gap-3">
-                    <span class="text-zinc-600 dark:text-zinc-300">{{ t('settings.pinyinSearch') }}</span>
+                    <span class="text-zinc-700 dark:text-zinc-200">{{ t('settings.pinyinSearch') }}</span>
                     <BaseSwitch
                       :model-value="searchSettings.pinyin"
                       size="sm"
@@ -1683,7 +1704,7 @@ const showWebdavLimits = computed(() => showWebdav.value || library.sources.some
                 <!-- 排序偏好 -->
                 <div class="border-t border-zinc-100 pt-4 dark:border-zinc-800">
                   <div class="flex flex-wrap items-center justify-between gap-3">
-                    <span class="text-zinc-600 dark:text-zinc-300">{{ t('settings.sortPreference') }}</span>
+                    <span class="text-zinc-700 dark:text-zinc-200">{{ t('settings.sortPreference') }}</span>
                     <BaseButtonGroup
                       :model-value="searchSettings.sort"
                       :items="searchSortItems"
@@ -1696,7 +1717,7 @@ const showWebdavLimits = computed(() => showWebdav.value || library.sources.some
                 <!-- 输入防抖 -->
                 <div class="border-t border-zinc-100 pt-4 dark:border-zinc-800">
                   <div class="flex items-center justify-between gap-3">
-                    <span class="text-zinc-600 dark:text-zinc-300">{{ t('settings.inputDebounce') }}</span>
+                    <span class="text-zinc-700 dark:text-zinc-200">{{ t('settings.inputDebounce') }}</span>
                     <div class="w-28">
                       <BaseSelect
                         :model-value="searchSettings.debounceMs"
@@ -1715,34 +1736,38 @@ const showWebdavLimits = computed(() => showWebdav.value || library.sources.some
 
       <!-- ===== 歌词 ===== -->
 
-        <section :id="`settings-section-lyrics`" data-settings-section="lyrics" class="mt-8 scroll-mt-4 border-t border-zinc-100 pt-8 dark:border-zinc-800">
-          <header data-stagger class="mb-5">
-            <h2 class="text-lg font-semibold text-zinc-900 dark:text-zinc-50">{{ t('settings.lyrics') }}</h2>
-            <p class="mt-0.5 text-xs text-zinc-400">{{ t('settings.lyricsDesc') }}</p>
+        <section :id="`settings-section-lyrics`" data-settings-section="lyrics" class="mt-14 scroll-mt-4">
+          <header data-stagger class="mb-5 flex items-center gap-3.5">
+            <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-50 text-violet-500 dark:bg-violet-500/10 dark:text-violet-300">
+              <Subtitles class="h-5 w-5" />
+            </div>
+            <div class="min-w-0">
+              <h2 class="text-lg font-semibold text-zinc-900 dark:text-zinc-50">{{ t('settings.lyrics') }}</h2>
+              <p class="mt-0.5 text-xs text-zinc-400">{{ t('settings.lyricsDesc') }}</p>
+            </div>
           </header>
           <div class="space-y-6">
-            <!-- 歌词来源优先级 -->
             <section>
-              <div class="flex items-center justify-between gap-3 rounded-xl hover-accent-border border border-zinc-200 bg-white p-4 text-sm dark:border-zinc-800 dark:bg-zinc-900">
-                <div class="min-w-0">
-                  <p class="text-zinc-600 dark:text-zinc-300">{{ t('settings.lyricPriority') }}</p>
-                  <p class="mt-0.5 text-xs text-zinc-400">{{ t('settings.lyricPriorityDesc') }}</p>
+              <div class="rounded-2xl shadow-sm hover-accent-border border border-zinc-200 bg-white p-4 text-sm dark:border-zinc-800 dark:bg-zinc-900">
+                <!-- 歌词来源优先级：并入桌面歌词卡顶部（同属「歌词」，减少零碎小卡） -->
+                <div class="flex items-center justify-between gap-3">
+                  <div class="min-w-0">
+                    <p class="text-zinc-700 dark:text-zinc-200">{{ t('settings.lyricPriority') }}</p>
+                    <p class="mt-0.5 text-xs text-zinc-400">{{ t('settings.lyricPriorityDesc') }}</p>
+                  </div>
+                  <div class="w-64 shrink-0">
+                    <BaseSelect
+                      :model-value="lyricPriority"
+                      :options="lyricPriorityOptions"
+                      size="sm"
+                      @update:model-value="onLyricPriorityChange"
+                    />
+                  </div>
                 </div>
-                <div class="w-64 shrink-0">
-                  <BaseSelect
-                    :model-value="lyricPriority"
-                    :options="lyricPriorityOptions"
-                    size="sm"
-                    @update:model-value="onLyricPriorityChange"
-                  />
-                </div>
-              </div>
-            </section>
-            <section>
-              <div class="rounded-xl hover-accent-border border border-zinc-200 bg-white p-4 text-sm dark:border-zinc-800 dark:bg-zinc-900">
+
                 <!-- 预览：与浮窗样式一致，随下方设置实时变化 -->
                 <div
-                  class="flex min-h-[76px] flex-col justify-center gap-1 rounded-xl px-5 py-3"
+                  class="mt-4 flex min-h-[76px] flex-col justify-center gap-1 rounded-xl px-5 py-3"
                   :style="previewBoxStyle"
                 >
                   <p class="truncate font-bold" :style="previewMainStyle">{{ t('settings.dlPreviewMain') }}</p>
@@ -1757,7 +1782,7 @@ const showWebdavLimits = computed(() => showWebdav.value || library.sources.some
                 <div class="grid grid-cols-1 gap-x-8 gap-y-4 sm:grid-cols-2">
                   <!-- 开关 -->
                   <div class="flex items-center justify-between gap-3">
-                    <span class="text-zinc-600 dark:text-zinc-300">{{ t('settings.dlShow') }}</span>
+                    <span class="text-zinc-700 dark:text-zinc-200">{{ t('settings.dlShow') }}</span>
                     <BaseSwitch
                       :model-value="dlEnabled"
                       size="sm"
@@ -1767,7 +1792,7 @@ const showWebdavLimits = computed(() => showWebdav.value || library.sources.some
                   </div>
                   <!-- 显示行数 -->
                   <div class="flex items-center justify-between gap-3">
-                    <span class="text-zinc-600 dark:text-zinc-300">{{ t('settings.dlLines') }}</span>
+                    <span class="text-zinc-700 dark:text-zinc-200">{{ t('settings.dlLines') }}</span>
                     <BaseButtonGroup
                       :model-value="String(dlConfig.lines)"
                       :items="dlLineItems"
@@ -1777,7 +1802,7 @@ const showWebdavLimits = computed(() => showWebdav.value || library.sources.some
                   </div>
                   <!-- 对齐方式（选项较多，独占一行） -->
                   <div class="flex items-center justify-between gap-3 sm:col-span-2">
-                    <span class="shrink-0 text-zinc-600 dark:text-zinc-300">{{ t('settings.dlAlign') }}</span>
+                    <span class="shrink-0 text-zinc-700 dark:text-zinc-200">{{ t('settings.dlAlign') }}</span>
                     <BaseButtonGroup
                       :model-value="dlConfig.align"
                       :items="filteredDlAlignItems"
@@ -1795,14 +1820,14 @@ const showWebdavLimits = computed(() => showWebdav.value || library.sources.some
                 <div class="grid grid-cols-1 gap-x-8 gap-y-4 sm:grid-cols-2">
                   <!-- 预设配色（独占一行）：点选后同时更新播放行 / 未播放行颜色 -->
                   <div class="flex items-center justify-between gap-3 sm:col-span-2">
-                    <span class="shrink-0 text-zinc-600 dark:text-zinc-300">{{ t('settings.dlPreset') }}</span>
+                    <span class="shrink-0 text-zinc-700 dark:text-zinc-200">{{ t('settings.dlPreset') }}</span>
                     <div class="w-28 shrink-0">
                       <BaseSelect :model-value="dlPreset" :options="dlPresetOptions" size="sm" @update:model-value="onDlPresetChange" />
                     </div>
                   </div>
                   <!-- 播放行颜色 -->
                   <div class="flex items-center justify-between gap-3">
-                    <span class="text-zinc-600 dark:text-zinc-300">{{ t('settings.dlPlayColor') }}</span>
+                    <span class="text-zinc-700 dark:text-zinc-200">{{ t('settings.dlPlayColor') }}</span>
                     <BaseColorPicker
                       v-model="dlConfig.color"
                       :presets="DL_PLAY_PRESETS"
@@ -1811,7 +1836,7 @@ const showWebdavLimits = computed(() => showWebdav.value || library.sources.some
                   </div>
                   <!-- 未播放行颜色 -->
                   <div class="flex items-center justify-between gap-3">
-                    <span class="text-zinc-600 dark:text-zinc-300">{{ t('settings.dlPendingColor') }}</span>
+                    <span class="text-zinc-700 dark:text-zinc-200">{{ t('settings.dlPendingColor') }}</span>
                     <BaseColorPicker
                       v-model="dlConfig.pendingColor"
                       :presets="DL_PENDING_PRESETS"
@@ -1820,7 +1845,7 @@ const showWebdavLimits = computed(() => showWebdav.value || library.sources.some
                   </div>
                   <!-- 描边 -->
                   <div class="flex items-center justify-between gap-3">
-                    <span class="text-zinc-600 dark:text-zinc-300">{{ t('settings.dlOutline') }}</span>
+                    <span class="text-zinc-700 dark:text-zinc-200">{{ t('settings.dlOutline') }}</span>
                     <div class="flex items-center gap-2">
                       <BaseColorPicker
                         v-model="dlConfig.outlineColor"
@@ -1832,12 +1857,12 @@ const showWebdavLimits = computed(() => showWebdav.value || library.sources.some
                   </div>
                   <!-- 字体加粗 -->
                   <div class="flex items-center justify-between gap-3">
-                    <span class="text-zinc-600 dark:text-zinc-300">{{ t('settings.dlBold') }}</span>
+                    <span class="text-zinc-700 dark:text-zinc-200">{{ t('settings.dlBold') }}</span>
                     <BaseCheckbox v-model="dlConfig.bold" size="sm" />
                   </div>
                   <!-- 字号（独占一行，滑杆拉满宽度） -->
                   <div class="flex items-center gap-3 sm:col-span-2">
-                    <span class="shrink-0 text-zinc-600 dark:text-zinc-300">{{ t('settings.dlFontSize', { size: dlConfig.fontSize }) }}</span>
+                    <span class="shrink-0 text-zinc-700 dark:text-zinc-200">{{ t('settings.dlFontSize', { size: dlConfig.fontSize }) }}</span>
                     <div class="w-full min-w-0 flex-1">
                       <BaseSlider v-model="dlConfig.fontSize" :min="18" :max="56" :step="2" />
                     </div>
@@ -1852,12 +1877,12 @@ const showWebdavLimits = computed(() => showWebdav.value || library.sources.some
                 <div class="grid grid-cols-1 gap-x-8 gap-y-4 sm:grid-cols-2">
                   <!-- 背景颜色 -->
                   <div class="flex items-center justify-between gap-3">
-                    <span class="text-zinc-600 dark:text-zinc-300">{{ t('settings.dlBgColor') }}</span>
+                    <span class="text-zinc-700 dark:text-zinc-200">{{ t('settings.dlBgColor') }}</span>
                     <BaseColorPicker v-model="dlConfig.bgColor" :title="t('settings.dlBgColor')" />
                   </div>
                   <!-- 背景不透明度 -->
                   <div class="flex items-center gap-3">
-                    <span class="shrink-0 text-zinc-600 dark:text-zinc-300">
+                    <span class="shrink-0 text-zinc-700 dark:text-zinc-200">
                       {{ t('settings.dlBgOpacity', { value: Math.round(dlConfig.bgOpacity * 100) }) }}
                     </span>
                     <div class="w-full min-w-0 flex-1">
@@ -1873,31 +1898,28 @@ const showWebdavLimits = computed(() => showWebdav.value || library.sources.some
 
       <!-- ===== 通用 ===== -->
 
-        <section :id="`settings-section-general`" data-settings-section="general" class="mt-8 scroll-mt-4 border-t border-zinc-100 pt-8 dark:border-zinc-800">
-          <header data-stagger class="mb-5">
-            <h2 class="text-lg font-semibold text-zinc-900 dark:text-zinc-50">{{ t('settings.general') }}</h2>
-            <p class="mt-0.5 text-xs text-zinc-400">{{ t('settings.generalDesc') }}</p>
+        <section :id="`settings-section-general`" data-settings-section="general" class="mt-14 scroll-mt-4">
+          <header data-stagger class="mb-5 flex items-center gap-3.5">
+            <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-50 text-violet-500 dark:bg-violet-500/10 dark:text-violet-300">
+              <Settings class="h-5 w-5" />
+            </div>
+            <div class="min-w-0">
+              <h2 class="text-lg font-semibold text-zinc-900 dark:text-zinc-50">{{ t('settings.general') }}</h2>
+              <p class="mt-0.5 text-xs text-zinc-400">{{ t('settings.generalDesc') }}</p>
+            </div>
           </header>
           <div class="space-y-6">
-            <!-- 语言 -->
+            <!-- 基础偏好：语言 / 关闭行为 / 听歌统计入口（单行设置合并一卡，列表组风格） -->
             <section>
-              <h3 class="mb-2.5 text-sm font-semibold text-zinc-800 dark:text-zinc-100">{{ t('settings.language') }}</h3>
-              <div class="rounded-xl hover-accent-border border border-zinc-200 bg-white p-4 text-sm text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900">
-                <div class="flex flex-wrap items-center justify-between gap-3">
-                  <span>{{ t('settings.languageSelect') }}</span>
+              <div class="rounded-xl shadow-sm hover-accent-border border border-zinc-200 bg-white p-1.5 text-sm dark:border-zinc-800 dark:bg-zinc-900">
+                <div class="flex flex-wrap items-center justify-between gap-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-800/60">
+                  <span class="text-zinc-700 dark:text-zinc-200">{{ t('settings.languageSelect') }}</span>
                   <div class="w-40 shrink-0">
                     <BaseSelect :model-value="locale" :options="languageOptions" size="sm" @update:model-value="onLocaleChange" />
                   </div>
                 </div>
-              </div>
-            </section>
-
-            <!-- 关闭窗口时（原「播放」分类迁入） -->
-            <section>
-              <h3 class="mb-2.5 text-sm font-semibold text-zinc-800 dark:text-zinc-100">{{ t('settings.closeAction') }}</h3>
-              <div class="rounded-xl hover-accent-border border border-zinc-200 bg-white p-4 text-sm text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900">
-                <div class="flex flex-wrap items-center justify-between gap-3">
-                  <span>{{ t('settings.closeActionDesc') }}</span>
+                <div class="mt-0.5 flex flex-wrap items-center justify-between gap-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-800/60">
+                  <span class="text-zinc-700 dark:text-zinc-200">{{ t('settings.closeActionDesc') }}</span>
                   <BaseButtonGroup
                     :model-value="closeAction"
                     :items="closeActionItems"
@@ -1905,17 +1927,24 @@ const showWebdavLimits = computed(() => showWebdav.value || library.sources.some
                     @update:model-value="setCloseAction"
                   />
                 </div>
+                <div class="mt-0.5 flex items-center justify-between gap-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-800/60">
+                  <div class="min-w-0">
+                    <p class="text-zinc-700 dark:text-zinc-200">{{ t('settings.statsEntry') }}</p>
+                    <p class="mt-0.5 text-xs text-zinc-400">{{ t('settings.statsEntryHint') }}</p>
+                  </div>
+                  <BaseSwitch :model-value="statsEnabled" size="sm" @update:model-value="setStatsEntry" />
+                </div>
               </div>
             </section>
 
             <!-- 快捷键：应用内快捷键（可录制）+ 全局快捷键（默认关闭，见 useShortcuts.ts） -->
             <section>
               <h3 class="mb-2.5 text-sm font-semibold text-zinc-800 dark:text-zinc-100">{{ t('settings.shortcuts') }}</h3>
-              <div class="rounded-xl hover-accent-border border border-zinc-200 bg-white p-4 text-sm dark:border-zinc-800 dark:bg-zinc-900">
+              <div class="rounded-2xl shadow-sm hover-accent-border border border-zinc-200 bg-white p-4 text-sm dark:border-zinc-800 dark:bg-zinc-900">
                 <!-- 应用内快捷键 -->
                 <div class="flex items-center justify-between gap-3">
                   <div class="min-w-0">
-                    <p class="text-zinc-600 dark:text-zinc-300">{{ t('settings.shortcutsInApp') }}</p>
+                    <p class="text-zinc-700 dark:text-zinc-200">{{ t('settings.shortcutsInApp') }}</p>
                     <p class="mt-0.5 text-xs text-zinc-400">{{ t('settings.shortcutsInAppDesc') }}</p>
                   </div>
                   <BaseButton variant="ghost" size="sm" :icon="RotateCcw" @click="onResetShortcuts">
@@ -1951,7 +1980,7 @@ const showWebdavLimits = computed(() => showWebdav.value || library.sources.some
                 <div class="mt-5 border-t border-zinc-100 pt-4 dark:border-zinc-800">
                   <div class="flex items-center justify-between gap-3">
                     <div class="min-w-0">
-                      <p class="text-zinc-600 dark:text-zinc-300">{{ t('settings.shortcutsGlobal') }}</p>
+                      <p class="text-zinc-700 dark:text-zinc-200">{{ t('settings.shortcutsGlobal') }}</p>
                       <p class="mt-0.5 text-xs text-zinc-400">{{ t('settings.shortcutsGlobalDesc') }}</p>
                     </div>
                     <BaseSwitch :model-value="globalEnabled" size="sm" @update:model-value="onGlobalToggle" />
@@ -1985,24 +2014,10 @@ const showWebdavLimits = computed(() => showWebdav.value || library.sources.some
               </div>
             </section>
 
-            <!-- 听歌统计入口：默认隐藏（用户要求），开关只控制侧栏入口显示，流水始终在记录 -->
-            <section>
-              <h3 class="mb-2.5 text-sm font-semibold text-zinc-800 dark:text-zinc-100">{{ $t('stats.title') }}</h3>
-              <div class="rounded-xl hover-accent-border border border-zinc-200 bg-white p-4 text-sm text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900">
-                <div class="flex items-center justify-between gap-3">
-                  <div class="min-w-0">
-                    <p class="text-zinc-600 dark:text-zinc-300">{{ t('settings.statsEntry') }}</p>
-                    <p class="mt-0.5 text-xs text-zinc-400">{{ t('settings.statsEntryHint') }}</p>
-                  </div>
-                  <BaseSwitch :model-value="statsEnabled" size="sm" @update:model-value="setStatsEntry" />
-                </div>
-              </div>
-            </section>
-
             <!-- 关于 -->
             <section>
               <h3 class="mb-2.5 text-sm font-semibold text-zinc-800 dark:text-zinc-100">{{ t('settings.about') }}</h3>
-              <div class="rounded-xl hover-accent-border border border-zinc-200 bg-white p-4 text-sm text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900">
+              <div class="rounded-xl shadow-sm hover-accent-border border border-zinc-200 bg-white p-4 text-sm text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900">
                 <div class="flex flex-wrap items-center justify-between gap-3">
                   <span>{{ t('settings.versionLine', { version: appVersion }) }}</span>
                   <!-- 更新操作区：按状态切换 -->
@@ -2086,11 +2101,16 @@ const showWebdavLimits = computed(() => showWebdav.value || library.sources.some
         <section
           :id="`settings-section-audio`"
           data-settings-section="audio"
-          class="mt-8 scroll-mt-4 border-t border-zinc-100 pt-8 dark:border-zinc-800"
+          class="mt-14 scroll-mt-4"
         >
-          <header data-stagger class="mb-5">
-            <h2 class="text-lg font-semibold text-zinc-900 dark:text-zinc-50">{{ t('settings.audio') }}</h2>
-            <p class="mt-0.5 text-xs text-zinc-400">{{ t('settings.audioDesc') }}</p>
+          <header data-stagger class="mb-5 flex items-center gap-3.5">
+            <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-50 text-violet-500 dark:bg-violet-500/10 dark:text-violet-300">
+              <MusicNote class="h-5 w-5" />
+            </div>
+            <div class="min-w-0">
+              <h2 class="text-lg font-semibold text-zinc-900 dark:text-zinc-50">{{ t('settings.audio') }}</h2>
+              <p class="mt-0.5 text-xs text-zinc-400">{{ t('settings.audioDesc') }}</p>
+            </div>
           </header>
           <AudioEffectsPanel />
         </section>

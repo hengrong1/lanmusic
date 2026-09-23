@@ -131,7 +131,7 @@ function onNpToggle(v: boolean) {
         </div>
       </div>
       <div
-        class="rounded-xl border border-zinc-200 bg-white p-4 text-sm dark:border-zinc-800 dark:bg-zinc-900"
+        class="rounded-2xl shadow-sm hover-accent-border border border-zinc-200 bg-white p-4 text-sm dark:border-zinc-800 dark:bg-zinc-900"
         :class="eqOn ? '' : 'opacity-60'"
       >
         <div class="mb-3 flex items-center gap-3">
@@ -170,7 +170,7 @@ function onNpToggle(v: boolean) {
           <BaseSwitch :model-value="normOn" size="sm" @update:model-value="onNormToggle" />
         </div>
       </div>
-      <div class="rounded-xl border border-zinc-200 bg-white p-4 text-sm dark:border-zinc-800 dark:bg-zinc-900">
+      <div class="rounded-2xl shadow-sm hover-accent-border border border-zinc-200 bg-white p-4 text-sm dark:border-zinc-800 dark:bg-zinc-900">
         <p class="mb-3 text-xs leading-relaxed text-zinc-500">{{ t('effects.normalizeDesc') }}</p>
         <BaseButton size="sm" :loading="analyzing" :disabled="analyzing || !player.current" @click="analyzeCurrent">
           {{ t('effects.normalizeAnalyze') }}
@@ -186,17 +186,17 @@ function onNpToggle(v: boolean) {
           {{ t('effects.sleepRemaining', { time: sleepRemaining }) }}
         </span>
       </div>
-      <div class="rounded-xl border border-zinc-200 bg-white p-4 text-sm dark:border-zinc-800 dark:bg-zinc-900">
+      <div class="rounded-2xl shadow-sm hover-accent-border border border-zinc-200 bg-white p-4 text-sm dark:border-zinc-800 dark:bg-zinc-900">
         <div class="flex flex-wrap gap-2">
           <button
             v-for="m in SLEEP_PRESETS"
             :key="m"
             type="button"
-            class="rounded-lg border px-3 py-1.5 text-xs transition-colors"
+            class="cursor-pointer rounded-lg border px-3 py-1.5 text-xs transition-colors"
             :class="
               sleep.mode.value === m
                 ? 'border-violet-500 bg-violet-50 text-violet-600 dark:bg-violet-500/10 dark:text-violet-400'
-                : 'border-zinc-200 text-zinc-600 hover-accent-border dark:border-zinc-700 dark:text-zinc-300'
+                : 'hover-accent-border border-zinc-200 bg-zinc-50 text-zinc-600 hover:text-violet-600 dark:border-zinc-700 dark:bg-zinc-800/60 dark:text-zinc-300 dark:hover:text-violet-300'
             "
             @click="sleep.startSleepTimer(m)"
           >
@@ -204,11 +204,11 @@ function onNpToggle(v: boolean) {
           </button>
           <button
             type="button"
-            class="rounded-lg border px-3 py-1.5 text-xs transition-colors"
+            class="cursor-pointer rounded-lg border px-3 py-1.5 text-xs transition-colors"
             :class="
               sleep.mode.value === 'endOfTrack'
                 ? 'border-violet-500 bg-violet-50 text-violet-600 dark:bg-violet-500/10 dark:text-violet-400'
-                : 'border-zinc-200 text-zinc-600 hover-accent-border dark:border-zinc-700 dark:text-zinc-300'
+                : 'hover-accent-border border-zinc-200 bg-zinc-50 text-zinc-600 hover:text-violet-600 dark:border-zinc-700 dark:bg-zinc-800/60 dark:text-zinc-300 dark:hover:text-violet-300'
             "
             @click="sleep.startSleepTimerEndOfTrack()"
           >
@@ -217,7 +217,7 @@ function onNpToggle(v: boolean) {
           <button
             v-if="sleep.mode.value"
             type="button"
-            class="rounded-lg border border-zinc-200 px-3 py-1.5 text-xs text-zinc-500 transition-colors hover-accent-border dark:border-zinc-700"
+            class="hover-accent-border cursor-pointer rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-1.5 text-xs text-zinc-500 transition-colors hover:text-violet-600 dark:border-zinc-700 dark:bg-zinc-800/60 dark:hover:text-violet-300"
             @click="sleep.cancelSleepTimer()"
           >
             {{ t('effects.sleepCancel') }}
@@ -227,31 +227,27 @@ function onNpToggle(v: boolean) {
       </div>
     </section>
 
-    <!-- 系统级「正在播放」（SMTC / Now Playing / MPRIS，三平台） -->
+    <!-- 系统集成：系统级「正在播放」+ 全局媒体键热键（两者互斥，都响应硬件媒体键）。
+         两项都是「开关+一句说明」的单行设置，合并一张列表组卡，减少零碎空卡 -->
     <section>
-      <div class="mb-2.5 flex items-center justify-between gap-3">
-        <h3 class="text-sm font-semibold text-zinc-800 dark:text-zinc-100">{{ t('effects.nowPlaying') }}</h3>
-        <div class="flex shrink-0 items-center gap-1.5 text-xs text-zinc-500">
-          {{ t('effects.nowPlayingEnable') }}
+      <div class="rounded-2xl shadow-sm hover-accent-border border border-zinc-200 bg-white p-1.5 text-sm dark:border-zinc-800 dark:bg-zinc-900">
+        <div class="flex items-center justify-between gap-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-800/60">
+          <div class="min-w-0">
+            <p class="text-zinc-700 dark:text-zinc-200">{{ t('effects.nowPlaying') }}</p>
+            <p class="mt-0.5 text-xs text-zinc-400">{{ t('effects.nowPlayingDesc') }}</p>
+          </div>
           <BaseSwitch :model-value="npOn" size="sm" @update:model-value="onNpToggle" />
         </div>
-      </div>
-      <div class="rounded-xl border border-zinc-200 bg-white p-4 text-sm dark:border-zinc-800 dark:bg-zinc-900">
-        <p class="text-xs leading-relaxed text-zinc-500">{{ t('effects.nowPlayingDesc') }}</p>
-      </div>
-    </section>
-
-    <!-- 全局媒体键热键（仅 Windows 有真实实现；与上面的系统正在播放互斥） -->
-    <section v-if="IS_WIN">
-      <div class="mb-2.5 flex items-center justify-between gap-3">
-        <h3 class="text-sm font-semibold text-zinc-800 dark:text-zinc-100">{{ t('effects.mediaKeys') }}</h3>
-        <div class="flex shrink-0 items-center gap-1.5 text-xs text-zinc-500">
-          {{ t('effects.mediaKeysEnable') }}
+        <div
+          v-if="IS_WIN"
+          class="mt-0.5 flex items-center justify-between gap-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-800/60"
+        >
+          <div class="min-w-0">
+            <p class="text-zinc-700 dark:text-zinc-200">{{ t('effects.mediaKeys') }}</p>
+            <p class="mt-0.5 text-xs text-zinc-400">{{ t('effects.mediaKeysDesc') }}</p>
+          </div>
           <BaseSwitch :model-value="mediaOn" size="sm" @update:model-value="onMediaToggle" />
         </div>
-      </div>
-      <div class="rounded-xl border border-zinc-200 bg-white p-4 text-sm dark:border-zinc-800 dark:bg-zinc-900">
-        <p class="text-xs leading-relaxed text-zinc-500">{{ t('effects.mediaKeysDesc') }}</p>
       </div>
     </section>
   </div>
