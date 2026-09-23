@@ -72,9 +72,12 @@ async function analyzeCurrent() {
   }
   analyzing.value = true
   try {
-    const r = await analyzeLoudness(cur.id)
+    const r = await analyzeLoudness(cur.id, cur.duration)
+    // 分析耗时（最长 64MB 拉取 + 解码），期间用户可能已切歌：
+    // 增益照常记到分析的那首（cur）上，但共享音频图的归一化增益属于
+    // 当前曲目，不能把旧曲增益误写到新曲的播放上
     cur.rgTrackGain = r.gainDb
-    setNormalizeGain(r.gainDb)
+    if (player.current?.id === cur.id) setNormalizeGain(r.gainDb)
     toast(tr('effects.normalizeAnalyzed', { db: r.gainDb.toFixed(1) }), 'info')
   } catch (e) {
     toast(tr('effects.normalizeFailed', { msg: String(e) }), 'error')
@@ -120,7 +123,7 @@ function onNpToggle(v: boolean) {
 </script>
 
 <template>
-  <div class="space-y-6">
+  <div class="space-y-6 select-none">
     <!-- 均衡器 -->
     <section>
       <div class="mb-2.5 flex items-center justify-between gap-3">
