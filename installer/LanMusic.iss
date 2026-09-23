@@ -5,6 +5,9 @@
 
 #define MyAppName "LanMusic"
 #define MyAppExeName "lanmusic.exe"
+; AUMID：与 tauri.conf.json 的 identifier 一致（lib.rs::ensure_app_user_model_id
+; 设置的进程级 AUMID 与此匹配，SMTC 媒体浮层/任务栏据此解析出应用名「LanMusic」）
+#define MyAppAumid "com.lanmusic.desktop"
 ; 完整版本号取自编译产物的文件版本（Windows 文件版本是四段，如 0.5.5.0），用于向导展示
 ; 与「应用和功能」里的版本号。文件名另用下面的短版本（需构建脚本传入）。
 #define MyAppVersion GetFileVersion("..\src-tauri\target\release\lanmusic.exe")
@@ -55,9 +58,17 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 ; 覆盖前先结束正在运行的实例（LanMusic 关闭默认驻留托盘，必须强杀）
 Source: "..\src-tauri\target\release\lanmusic.exe"; DestDir: "{app}"; Flags: ignoreversion; BeforeInstall: KillRunningApp
 
+[Registry]
+; SMTC 媒体浮层/系统通知按 AUMID 解析应用显示名：不注册的话系统媒体浮层显示
+; 「未知应用」。应用每次启动也会自写同一键（兜底便携运行），此处负责卸载清理。
+Root: HKCU; Subkey: "Software\Classes\AppUserModelId\com.lanmusic.desktop"; ValueType: string; ValueName: "DisplayName"; ValueData: "{#MyAppName}"; Flags: uninsdeletekey
+
 [Icons]
-Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
-Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
+; AppUserModelID 写进 .lnk 属性：系统媒体浮层（SMTC）按「进程 AUMID ↔ 快捷方式
+; AUMID」解析应用名，快捷方式不带它就一直显示「未知应用」（注册表 AppUserModelId
+; 键只服务 Toast 通知，SMTC 不读）。需 Inno Setup 6.3+（CI 为最新版，满足）。
+Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; AppUserModelID: "{#MyAppAumid}"
+Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon; AppUserModelID: "{#MyAppAumid}"
 
 [Run]
 ; 应用内更新调用安装器时带 /LAUNCH=1（静默安装，装完自动拉起新版）；

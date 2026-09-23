@@ -42,6 +42,58 @@ use tauri::{AppHandle, Emitter, Manager, PhysicalPosition};
 const WEBVIEW2_BROWSER_ARGS: &str =
     "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection,MediaSessionService";
 
+/// 注册 AppUserModelID（AUMID）：系统媒体浮层（SMTC）右上角的应用名由此而来。
+///
+/// souvlaki 的 `app_name` 只用于 Linux MPRIS，Windows 的 SMTC 应用名由系统按
+/// 「进程 AUMID → shell 应用条目」解析；未注册 AUMID 的 Win32 进程一律显示
+/// 「未知应用」，且应用无法通过 SMTC API 自行改名。分两步补齐：
+///
+/// 1. `SetCurrentProcessExplicitAppUserModelID`：进程级显式 AUMID。官方要求在
+///    呈现任何 UI 之前调用，故放在 setup 创建主窗口前；identifier 与 tauri.conf
+///    保持一致（dev 是 `com.lanmusic.desktop.dev`，与正式版在任务栏/浮层区分开）。
+/// 2. 写 `HKCU\Software\Classes\AppUserModelId\<AUMID>` 的 DisplayName/IconUri：
+///    系统 UI（SMTC、Toast）把它解析成「LanMusic」+ 应用图标。安装器
+///    （installer/LanMusic.iss [Registry]）写同键并在卸载时清理，这里每次启动
+///    幂等重写，兜底便携运行与开发环境（不带 IconUri 时浮层没有应用图标）。
+///
+/// 全程失败静默（let _）：AUMID 缺失只是显示名退化为「未知应用」，不值得为它
+/// 中断启动。
+#[cfg(windows)]
+fn ensure_app_user_model_id(identifier: &str, product_name: &str) {
+    use std::os::windows::ffi::OsStrExt;
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    // 只跑一次（setup 早于一切窗口，理论上只会调一次，防御未来重入）
+    static DONE: AtomicBool = AtomicBool::new(false);
+    if DONE.swap(true, Ordering::Relaxed) {
+        return;
+    }
+
+    // 1) 进程级显式 AUMID（UTF-16 + NUL）
+    let wide: Vec<u16> = std::ffi::OsStr::new(identifier)
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
+    unsafe {
+        let _ = windows::Win32::UI::Shell::SetCurrentProcessExplicitAppUserModelID(
+            windows::core::PCWSTR::from_raw(wide.as_ptr()),
+        );
+    }
+
+    // 2) AUMID 显示名注册（HKCU 幂等）
+    use winreg::enums::HKEY_CURRENT_USER;
+    let hkcu = winreg::RegKey::predef(HKEY_CURRENT_USER);
+    if let Ok((key, _)) =
+        hkcu.create_subkey(format!(r"Software\Classes\AppUserModelId\{identifier}"))
+    {
+        let _ = key.set_value("DisplayName", &product_name.to_string());
+        if let Ok(exe) = std::env::current_exe() {
+            let uri = format!("file:///{}", exe.to_string_lossy().replace('\\', "/"));
+            let _ = key.set_value("IconUri", &uri);
+        }
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // 诊断：进程启动时刻（计算运行时长用）
@@ -99,6 +151,14 @@ pub fn run() {
         // 分发给主窗口，见 global_shortcuts.rs；注册由前端命令驱动，无需 capability 权限）
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .setup(move |app| {
+            // Windows：注册 AUMID（SMTC 媒体浮层的应用名/图标来源）。
+            // 必须先于任何窗口创建——官方要求在呈现 UI 前设置进程 AUMID。
+            #[cfg(windows)]
+            ensure_app_user_model_id(
+                &app.config().identifier,
+                app.config().product_name.as_deref().unwrap_or("LanMusic"),
+            );
+
             // panic 钩子：release 版无控制台，panic 默认只写 stderr = 完全丢失。
             // 启动路径的 .expect（数据目录 / DB 打开）正是「应用打不开」的高发点，
             // 没有这条日志就只能看系统事件查看器里一行宽泛记录。此钩子在日志插件

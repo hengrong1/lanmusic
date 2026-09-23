@@ -428,6 +428,7 @@ SQLite（WAL 模式，外键开启），建表与列迁移见 `src-tauri/src/db.
 - WebDAV 曲目没有 MV：同名视频文件的检测与播放入口目前只对本地来源生效
 - 安装包未做 OS 代码签名，Windows 首次运行 SmartScreen 提示属正常现象
 - 系统级「正在播放」由 souvlaki 承担（Windows SMTC / macOS Now Playing / Linux MPRIS，默认开启）；全局媒体键热键仅 Windows 生效且与其互斥，仅作 SMTC 不可用时的兜底。souvlaki 的 Windows 后端需独立编译一份 `windows 0.44`（与 Tauri 的 `windows 0.61` 并存，编译时间略增）。其余播放控制仍由应用内快捷键、托盘菜单与 Windows 任务栏缩略图按钮承担
+- Windows SMTC 浮层的**应用名**由系统按 AUMID 解析（`SetCurrentProcessExplicitAppUserModelID` + 开始菜单快捷方式的 `AppUserModelID` 属性，见 `lib.rs::ensure_app_user_model_id` 与安装脚本 `[Icons]`）：**安装版**显示「LanMusic」与应用图标；开发模式 / 直接运行 exe 没有快捷方式可匹配，显示「未知应用」属正常（系统限制，应用名无 API 可直接设置）。注册表 `HKCU\...\AppUserModelId` 的 DisplayName 只服务 Toast 通知，SMTC 不读
 
 ## 免责声明
 
