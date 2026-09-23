@@ -159,6 +159,14 @@ html.has-bg .app-surface-blur[data-dialog-panel] {
   -webkit-backdrop-filter: var(--glass-panel);
   backdrop-filter: var(--glass-panel);
 }
+/* 弹窗面板聚焦轮廓抑制：focusTrap 挂载时程序化 focus() 面板本身（Tab 圈定用），
+   WebView2 的 UA 默认轮廓在深色面板上呈一圈白色亮环。纯焦点管理手段不该有
+   视觉提示；键盘可达性不受影响——Tab 进入面板后第一个控件有自己的
+   focus-visible 样式（BaseButton 为 violet 环） */
+[data-dialog-panel]:focus,
+[data-dialog-panel]:focus-visible {
+  outline: none;
+}
 /* 选中行/选中项/播放行：violet 亮底 → 半透 violet（深玻璃上亮粉块太突兀） */
 html.has-bg .app-surface-blur .bg-violet-100 {
   background-color: color-mix(in srgb, var(--color-violet-500) 45%, transparent);
