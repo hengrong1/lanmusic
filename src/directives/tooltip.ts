@@ -34,6 +34,9 @@ type Side = 'top' | 'right' | 'bottom'
 interface Binding {
   side: Side
   text: () => string
+  /** 上次 updated 见到的文案/方向：高频重渲下去重用（见 updated 内注释） */
+  lastText: string
+  lastSide: Side
   /** 最近一次鼠标位置：延迟触发时用它定位，避免鼠标在元素内移动后气泡落在旧位置 */
   x: number
   y: number
@@ -160,6 +163,8 @@ export const tooltip: Directive<HTMLElement, string | null | undefined> = {
     bindings.set(el, {
       side: (binding.arg as Side) || 'top',
       text: () => (binding.value ?? '').toString().trim(),
+      lastText: (binding.value ?? '').toString().trim(),
+      lastSide: (binding.arg as Side) || 'top',
       x: 0,
       y: 0,
       onEnter,
@@ -174,11 +179,19 @@ export const tooltip: Directive<HTMLElement, string | null | undefined> = {
   updated(el, binding) {
     const b = bindings.get(el)
     if (!b) return
-    b.side = (binding.arg as Side) || 'top'
-    b.text = () => (binding.value ?? '').toString().trim()
-    // 正在显示时：文案变了就同步刷新，变成空文案就收起
-    if (shownOn === el) {
-      const text = b.text()
+    const side = (binding.arg as Side) || 'top'
+    const text = (binding.value ?? '').toString().trim()
+    b.side = side
+    b.text = () => text
+    const changed = text !== b.lastText || side !== b.lastSide
+    b.lastText = text
+    b.lastSide = side
+    // 正在显示且内容真变了才重摆。播放条这类组件随 timeupdate 约每 250ms 重渲一次
+    // （逐字歌词时更是 60fps），binding.value 绝大多数时候没变；若每次都 place()，
+    // 「置 0 → 强力量尺寸（把 0 提交进样式系统）→ 置 1」会让 opacity 0→1 的淡入
+    // 反复重启——气泡一闪一闪，且只在播放时发生（暂停不重渲）。就是「播放时
+    // tooltip 闪烁」的根因，文案没变时不碰已显示的气泡。
+    if (shownOn === el && changed) {
       if (text) place(el, b.side, text, b.x, b.y)
       else hide()
     }

@@ -607,13 +607,14 @@ const theme = computed(() =>
           <ChevronUp v-else class="h-5 w-5" />
         </span>
       </button>
-      <div class="flex min-w-0 flex-col justify-center gap-0.5">
+      <div class="flex min-w-0 flex-1 flex-col justify-center gap-0.5">
         <!-- 行1：歌名 – 歌手。歌名让出更多宽度给歌手区：合唱曲目要放下「前两位 + 等 N 位」 -->
         <div class="flex min-w-0 items-baseline gap-1 text-sm">
           <span
             v-if="player.current"
-            class="max-w-[40%] shrink-0 truncate font-medium transition-colors duration-500"
+            class="min-w-0 truncate font-medium transition-colors duration-500"
             :class="theme.title"
+            v-tooltip="player.current.title"
           >{{ player.current.title }}</span>
           <span v-else class="truncate font-medium" :class="theme.title">{{ $t('player.notPlaying') }}</span>
           <span v-if="player.current" class="shrink-0 opacity-40">–</span>
@@ -688,7 +689,7 @@ const theme = computed(() =>
           <!-- 播放中的脉冲光环（专注模式隐藏，避免光环从屏幕底部边缘露出） -->
           <span
             v-if="player.playing && !player.buffering && !props.focusHidden"
-            class="absolute inset-0 rounded-full bg-violet-400/50 animate-ping [animation-duration:1.8s]"
+            class="pointer-events-none absolute inset-0 rounded-full bg-violet-400/50 animate-ping [animation-duration:1.8s]"
             :style="pingStyle"
           ></span>
           <Transition
