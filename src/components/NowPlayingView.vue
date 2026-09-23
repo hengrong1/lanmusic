@@ -63,7 +63,8 @@ const stage = computed(() => (npStyle.value === 'stacked' ? NpStackedLayout : Np
       <WindowControls v-if="CUSTOM_WINDOW_CONTROLS" ambient />
     </header>
 
-    <!-- 中部舞台：布局由装扮面板的预设决定（即时切换）；布局内点击艺人/专辑跳转后关闭播放页 -->
-    <component :is="stage" :key="npStyle" @navigate="emit('close')" />
+    <!-- 中部舞台：布局由装扮面板的预设决定（即时切换）；布局内点击艺人/专辑跳转后关闭播放页。
+         focusHidden 继续下传：布局内歌词列的校准浮条也要随专注模式右滑隐藏 -->
+    <component :is="stage" :key="npStyle" :focus-hidden="props.focusHidden" @navigate="emit('close')" />
   </div>
 </template>

@@ -8,7 +8,14 @@ import { useNav } from '@/composables/useNav'
 import { useI18n } from 'vue-i18n'
 import LyricsPanel from '@/components/LyricsPanel.vue'
 
-withDefaults(defineProps<{ align?: 'center' | 'left' }>(), { align: 'center' })
+const props = withDefaults(
+  defineProps<{
+    align?: 'center' | 'left'
+    /** 专注模式隐藏态：歌词校准浮条随控制一起右滑退出，鼠标一动左滑归位 */
+    focusHidden?: boolean
+  }>(),
+  { align: 'center' },
+)
 const emit = defineEmits<{ navigate: [] }>()
 
 const player = usePlayerStore()
@@ -127,10 +134,18 @@ const subToggleOn =
       </p>
     </div>
     <!-- 歌词校准：固定在右下角（绝对定位不占布局），三个按钮竖排：快退(延后)/还原/快进(提前)，
-         同一首歌内点击累计（按曲目记忆持久化）；已累计量在按钮悬停提示中显示 -->
+         同一首歌内点击累计（按曲目记忆持久化）；已累计量在按钮悬停提示中显示。
+         专注模式：随顶栏/播放条一起隐藏——右滑退出（右出）、鼠标一动左滑归位（左进）；
+         隐藏稍缓（0.6s 加速）保持沉浸感、显示要快（0.4s 减速）一出专注就能用（与播放条节奏一致）。
+         位移 250%：浮条约 44px 宽 + 距窗口右缘 40px（px-10），250% ≈ 110px 可完全滑出窗口 -->
     <div
       v-if="player.lyricsLines?.length"
-      class="absolute right-0 bottom-2 z-10 flex flex-col items-center gap-1 rounded-2xl bg-black/40 px-1.5 py-2 backdrop-blur-sm"
+      class="absolute right-0 bottom-2 z-10 flex flex-col items-center gap-1 rounded-2xl bg-black/40 px-1.5 py-2 backdrop-blur-sm transition-transform"
+      :class="
+        props.focusHidden
+          ? 'translate-x-[250%] duration-[600ms] ease-in'
+          : 'translate-x-0 duration-[400ms] ease-out'
+      "
     >
       <button
         class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-white/60 transition"

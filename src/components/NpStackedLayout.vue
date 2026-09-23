@@ -3,6 +3,7 @@ import NpCoverStage from '@/components/NpCoverStage.vue'
 import NpLyricsColumn from '@/components/NpLyricsColumn.vue'
 
 const emit = defineEmits<{ navigate: [] }>()
+defineProps<{ focusHidden?: boolean }>()
 </script>
 
 <template>
@@ -11,6 +12,6 @@ const emit = defineEmits<{ navigate: [] }>()
     <div class="h-[38%] min-h-0 shrink-0">
       <NpCoverStage :max-size="280" />
     </div>
-    <NpLyricsColumn class="min-h-0" align="center" @navigate="emit('navigate')" />
+    <NpLyricsColumn class="min-h-0" align="center" :focus-hidden="focusHidden" @navigate="emit('navigate')" />
   </div>
 </template>
