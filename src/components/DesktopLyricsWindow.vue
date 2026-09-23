@@ -22,6 +22,8 @@ import { hexToRgba } from '@/utils/color'
 // 本地 rAF 按 posMs + (now - at) × rate 插值出歌词轴位置，做双色渐变填充。
 
 const lines = ref<string[]>([])
+/** 各行译文（与 lines 下标一一对应；空串 = 该行无翻译或纯文本歌词） */
+const translations = ref<string[]>([])
 /** 当前播放行所在位置：0=第一行，1=第二行（双行交替滚动） */
 const active = ref<0 | 1>(0)
 /** 当前行的逐字时间轴；空数组 = 行级歌词（整行纯文本） */
@@ -39,6 +41,7 @@ const config = ref<DeskLyricsConfig>({
   outline: true,
   outlineColor: '#000000',
   bold: true,
+  showTranslation: true,
 })
 const playing = ref(false)
 
@@ -49,6 +52,7 @@ onMounted(async () => {
   document.body.style.background = 'transparent'
   unlisten = await listen<{
     lines: string[]
+    translations?: string[]
     active?: 0 | 1
     config: DeskLyricsConfig
     playing?: boolean
@@ -57,6 +61,7 @@ onMounted(async () => {
     anchor?: { posMs: number; rate: number; running: boolean; at: number }
   }>('lyrics:sync', (e) => {
     if (Array.isArray(e.payload?.lines)) lines.value = e.payload.lines
+    if (Array.isArray(e.payload?.translations)) translations.value = e.payload.translations
     if (e.payload?.active === 0 || e.payload?.active === 1) active.value = e.payload.active
     if (e.payload?.config) config.value = { ...config.value, ...e.payload.config }
     if (typeof e.payload?.playing === 'boolean') playing.value = e.payload.playing
@@ -171,10 +176,48 @@ const controlsStyle = computed(() => ({
       ? hexToRgba(config.value.bgColor, Math.min(0.9, config.value.bgOpacity + 0.2))
       : 'rgba(24, 24, 27, 0.55)',
 }))
-/** 渲染行：单行只显示播放行；双行两行位置固定（对齐固定），只交换文字与高亮。
+/** 渲染条目：歌词行或翻译行（翻译行无逐字数据，样式由 style 全量携带）；
+ * 值允许 undefined（strokeOutline 未命中分支的透传，Vue 行内样式忽略 undefined） */
+type DeskRow = { text: string; words?: QrcWord[]; style: Record<string, string | number | undefined> }
+/** 渲染行：开启翻译时只显示当前句——第一行歌词、第二行该句的翻译（两行固定，
+ * 不随 active 交替换位，也不再显示下一句预告）；关闭翻译时恢复原逻辑：
+ * 单行只有播放行，双行两行位置固定（对齐固定）只交换文字与高亮。
  * 逐字行（words 非空）额外携带词级时间轴与描边覆盖，模板里按字渲染渐变 */
-const rows = computed(() => {
+const rows = computed<DeskRow[]>(() => {
   const wordsFor = (row: 0 | 1) => (active.value === row && words.value.length > 1 ? words.value : undefined)
+  // 翻译模式：当前句永远渲染在第一行（歌词）+ 第二行（翻译），不能复用 rowStyle 的
+  // active 换色逻辑（active 交替会让固定行位置的颜色抖动），颜色手动指定
+  if (config.value.showTranslation) {
+    const w = words.value.length > 1 ? words.value : undefined
+    const alignOf = (row: 0 | 1) =>
+      config.value.align === 'split' ? (row === 0 ? 'left' : 'right') : config.value.align
+    // 歌词行基础样式；逐字行用描边覆盖替代阴影（与 rowStyle 路径一致），二选一避免重复声明
+    const mainBase = {
+      color: config.value.color,
+      fontSize: `${config.value.fontSize}px`,
+      fontWeight: config.value.bold ? 700 : 500,
+      textAlign: alignOf(0),
+    }
+    return [
+      {
+        text: lines.value[active.value] || EMPTY_LYRIC,
+        words: w,
+        style: { ...mainBase, ...(w ? strokeOutline.value : { textShadow: textShadow.value }) },
+      },
+      {
+        // 该句无翻译时以空行占位，保持两行结构稳定（避免逐句跳动）
+        text: translations.value[active.value] || '\u00A0',
+        style: {
+          color: config.value.color,
+          opacity: 0.72,
+          fontSize: `${config.value.fontSize}px`,
+          fontWeight: 500,
+          textShadow: textShadow.value,
+          textAlign: alignOf(1),
+        },
+      },
+    ]
+  }
   if (config.value.lines === 1) {
     // 单行只有播放行（无论交替到哪个位置），始终用播放行颜色并携带逐字数据
     const w = words.value.length > 1 ? words.value : undefined
@@ -230,6 +273,17 @@ const rows = computed(() => {
         <RewindForward class="h-4 w-4" />
       </button>
       <span class="dl-divider"></span>
+      <!-- 显示翻译：容器与其他控制条按钮统一（dl-btn 圆形），内容为文字「译」；
+           开启时常亮背景区分状态，指令发回主窗口改 config（自动持久化并回推） -->
+      <button
+        class="dl-btn text-[13px] font-medium"
+        :class="{ 'dl-btn-active': config.showTranslation }"
+        v-tooltip="config.showTranslation ? $t('lyrics.translationHide') : $t('lyrics.translationShow')"
+        @click="control('toggle-translation')"
+      >
+        译
+      </button>
+      <span class="dl-divider"></span>
       <button class="dl-btn dl-close" v-tooltip="$t('tray.disableDesktopLyrics')" @click="control('close')">
         <X class="h-4 w-4" />
       </button>
@@ -276,7 +330,7 @@ const rows = computed(() => {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 5px 10px;
+  padding: 6px 10px;
   border-radius: 9999px;
   backdrop-filter: blur(10px);
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
@@ -302,6 +356,11 @@ const rows = computed(() => {
 }
 .dl-btn:hover {
   background: rgba(255, 255, 255, 0.16);
+}
+/* 切换类按钮的开启态：常亮（略高于 hover 亮度），提示当前状态 */
+.dl-btn-active,
+.dl-btn-active:hover {
+  background: rgba(255, 255, 255, 0.28);
 }
 /* 歌词背景容器：宽度随文字自适应（对齐由父级 align-items 控制） */
 .dl-divider {

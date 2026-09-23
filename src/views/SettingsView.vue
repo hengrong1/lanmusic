@@ -636,6 +636,15 @@ const previewPendingStyle = computed(() => ({
   textShadow: previewShadow.value,
   textAlign: dlConfig.value.align === 'split' ? 'right' : dlConfig.value.align,
 }))
+/** 预览译文行：与浮窗一致——独立第二行，字号与主行一致、不加粗、降不透明度 */
+const previewTransStyle = computed(() => ({
+  color: dlConfig.value.color,
+  fontSize: `${Math.min(dlConfig.value.fontSize, 28)}px`,
+  fontWeight: 500,
+  opacity: 0.72,
+  textShadow: previewShadow.value,
+  textAlign: dlConfig.value.align === 'split' ? 'right' : dlConfig.value.align,
+}))
 
 const root = ref<HTMLElement | null>(null)
 useStagger(root, ref(true))
@@ -1791,7 +1800,11 @@ const showWebdavLimits = computed(() => showWebdav.value || library.sources.some
                   :style="previewBoxStyle"
                 >
                   <p class="truncate font-bold" :style="previewMainStyle">{{ t('settings.dlPreviewMain') }}</p>
-                  <p class="truncate" :style="previewPendingStyle">{{ t('settings.dlPreviewPending') }}</p>
+                  <p v-if="dlConfig.showTranslation" class="truncate" :style="previewTransStyle">
+                    {{ t('settings.dlPreviewTrans') }}
+                  </p>
+                  <!-- 显示翻译时浮窗只显示当前句（歌词+翻译），不再预告下一句 -->
+                  <p v-if="!dlConfig.showTranslation" class="truncate" :style="previewPendingStyle">{{ t('settings.dlPreviewPending') }}</p>
                 </div>
 
                 <!-- 显示 -->
@@ -1818,6 +1831,15 @@ const showWebdavLimits = computed(() => showWebdav.value || library.sources.some
                       :items="dlLineItems"
                       size="sm"
                       @update:model-value="onDlLinesChange"
+                    />
+                  </div>
+                  <!-- 显示翻译：有翻译的行在歌词下方显示译文副行（一行歌词、一行翻译） -->
+                  <div class="flex items-center justify-between gap-3">
+                    <span class="text-zinc-700 dark:text-zinc-200">{{ t('settings.dlTranslation') }}</span>
+                    <BaseSwitch
+                      v-model="dlConfig.showTranslation"
+                      size="sm"
+                      :label="t('settings.dlTranslation')"
                     />
                   </div>
                   <!-- 对齐方式（选项较多，独占一行） -->

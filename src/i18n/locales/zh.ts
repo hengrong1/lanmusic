@@ -348,7 +348,7 @@ export default {
     lyricPrioritySaved: '歌词优先级已更新',
     lyricSrcQrc: '外挂 QRC', lyricSrcLrc: '外挂 LRC', lyricSrcEmbedded: '内嵌歌词',
     // 桌面歌词
-    dlDisplay: '显示', dlShow: '显示桌面歌词浮窗', dlLines: '显示行数',
+    dlDisplay: '显示', dlShow: '显示桌面歌词浮窗', dlLines: '显示行数', dlTranslation: '显示翻译',
     dlLinesSingle: '单行', dlLinesDouble: '双行', dlAlign: '对齐方式',
     dlAlignLeft: '左对齐', dlAlignCenter: '居中', dlAlignRight: '右对齐', dlAlignSplit: '左右分离',
     dlStyle: '样式', dlPreset: '预设配色', dlPresetCustom: '自定义',
@@ -358,6 +358,7 @@ export default {
     dlOutline: '显示文字描边', dlOutlineColor: '描边颜色', dlBold: '字体加粗',
     dlFontSize: '字号（{size}px）',
     dlPreviewMain: '这是正在播放的一句歌词预览',
+    dlPreviewTrans: '这是这句歌词的翻译译文',
     dlPreviewPending: '这是下一句歌词的预告预览',
     dlBackground: '背景', dlBgColor: '背景颜色', dlBgOpacity: '不透明度（{value}%）',
     dlHint:

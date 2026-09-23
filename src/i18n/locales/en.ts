@@ -356,7 +356,7 @@ export default {
     lyricPrioritySaved: 'Lyric priority updated',
     lyricSrcQrc: 'External QRC', lyricSrcLrc: 'External LRC', lyricSrcEmbedded: 'Embedded',
     // Desktop lyrics
-    dlDisplay: 'Display', dlShow: 'Show desktop lyrics window', dlLines: 'Lines',
+    dlDisplay: 'Display', dlShow: 'Show desktop lyrics window', dlLines: 'Lines', dlTranslation: 'Show translation',
     dlLinesSingle: 'Single line', dlLinesDouble: 'Two lines', dlAlign: 'Alignment',
     dlAlignLeft: 'Left', dlAlignCenter: 'Center', dlAlignRight: 'Right', dlAlignSplit: 'Split',
     dlStyle: 'Style', dlPreset: 'Preset', dlPresetCustom: 'Custom',
@@ -366,6 +366,7 @@ export default {
     dlOutline: 'Text outline', dlOutlineColor: 'Outline color', dlBold: 'Bold text',
     dlFontSize: 'Font size ({size}px)',
     dlPreviewMain: 'This is a preview of the currently playing lyric line',
+    dlPreviewTrans: 'This is the translation of the current lyric line',
     dlPreviewPending: 'This is a preview of the next lyric line',
     dlBackground: 'Background', dlBgColor: 'Background color', dlBgOpacity: 'Opacity ({value}%)',
     dlHint:

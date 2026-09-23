@@ -30,6 +30,8 @@ export interface DeskLyricsConfig {
   outlineColor: string
   /** 是否加粗 */
   bold: boolean
+  /** 有翻译的行在歌词下方显示译文副行（一行歌词、一行翻译） */
+  showTranslation: boolean
 }
 
 /**
@@ -53,6 +55,8 @@ const DEFAULT_CONFIG: DeskLyricsConfig = {
   outline: false,
   outlineColor: '#808080',
   bold: true,
+  // 翻译副行默认开（有翻译就显示）；旧存档缺该字段时经默认值合并自动获得，无需 bump CONFIG_VERSION
+  showTranslation: true,
 }
 /** 存档版本：v1（无版本号）为旧默认（描边开 + 黑色），v2 为「居中 + 无描边」，v3 为「左右分离」 */
 const CONFIG_VERSION = 3
@@ -95,14 +99,16 @@ const enabled = ref(saved.enabled)
 const config = ref<DeskLyricsConfig>(saved.config)
 
 /** 歌词窗口挂载完成后会广播 lyrics:ready，主窗口立即推送一次当前行与配置 */
-function push(lines: string[], active: 0 | 1) {
+function push(d: { lines: [string, string]; translations: [string, string]; active: 0 | 1 }) {
   if (!enabled.value) return
   const player = usePlayerStore()
   // font：全局字体随事件同步给浮窗（与设置页修改即时联动）
   // words/anchor：逐字时间轴 + 卡拉OK时钟锚点，浮窗按锚点本地插值自绘逐字渐变（不逐帧通信）
+  // translations：各行译文（showTranslation=false 时浮窗忽略）
   void emit('lyrics:sync', {
-    lines,
-    active,
+    lines: d.lines,
+    active: d.active,
+    translations: d.translations,
     config: config.value,
     playing: player.playing,
     font: getAppFont(),
@@ -148,17 +154,26 @@ export function useDesktopLyrics() {
    * - 奇数行播放：[下一行, 当前行(播放)]
    * 无同步歌词时降级为纯文本前两行（无交替）。
    */
-  const deskLines = computed<{ lines: [string, string]; active: 0 | 1 }>(() => {
+  const deskLines = computed<{ lines: [string, string]; translations: [string, string]; active: 0 | 1 }>(() => {
     if (player.lyricsLines && player.lyricsLines.length) {
       const i = Math.max(0, player.activeLyricIndex)
       const cur = player.lyricsLines[i]?.text ?? ''
       const next = player.lyricsLines[i + 1]?.text ?? ''
-      return i % 2 === 0 ? { lines: [cur, next], active: 0 } : { lines: [next, cur], active: 1 }
+      // 译文与文本同源（foldQrcSubLines/parseLrc 折叠时写入 translation，与副行显示开关无关）
+      const curTr = player.lyricsLines[i]?.translation ?? ''
+      const nextTr = player.lyricsLines[i + 1]?.translation ?? ''
+      return i % 2 === 0
+        ? { lines: [cur, next], translations: [curTr, nextTr], active: 0 }
+        : { lines: [next, cur], translations: [nextTr, curTr], active: 1 }
     }
     if (player.lyricsPlain && player.lyricsPlain.length) {
-      return { lines: [player.lyricsPlain[0] ?? '', player.lyricsPlain[1] ?? ''], active: 0 }
+      return {
+        lines: [player.lyricsPlain[0] ?? '', player.lyricsPlain[1] ?? ''],
+        translations: ['', ''],
+        active: 0,
+      }
     }
-    return { lines: [EMPTY_LYRIC, ''], active: 0 }
+    return { lines: [EMPTY_LYRIC, ''], translations: ['', ''], active: 0 }
   })
 
   /**
@@ -196,37 +211,37 @@ export function useDesktopLyrics() {
     started = true
     // 歌词行 / 逐字行变化：只推送到浮窗（每句切行一次，不写磁盘）
     watch([deskLines, deskWords], () => {
-      push(deskLines.value.lines, deskLines.value.active)
+      push(deskLines.value)
     })
     // 配置变化：持久化 + 推送（低频，仅用户改设置时）
     watch(
       config,
       () => {
         persist()
-        push(deskLines.value.lines, deskLines.value.active)
+        push(deskLines.value)
       },
       { deep: true },
     )
     // 播放状态变化：同步浮窗控制条的播放/暂停图标
     watch(
       () => player.playing,
-      () => push(deskLines.value.lines, deskLines.value.active),
+      () => push(deskLines.value),
     )
     // 倍速变化：卡拉OK流逝速度随之变化，重推锚点
     watch(
       () => player.rate,
-      () => push(deskLines.value.lines, deskLines.value.active),
+      () => push(deskLines.value),
     )
     // 拖动进度（seeked）与缓冲停顿（waiting）：位置发生跳变/冻结，重推锚点。
     // 常规播放不逐帧同步——浮窗按锚点 + 本地时钟插值即可平滑走字
-    const onAudioJump = () => push(deskLines.value.lines, deskLines.value.active)
+    const onAudioJump = () => push(deskLines.value)
     player.audio.addEventListener('seeked', onAudioJump)
     player.audio.addEventListener('waiting', onAudioJump)
     player.audio.addEventListener('ratechange', onAudioJump)
     // 歌词浮窗就绪后立即补推一次（覆盖窗口刚创建/无新歌词行变化的场景）
-    void listen('lyrics:ready', () => push(deskLines.value.lines, deskLines.value.active))
+    void listen('lyrics:ready', () => push(deskLines.value))
     // 全局字体变更（设置页）：立即同步给歌词浮窗
-    void listen<string>('font:changed', () => push(deskLines.value.lines, deskLines.value.active))
+    void listen<string>('font:changed', () => push(deskLines.value))
     // 歌词浮窗控制条指令：转发给播放器（校准与播放页 [ ] / 还原语义一致）
     void listen<DeskControl>('lyrics:control', (e) => {
       switch (e.payload) {
@@ -257,6 +272,9 @@ export function useDesktopLyrics() {
         case 'calib-reset': // 还原为默认时间轴
           player.setLyricOffset(-player.lyricOffset)
           break
+        case 'toggle-translation': // 译文副行开关：config deep watch 自动持久化并回推浮窗
+          config.value.showTranslation = !config.value.showTranslation
+          break
       }
     })
     // 恢复上次开启状态
@@ -280,4 +298,12 @@ export function useDesktopLyrics() {
 let started = false
 
 /** 歌词浮窗控制条 → 主窗口的指令 */
-export type DeskControl = 'prev' | 'toggle' | 'next' | 'close' | 'calib-back' | 'calib-forward' | 'calib-reset'
+export type DeskControl =
+  | 'prev'
+  | 'toggle'
+  | 'next'
+  | 'close'
+  | 'calib-back'
+  | 'calib-forward'
+  | 'calib-reset'
+  | 'toggle-translation'
