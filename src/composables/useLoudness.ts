@@ -122,7 +122,16 @@ export async function analyzeLoudness(
   trackId: number,
   durationSec?: number | null,
 ): Promise<LoudnessResult> {
-  return withTimeout(innerAnalyze(trackId, durationSec), OP_TIMEOUT_MS, '响度分析')
+  try {
+    return await withTimeout(innerAnalyze(trackId, durationSec), OP_TIMEOUT_MS, '响度分析')
+  } catch (e) {
+    // 失败已由调用方 toast 告知用户，这里补持久化痕迹：release 版 WebView 无控制台，
+    // catch 后只 toast 的错误不会触发全局兜底，日志文件是事后排查的唯一出口
+    api
+      .frontendLog('warn', `[loudness] analyze failed: trackId=${trackId} duration=${durationSec ?? '?'} err=${String(e)}`)
+      .catch(() => {})
+    throw e
+  }
 }
 
 /** analyzeLoudness 的实际实现；外层套总超时，确保任何环节挂起都能恢复。 */
@@ -139,8 +148,11 @@ async function innerAnalyze(trackId: number, durationSec?: number | null): Promi
       // 抛错让调用方结束 loading 并提示，而不是卡死。
       audio = await withTimeout(ctx.decodeAudioData(buf), DECODE_TIMEOUT_MS, '音频解码')
     } catch (e) {
-      // 极少数容器（需完整文件才能解码）在截断前缀上会失败 → 回退取整首再解一次
-      console.warn('[loudness] prefix decode failed, retry with full file:', e)
+      // 极少数容器（需完整文件才能解码）在截断前缀上会失败 → 回退取整首再解一次。
+      // 罕见路径，落盘留痕（release 无控制台，console.warn 不可见）
+      api
+        .frontendLog('warn', `[loudness] prefix decode failed, retry with full file: ${String(e)}`)
+        .catch(() => {})
       buf = await fetchPrefix(url, null)
       audio = await withTimeout(ctx.decodeAudioData(buf), DECODE_TIMEOUT_MS, '音频解码')
     }
