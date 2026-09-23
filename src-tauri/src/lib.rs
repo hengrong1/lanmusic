@@ -38,8 +38,11 @@ use tauri::{AppHandle, Emitter, Manager, PhysicalPosition};
 ///
 /// 注意：`additional_browser_args` 会**整体替换** wry 的默认值，故必须带上原三项
 /// （msWebOOUI=迷你菜单 wry#535、msPdfOOUI、msSmartScreenProtection tauri#1345）。
+/// **应用内所有** WebView2 窗口（主/托盘/桌面歌词）都必须带同一组参数：同一用户
+/// 数据目录下已有带参环境在跑，再以不同参数建新环境会报 0x8007139F
+/// （ERROR_INVALID_STATE）——新窗口一律 `crate::WEBVIEW2_BROWSER_ARGS`。
 #[cfg(windows)]
-const WEBVIEW2_BROWSER_ARGS: &str =
+pub(crate) const WEBVIEW2_BROWSER_ARGS: &str =
     "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection,MediaSessionService";
 
 /// 注册 AppUserModelID（AUMID）：系统媒体浮层（SMTC）右上角的应用名由此而来。

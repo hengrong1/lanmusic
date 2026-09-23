@@ -1098,6 +1098,11 @@ pub async fn desktop_lyrics_set(app: AppHandle, enabled: bool) -> Result<bool, S
     .shadow(false)
     .focused(false)
     .inner_size(760.0, 170.0);
+    // 必须与主窗口/托盘窗口同参（见 lib.rs WEBVIEW2_BROWSER_ARGS）：同一用户数据
+    // 目录下主窗口已带参运行，再以默认参数建歌词窗会被 WebView2 拒绝——
+    // 0x8007139F「组或资源的状态不是执行请求操作的正确状态」（v0.5.20 起回归）
+    #[cfg(windows)]
+    let builder = builder.additional_browser_args(crate::WEBVIEW2_BROWSER_ARGS);
     // 透明背景：歌词浮窗必须透明（否则 macOS 显示 WKWebView 默认白底）。
     // macOS 需要 macos-private-api feature，已在 Cargo.toml 与 tauri.conf.json(macOSPrivateApi) 启用
     let builder = builder.transparent(true);
