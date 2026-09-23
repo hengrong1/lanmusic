@@ -987,7 +987,7 @@ const showWebdavLimits = computed(() => showWebdav.value || library.sources.some
 </script>
 
 <template>
-  <div ref="root" class="flex h-full min-h-0 flex-col">
+  <div ref="root" class="flex h-full min-h-0 select-none flex-col">
     <!-- 顶部：标题 + 横向分类目录（原左侧竖排目录，改顶部后内容区通栏更宽敞） -->
     <header
       class="flex shrink-0 items-center justify-between gap-4 border-b border-zinc-100 py-3 pl-6 pr-4 dark:border-zinc-800"
