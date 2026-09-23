@@ -61,6 +61,7 @@ const vlist = ref<{
   scrollToTop: () => void
   scrollToIndex: (i: number, align?: 'top' | 'center', behavior?: ScrollBehavior) => void
   isIndexVisible: (i: number) => boolean
+  getScrollEl?: () => HTMLElement | null
 } | null>(null)
 const sortCols = computed(
   () =>
@@ -156,6 +157,9 @@ async function followPlaying() {
 function scrollToTop() {
   vlist.value?.scrollToTop()
 }
+// 表头（VirtualList 外）与数据行（VirtualList 内）的列对齐交给 CSS：
+// VirtualList 滚动容器与表头 div 都设 `scrollbar-gutter: stable`，浏览器自动为滚动条
+// 预留等宽空间，两处 grid 可用宽始终一致，无需 JS 测量。
 // 返回顶部按钮：滚过一屏后再浮出
 function onScroll(e: Event) {
   const target = e.target as HTMLElement
@@ -380,8 +384,8 @@ function onDragEnd() {
   <div class="flex h-full min-h-0 flex-col">
     <!-- 表头 -->
     <div
-      class="group/th mx-2 grid h-10 shrink-0 items-center gap-3 border-b border-zinc-200 px-4 pb-0.5 text-xs font-medium text-zinc-500 dark:border-zinc-800 dark:text-zinc-500"
-      style="grid-template-columns: 40px minmax(0, 1fr) minmax(0, 220px) minmax(0, 220px) 56px"
+      class="group/th mx-2 grid h-10 shrink-0 items-center gap-3 border-b border-zinc-200 px-4 pb-0.5 text-xs font-medium text-zinc-500 dark:border-zinc-800 dark:text-zinc-500 overflow-y-auto"
+      style="grid-template-columns: 40px minmax(0, 1fr) minmax(0, 220px) minmax(0, 220px) 56px; scrollbar-gutter: stable"
     >
       <span v-if="props.batchMode" class="flex justify-center">
         <button
@@ -499,7 +503,7 @@ function onDragEnd() {
                 <span v-if="i > 0" class="opacity-50"> / </span>
                 <button
                   v-if="a.id != null"
-                  class="max-w-full cursor-pointer truncate p-0 transition hover:text-violet-600 hover:underline dark:hover:text-violet-400"
+                  class="max-w-full cursor-pointer truncate p-0 text-left transition hover:text-violet-600 hover:underline dark:hover:text-violet-400"
                   v-tooltip="artistTip(a.name)"
                   @click.stop="openArtist(a)"
                 ><HighlightText :text="a.name" :keyword="searchTerm" /></button>
@@ -508,7 +512,7 @@ function onDragEnd() {
             </div>
             <div class="min-w-0 truncate text-zinc-500 dark:text-zinc-400">
               <button
-                class="max-w-full cursor-pointer truncate p-0 transition hover:text-violet-600 hover:underline dark:hover:text-violet-400"
+                class="max-w-full cursor-pointer truncate p-0 text-left transition hover:text-violet-600 hover:underline dark:hover:text-violet-400"
                 v-tooltip="albumTip(t.album)"
                 @click.stop="openAlbum(t)"
               ><HighlightText :text="t.album ?? $t('album.unknownAlbum')" :keyword="searchTerm" /></button>

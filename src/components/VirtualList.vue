@@ -94,14 +94,14 @@ function isIndexVisible(index: number): boolean {
   const st = container.value.scrollTop
   return top >= st - 1 && top + props.itemHeight <= st + container.value.clientHeight + 1
 }
-defineExpose({ scrollToTop, scrollToIndex, isIndexVisible })
+defineExpose({ scrollToTop, scrollToIndex, isIndexVisible, getScrollEl: () => container.value })
 </script>
 
 <template>
   <div
     ref="container"
     class="h-full overflow-y-auto"
-    :style="{ paddingTop: padTop + 'px', paddingBottom: padBottom + 'px' }"
+    :style="{ paddingTop: padTop + 'px', paddingBottom: padBottom + 'px', scrollbarGutter: 'stable' }"
     @scroll.passive="onScroll"
   >
     <div :style="{ height: totalHeight + padTop + padBottom + 'px', position: 'relative' }">
