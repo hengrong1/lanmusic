@@ -1,97 +1,33 @@
-import { usePlayerStore } from '@/stores/player'
-
-// 模块级单例：AudioContext / AnalyserNode 全局只需一份
-// createMediaElementSource 绑定的是 audio 元素本身（不是某次媒体资源），
-// 因此切歌、seek 后依然有效；前提是元素设置了 crossOrigin（player store 已设置），
-// 否则跨域媒体被视为污染源，节点会输出静音。
-let ctx: AudioContext | null = null
-let analyser: AnalyserNode | null = null
-/**
- * createMediaElementSource 对同一 audio 元素终身只能调用一次（第二次抛 InvalidStateError）。
- * 首次创建中途失败后必须标记不再重试，否则每次都会抛异常且永远无频谱。
- */
-let createFailed = false
-
-function resumeIfNeeded() {
-  if (ctx && ctx.state === 'suspended') void ctx.resume().catch(() => {})
-}
-
-// 任何用户手势都尝试恢复挂起的 context（自动播放策略兜底）
-let gestureArmed = false
-function armGesture() {
-  if (gestureArmed) return
-  gestureArmed = true
-  window.addEventListener('pointerdown', resumeIfNeeded)
-  window.addEventListener('keydown', resumeIfNeeded)
-}
-
-/** 是否已发生过用户手势（AudioContext 需在手势内创建/恢复才能运行） */
-function hasUserGesture(): boolean {
-  return navigator.userActivation?.isActive ?? true
-}
-
-/**
- * 确保分析器就绪。
- * 音频输出图：source -> analyser -> destination（元素声音经 context 输出）。
- * 若当前不在用户手势内（如启动时持久化皮肤直接渲染画布），推迟到首次手势再创建，
- * 避免 context 因自动播放策略保持 suspended 导致整条链路无声。
- */
-export function ensureAnalyser(): AnalyserNode | null {
-  if (analyser) {
-    resumeIfNeeded()
-    return analyser
-  }
-  // 之前创建失败过：直接降级，不再重复抛异常
-  if (createFailed) return null
-  if (!hasUserGesture()) {
-    // 推迟到首次用户手势时创建
-    const tryCreate = () => {
-      if (!analyser) ensureAnalyser()
-      // 成功或确认失败（createFailed=true，analyser 永远不会就绪）都要摘除监听，
-      // 否则失败后每次 pointerdown/keydown 都空跑一次
-      if (analyser || createFailed) {
-        window.removeEventListener('pointerdown', tryCreate)
-        window.removeEventListener('keydown', tryCreate)
-      }
-    }
-    window.addEventListener('pointerdown', tryCreate)
-    window.addEventListener('keydown', tryCreate)
-    return null
-  }
-  try {
-    const player = usePlayerStore()
-    ctx = new AudioContext()
-    const source = ctx.createMediaElementSource(player.audio)
-    analyser = ctx.createAnalyser()
-    analyser.fftSize = 512
-    analyser.smoothingTimeConstant = 0.82
-    source.connect(analyser)
-    analyser.connect(ctx.destination)
-    armGesture()
-  } catch {
-    // 创建失败时静默降级为无频谱，不影响播放；并标记不再重试
-    createFailed = true
-    ctx = null
-    analyser = null
-    return null
-  }
-  return analyser
-}
+// 频谱分析：复用 useAudioGraph 的共享分析器节点（createMediaElementSource 对同一 audio
+// 元素终身只能调用一次，因此频谱不再自建 source，而是取共享图上已挂好的 analyser 旁路）。
+// 音频输出图由 useAudioGraph 统一管理：source -> ... -> analyser -> destination。
+import { getAnalyser } from '@/composables/useAudioGraph'
 
 let lastResumeTry = 0
 
 /** 读取当前频谱数据到 out（0-255）；分析器未就绪 / context 未运行时返回 false（调用方按静音绘制） */
 export function readSpectrum(out: Uint8Array): boolean {
-  if (!analyser || !ctx) return false
-  if (ctx.state === 'suspended') {
+  const analyser = getAnalyser()
+  if (!analyser) return false
+  if (analyser.context.state === 'suspended') {
     // 每秒重试一次恢复（真正的恢复仍需用户手势配合）
     const now = performance.now()
     if (now - lastResumeTry > 1000) {
       lastResumeTry = now
-      void ctx.resume().catch(() => {})
+      // AnalyserNode.context 的类型是 BaseAudioContext（无 resume）：实际是 AudioContext
+      void (analyser.context as AudioContext).resume().catch(() => {})
     }
     return false
   }
   analyser.getByteFrequencyData(out as Uint8Array<ArrayBuffer>)
   return true
+}
+
+/**
+ * 确保分析器就绪：转调共享音频图（其内部处理用户手势推迟与创建失败降级）。
+ * 返回 AnalyserNode 或 null。原 useSpectrum 自建 source 的逻辑已迁移到 useAudioGraph，
+ * 这里只负责把「建图」这一步暴露给 App.vue 的预热 watch。
+ */
+export function ensureAnalyser(): AnalyserNode | null {
+  return getAnalyser()
 }

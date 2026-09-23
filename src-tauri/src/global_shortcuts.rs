@@ -37,6 +37,8 @@ pub fn apply<R: Runtime>(
         }
         log::info!("全局快捷键已注册: {accel_owned} -> {action_name}");
     }
+    // unregister_all 会一并清掉系统媒体键：此处重新注册（若媒体键开关为启用态）
+    crate::media_controls::reapply(app);
     Ok(())
 }
 
@@ -44,7 +46,10 @@ pub fn apply<R: Runtime>(
 pub fn clear<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
     app.global_shortcut()
         .unregister_all()
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    // 同上：媒体键开关若为启用态，注销后需恢复
+    crate::media_controls::reapply(app);
+    Ok(())
 }
 
 /// 检测快捷键当前是否已被本应用注册（true = 已注册）。

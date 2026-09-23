@@ -138,6 +138,10 @@ struct ParsedTrack {
     meta_state: i64,
     /// 内嵌歌词原文（用于歌词搜索索引；无内嵌歌词为 None）
     lyrics_text: Option<String>,
+    /// ReplayGain 轨道增益（dB）；标签缺失为 None
+    rg_track_gain: Option<f64>,
+    /// ReplayGain 轨道峰值（线性）；标签缺失为 None
+    rg_track_peak: Option<f64>,
 }
 
 /// 在后台线程中调用（见 commands::add_local_source / rescan_source 等）。
@@ -845,8 +849,9 @@ fn write_batch(
         tx.execute(
             "INSERT INTO tracks (source_id, path, title, artist_id, album_id, genre, track_no, disc_no,
                                   year, duration, bitrate, sample_rate, channels, bit_depth,
-                                  has_embedded_lyrics, has_mv, mtime, file_size, format, added_at, meta_state, raw_artist)
-             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22)
+                                  has_embedded_lyrics, has_mv, mtime, file_size, format, added_at, meta_state, raw_artist,
+                                  rg_track_gain, rg_track_peak)
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24)
              ON CONFLICT(source_id, path) DO UPDATE SET
                 title=excluded.title, artist_id=excluded.artist_id, album_id=excluded.album_id,
                 genre=excluded.genre, track_no=excluded.track_no, disc_no=excluded.disc_no,
@@ -854,7 +859,8 @@ fn write_batch(
                 sample_rate=excluded.sample_rate, channels=excluded.channels, bit_depth=excluded.bit_depth,
                 has_embedded_lyrics=excluded.has_embedded_lyrics, has_mv=excluded.has_mv,
                 mtime=excluded.mtime, file_size=excluded.file_size, format=excluded.format, meta_state=excluded.meta_state,
-                raw_artist=excluded.raw_artist",
+                raw_artist=excluded.raw_artist,
+                rg_track_gain=excluded.rg_track_gain, rg_track_peak=excluded.rg_track_peak",
             params![
                 source_id,
                 row.rel,
@@ -879,6 +885,8 @@ fn write_batch(
                 row.meta_state,
                 // 原始艺人标签：仅完整解析行记录（快速导入行取自目录名，重拆无意义，留空待解析）
                 if row.meta_state == 1 { Some(row.artist.as_str()) } else { None },
+                row.rg_track_gain,
+                row.rg_track_peak,
             ],
         )
         .map_err(|e| e.to_string())?;
@@ -1554,6 +1562,8 @@ fn fast_track(rel: &str, mtime: i64, size: i64, has_mv: bool) -> ParsedTrack {
         size,
         meta_state: 0,
         lyrics_text: None,
+        rg_track_gain: None,
+        rg_track_peak: None,
     }
 }
 
@@ -1583,6 +1593,8 @@ fn fallback_track(rel: &str, mtime: i64, size: i64, has_mv: bool, meta_state: i6
         size,
         meta_state,
         lyrics_text: None,
+        rg_track_gain: None,
+        rg_track_peak: None,
     }
 }
 
@@ -1634,5 +1646,7 @@ fn parsed_from_meta(
         size,
         meta_state: 1,
         lyrics_text: meta.lyrics,
+        rg_track_gain: meta.rg_track_gain,
+        rg_track_peak: meta.rg_track_peak,
     }
 }

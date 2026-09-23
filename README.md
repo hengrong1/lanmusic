@@ -5,7 +5,7 @@
 > 产品设计文档见 [docs/产品设计文档.md](docs/产品设计文档.md)。
 > 当前进度：**本地播放闭环 / 歌单 / 歌词 / 最近播放 / 托盘 / WebDAV 源已完成**，应用已进入稳定维护阶段。
 >
-> 主要能力：本地与 WebDAV 音乐库、歌词（外挂 .lrc / 内嵌）、歌单、最近播放、播放倍速与淡入淡出、专注模式、桌面歌词浮窗、封面缓存、Windows 任务栏缩略图控制、系统托盘、应用内更新（GitHub Releases）。
+> 主要能力：本地与 WebDAV 音乐库、歌词（外挂 .lrc / 内嵌）、歌单、智能歌单、文件夹视图、最近播放、均衡器与音量归一化、播放倍速与淡入淡出、睡眠定时器、系统级「正在播放」（SMTC / Now Playing / MPRIS）与全局媒体键、专注模式、桌面歌词浮窗、封面缓存、Windows 任务栏缩略图控制、系统托盘、应用内更新（GitHub Releases）。
 
 ## 界面预览
 
@@ -46,6 +46,8 @@
   - 批量操作：多选模式支持播放/加入队列/移出歌单
   - 编辑集中化：通过统一弹层管理名称、简介、删除
   - 新建与重命名走同一个弹层：新建只填名称；侧栏右键「重命名」弹出的弹层预填当前名字、只改名称（简介与删除留给「编辑歌单」与右键删除入口）
+- **智能歌单**：侧栏「智能歌单」页，按规则即时生成曲目列表（不入库、不落盘，随曲库变化自动反映）——**最近添加**（按入库时间倒序）、**最近播放**（有播放记录、按最后播放时间倒序）、**常听**（按播放次数倒序）、**我喜欢**（收藏曲目）、**从未播放**（播放次数为 0）、**随机漫游**（每次进入重新洗牌）；每类上限 200 首（后端 `smart_playlist(kind, limit)`，可调 1–5000）；切换规则用顶部标签，列表复用曲库的虚拟滚动表格（可右键、可多选、可整列播放）
+- **文件夹视图**：侧栏「文件夹」页，按音乐文件在磁盘上的**实际目录结构**浏览（区别于按标签聚合的专辑/艺人视图）——面包屑显示当前路径、可逐级点回上层；目录项显示名称与该目录下的曲目数；进入目录列出直属曲目（子目录另起分组），列表复用曲库表格。目录树由曲目 `path` 直接推导（`query_folders(parent)` / `query_tracks_by_folder(folder)`，按目录名拼音排序），无需额外建表，也不受标签缺失影响
 - **歌词**：`.lrc` / `.qrc` 同名文件 + 内嵌歌词（USLT/LYRICS，本地与 WebDAV 来源都支持）；播放页大封面 + 时间轴滚动歌词（点击行跳转）；QRC 逐字歌词按字高亮（Apple Music 式卡拉OK效果，覆盖播放页歌词面板 / 底部播放条单行歌词 / 桌面歌词浮窗，Rust 侧解析，QQ 音乐加密 .qrc 自动解密——新旧两种加密格式均支持）；**增强版 LRC**（Enhanced LRC / A2，行内 `<mm:ss.xx>` 字级时间戳）**与多标签逐字 LRC**（`[00:00.000]身[00:00.582]骑…`）同样按字高亮，与 QRC 共用一套渲染链路（前端 `parseWordLrc()` 统一解析，两种结构自动识别，可混排）；间奏空行折叠；**歌词来源优先级**可设置（外挂 QRC / 外挂 LRC / 内嵌歌词任意顺序，默认 QRC 优先，设置页「歌词」标签，变更后当前歌曲立即生效）；歌词文件读取自动识别编码（UTF-8 / GBK / GB18030，QQ 生态歌词常见 GBK 不再乱码）；**歌词副行（音译 / 译文）**（按歌词文件的行序排布：音译（罗马字）在上、原文居中、译文在下；同起点的副行自动识别并合并——三行逐字歌词不再显示成三个重复行；音译与译文在播放页歌词区各有文字开关（`音` / `译`），**默认关闭**、按曲目记忆，仅当该曲歌词里确实带这条副行时才出现按钮）
 - **歌词校准**：播放页右下角「后退 / 还原 / 前进」控件（或快捷键 `[` / `]`），每次 ±0.5s、范围 ±10s；偏移按曲目持久化，toast 原地更新累计量（连续点击不叠加提示框）；同一浮层分隔线下方是**歌词副行开关**——`音`（音译 / 罗马字）与 `译`（译文）两个文字按钮，默认关闭，仅当前歌词确实带该副行时才出现（没有的直接不显示），点开后为主题色底 + 主题色字
 - **最近播放**（`play_count` / `last_played_at` 统计；列表最多展示最近 500 首，超出部分不显示，重新播放会重新进入列表）
@@ -61,6 +63,11 @@
 - **艺人合并**：艺人名规整（「陈奕迅（Eason Chan）」→「陈奕迅」）一键归并；设置页展示已合并名单，支持自定义合并（两位名字不同的艺人实为同一人时手动归并）。旧名记为别名（`artist_aliases`），之后扫描遇到旧名仍归到主艺人名下，不会重新建出独立艺人
 - **歌曲淡入淡出**：播放/暂停与切歌时音量平滑过渡（淡入 0.8s、淡出 0.6s），**默认开启**，设置页可关闭
 - **播放倍速**：播放条右侧循环切换 0.5x–2x（`0.5/0.75/1/1.25/1.5/2`），倍速跨切歌延续，持久化到 `lm.rate`；非 1x 时按钮高亮
+- **均衡器 / 音效**：10 段图形均衡器（31Hz–16kHz，BiquadFilter peaking，每段 ±24dB），内置 8 组预设（平直 / 摇滚 / 流行 / 古典 / 爵士 / 低音增强 / 人声 / 高音增强），也可在预设基础上逐段拖动微调；**默认关闭**（键不存在即关，仅显式存开为启用），开关与增益持久化到 `lm.eq`；增益变化用 `setTargetAtTime` 约 30ms 平滑过渡，调节时不爆音。设置 → 音效
+- **音量归一化（ReplayGain）**：读取曲目内嵌的 ReplayGain 标签（`REPLAYGAIN_TRACK_GAIN` / `_TRACK_PEAK`，Rust 侧 `lofty` 解析）在共享音频图的归一化节点上叠加修正增益，让不同专辑/曲目响度拉齐；无标签的曲目可在设置 → 音效点「分析当前曲目」，用 Web Audio 解码整首音频（降采样 24kHz、最长取前 300s）统计 RMS 与峰值，按目标 RMS −18 dBFS 并保留峰值余量算出增益后落库（`tracks.rg_track_gain` / `rg_track_peak`）；增益限制在 ±24dB，避免削波。**默认关闭**（`lm.normOn`，仅显式 `'1'` 为开），开关与切歌即时生效
+- **睡眠定时器**：设置 → 音效可选 15 / 30 / 45 / 60 分钟后停止，或「播完当前曲目后停止」；到时（或曲目结束）走与手动暂停一致的淡出后暂停，并 toast 提示；剩余时间只存内存（重启不保留），所选模式存 `lm.sleepTimerMode`
+- **系统级「正在播放」**：Windows SMTC / macOS Now Playing / Linux MPRIS（Rust 侧用 [souvlaki](https://crates.io/crates/souvlaki)）。系统媒体浮层（Windows 音量条上方控件、macOS 控制中心、Linux 桌面环境）与锁屏显示当前歌曲、封面与进度，并可播放控制、拖进度、快进快退；`Raise` 事件唤起主窗口。前端切歌 / 播放暂停 / seek 与 1Hz 心跳把元数据与进度推给 Rust（`now_playing_set` / `now_playing_state`），系统按钮回调统一以 `media-control` 事件回给播放器。封面用缓存 `covers/{albumId}.jpg`：命中直接随首推带上；未命中先推**应用图标占位**（souvlaki 不带封面时不清系统侧缩略图，上一首的封面会一直挂着）、后台提取，300ms 内完成改推真封面，超时（远程 WebDAV 常见）提取完且仍是当前曲目时补推（切歌后到期的补推按 album_id 校验自动丢弃）；确认无封面（`.none` 哨兵）保持占位。URL 三平台统一 `file://` + 路径原样拼接。设置 → 音效可开关（`lm.nowPlaying`，**默认开启**，存 `'0'` 为关），重新开启会恢复上次的曲目显示。Windows 侧两个关键取舍：暂停这类纯状态切换只发 `SetPlaybackStatus`、不连带时间轴（对齐 Chromium，规避 Win11 浮层在 Paused 批次中丢元数据的怪癖）；WebView2 自带的媒体会话服务已禁用（`lib.rs::WEBVIEW2_BROWSER_ARGS`）——`<audio>` 会在 SMTC 注册一个空元数据的「幽灵会话」（紧凑卡片），应用一暂停它就顶掉真正的卡片，可用 `cargo run --example smtc_probe` 枚举系统会话诊断
+- **全局媒体键（备选）**：把键盘/耳机媒体键注册为常驻系统热键（`global-shortcut`，仅 Windows 生效，`lm.mediaControls` **默认关闭**）。与上面的「系统正在播放」**互斥**（面板开其一会自动关另一个，带 toast 说明）：热键即使应用空闲也会占用媒体键，SMTC 只在自己是当前媒体会话时收键，后者语义更对，仅作 SMTC 不可用时的兜底
 - **队列另存为歌单**：队列面板「保存」按钮，把当前队列整体保存为新歌单（按保存时间命名）并跳转
 - **下一首播放**：右键菜单把曲目排到当前曲目之后；**队列里已有这首时不再新增条目**——已在队列其它位置则挪到下一首，本来就是下一首（或就是当前播放的这首）只给提示，连点不会出现重复条目
 - **音质徽标**：播放页显示格式/采样率/位深/码率，≥88.2kHz 或 ≥24bit 标记金色 Hi-Res
@@ -184,9 +191,9 @@ src/                       # Vue 3 前端
 ├── stores/
 │   ├── player.ts          # 播放状态机：队列/模式/歌词/恢复/错误重试
 │   └── library.ts         # 库数据：来源/扫描进度/歌单/分页查询
-├── components/            # PlayerBar / TrackTable(虚拟滚动) / TrackPicker(选歌面板) / PlaylistEditDialog / QueuePanel / NowPlayingView(容器+Np*布局拆件) ...
-├── views/                 # Tracks / Albums / Artists / Playlist / Settings
-├── composables/           # useNav / useTheme / useSkin / useSpectrum / useAmbient / useToast ...
+├── components/            # PlayerBar / TrackTable(虚拟滚动) / TrackPicker(选歌面板) / PlaylistEditDialog / AudioEffectsPanel / QueuePanel / NowPlayingView(容器+Np*布局拆件) ...
+├── views/                 # Tracks / Albums / Artists / Playlist / Folder / SmartPlaylist / Settings
+├── composables/           # useNav / useTheme / useSkin / useAudioGraph(共享音频图:EQ+归一化+频谱) / useLoudness / useSleepTimer / useMediaControls / useSpectrum / useAmbient / useToast ...
 ├── directives/            # tooltip 指令（全项目唯一的气泡提示实现，见下表）
 ├── utils/                 # lrc 解析 / 取色 / 平台判断
 └── types.ts               # 与 Rust DTO 对应的 TS 类型
@@ -209,6 +216,9 @@ src-tauri/                 # Rust 后端
     ├── keyring.rs         # WebDAV 凭证读写系统钥匙串
     ├── network.rs         # WebDAV 客户端（PROPFIND / 下载）
     ├── updater.rs         # 应用内更新：GitHub Release 版本检查（自研，Inno Setup 打包配套）
+    ├── global_shortcuts.rs # 应用内全局快捷键注册（设置页可配置）
+    ├── media_controls.rs  # 全局媒体键（Windows，备选）：MediaPlayPause/TrackNext/TrackPrev/Stop → media-control 事件
+    ├── now_playing.rs     # 系统级「正在播放」：souvlaki 封装（SMTC/Now Playing/MPRIS），元数据/进度推送 + 按钮事件回传
     └── state.rs           # AppState（DB 连接、扫描去重、共享句柄等）
 ```
 
@@ -218,7 +228,7 @@ src-tauri/                 # Rust 后端
 ┌─────────────────────────── WebView（Vue 3 + Pinia）───────────────────────────┐
 │   views / components（TrackTable 虚拟滚动 · NowPlayingView · QueuePanel …）    │
 │   stores：player（播放状态机） · library（库数据）                             │
-│        │ invoke（IPC，39 个命令）          ▲ listen（事件推送）                │
+│        │ invoke（IPC，77 个命令）          ▲ listen（事件推送）                │
 └────────┼───────────────────────────────────┼─────────────────────────────────┘
          ▼                                   │
 ┌─────────────────────────── Rust（Tauri 2）────────────────────────────────────┐
@@ -238,6 +248,7 @@ src-tauri/                 # Rust 后端
 ### 核心机制
 
 - **音频流**：前端 `<audio>` 的 src 指向自定义协议；Rust 侧按来源类型路由——本地直接读文件流，WebDAV 经代理转发并附带 Basic 认证，凭证不出进程。Range 请求统一 2MB 封顶，媒体引擎自动续传。
+- **共享音频处理图**：`createMediaElementSource` 对同一个 `<audio>` 元素**终身只能调用一次**，因此均衡器、音量归一化、频谱三个特性共用一条链（`src/composables/useAudioGraph.ts`）：`source → inputGain → 10 段 BiquadFilter → normalizeGain → analyser → destination`。三者中任一开启时才建图，无手势时推迟到首次用户交互（Autoplay 策略）；建图失败静默降级为无音效处理，不影响播放。用户音量仍由 `<audio>.volume` 在 source 前生效，与这三者互不干扰。
 - **扫描管线**：枚举（实时进度）→ diff（mtime/size/meta_state）→ 多线程并发解析（不持锁）→ 独立连接分批事务入库（每 100 首提交 + 进度上报）→ 删除已消失文件并清理孤儿专辑与封面缓存。
 - **封面缓存**：`covers/{album_id}.jpg`，确认无封面时写 `{id}.none` 哨兵防重复网络 I/O（但「一个字节都没拿到」的连接/读取失败不写哨兵，避免瞬时故障让封面永久缺失）；删除专辑时同步清理缓存文件，防止 SQLite rowid 复用导致「歌和封面对不上」。
 - **播放状态恢复**：队列快照（ids + index）与进度存 localStorage，启动时按 id 批量还原（分批 IN 查询），已删除曲目自动跳过。
@@ -263,9 +274,10 @@ src-tauri/                 # Rust 后端
 | 分组 | 命令 |
 |---|---|
 | 来源管理 | `add_local_source(path)` · `list_sources()` · `remove_source(id)` · `rescan_source(id, mode: auto\|full)` · `set_source_fast_import(id, enabled)` · `set_source_scan_subdirs(id, enabled)` · `webdav_add_source(url, username, password, name?)` |
-| 曲库查询 | `query_tracks({view, refId, search, sort, page, pageSize, fields, pinyin})` · `query_albums(search, page, pageSize)` · `query_artists(search, page, pageSize)` · `get_track(id)` · `get_tracks_by_ids(ids)` · `get_stream_url(id)` · `library_stats()` · `reveal_track(id)` · `remove_tracks(ids)`（从曲库移除，不删磁盘文件） · `list_removed_tracks()` / `clear_removed_tracks()`（移除记录） · `restore_removed_tracks(ids)`（还原到曲库） |
+| 曲库查询 | `query_tracks({view, refId, search, sort, page, pageSize, fields, pinyin})` · `query_albums(search, page, pageSize)` · `query_artists(search, page, pageSize)` · `query_folders(parent?)`（某目录下的直接子目录 + 各自曲目数） · `query_tracks_by_folder(folder?)`（某目录下的直属曲目） · `smart_playlist(kind, limit?)`（智能歌单：recent/recentPlayed/frequent/favorite/neverPlayed/random） · `get_track(id)` · `get_tracks_by_ids(ids)` · `get_stream_url(id)` · `library_stats()` · `reveal_track(id)` · `remove_tracks(ids)`（从曲库移除，不删磁盘文件） · `list_removed_tracks()` / `clear_removed_tracks()`（移除记录） · `restore_removed_tracks(ids)`（还原到曲库） |
 | 歌单 | `playlist_list` · `playlist_create(name)` · `playlist_rename(id, name)` · `playlist_delete(id)` · `playlist_get_items(id, sort?)`（sort 同 query_tracks 的文本/时长值，空 = 加入时间倒序） · `playlist_add_tracks(id, trackIds)` · `playlist_remove_track(id, trackId)` · `playlist_remove_tracks(id, trackIds)` · `playlist_set_description(id, description)` · `playlist_cover(id)` · `playlist_reorder(id, trackIds)` |
 | 播放/歌词/喜欢 | `report_play(id)` · `report_listen(trackId, seconds, mode?)`（收听流水，实际秒数 + 播放模式） · `listen_stats_summary()`（汇总/独立数/首末收听） · `listen_top_tracks(kind: track\|artist\|album\|genre, range: week\|month\|all, limit?)` · `listen_daily(days?, granularity?: day\|week\|month)`（收听趋势） · `listen_hourly()` · `listen_heatmap()`（星期×小时） · `listen_streak()`（当前/最长连续天数） · `library_health()`（音乐库体检） · `scan_history_list()`（最近扫描） · `get_lyrics(id)` · `favorite_toggle(id, fav)` · `set_thumbbar_playing(playing)`（Windows 任务栏缩略图按钮图标同步） · `desktop_lyrics_set(enabled)`（桌面歌词浮窗开关） · `list_system_fonts()`（系统字体列表） · `set_prevent_sleep(prevent)`（播放时阻止系统休眠/锁屏） |
+| 音效 / 媒体键 | `save_loudness(id, gainDb, peak)`（写入曲目响度分析结果，供音量归一化使用；分析在前端 Web Audio 完成） · `media_controls_enable(enabled)`（注册/注销全局媒体键，仅 Windows 生效；返回注册失败的键名列表，前端据此提示「被其他程序占用」） · `now_playing_set(meta \| null)`（推送当前曲目元数据给系统媒体控件，null 清空；封面路径由 Rust 按 `covers/{albumId}.jpg` 解析，`spawn_blocking` 执行） · `now_playing_state(playing, positionMs)`（推送播放状态与进度，前端 1Hz 心跳） · `now_playing_enable(enabled)`（启用/禁用系统媒体控件，重新启用恢复上次显示） |
 | 设置 | `get_setting(key)` · `set_setting(key, value)` · `get_builtin_skip_dirs()`（内置跳过目录名，设置页用于标出这批「内置」关键字） · `get_artist_separators()` · `set_artist_separators(value)`（保存多艺人分隔符并立即重拆曲库，返回受影响曲目的艺人变更列表） · `normalize_artist_names()`（规整同义艺人名） · `merge_artist(sourceId, targetId)`（自定义合并，旧名记为别名） · `list_artist_aliases()`（已合并名单） |
 
 `query_tracks` 支持的 `sort` 值：`title` `-title` `album` `-album` `artist` `-artist` `added` `duration` `-duration` `recent` `none`（`-` 前缀为降序）。文本列（title/album/artist）按「数字 → 字母 → 汉字（拼音）」分组序比较（见 M2「中文拼音排序」）。
@@ -281,6 +293,7 @@ src-tauri/                 # Rust 后端
 | `update:download-progress` | `{downloaded, total}` | 更新包下载进度（Rust 侧 200ms 节流；total 为 0 表示总量未知） |
 | `scan:error` | `{sourceId, message}` | 扫描失败 |
 | `tray` | `"toggle"` \| `"prev"` \| `"next"` \| `"fav"` | 系统托盘菜单操作 / Windows 任务栏缩略图控制按钮 |
+| `media-control` | `{ action: "play" \| "pause" \| "playpause" \| "stop" \| "next" \| "prev" }`，或 `{ action: "seekto", positionMs }` | 系统播放控制：来自「系统正在播放」按钮 / 进度拖动（SMTC / Now Playing / MPRIS）或全局媒体键（仅 Windows）；前端 useMediaControls.ts 统一消费 |
 
 ### 窗口间事件（前端 → 前端，桌面歌词 / 托盘菜单同步）
 
@@ -303,7 +316,7 @@ SQLite（WAL 模式，外键开启），建表与列迁移见 `src-tauri/src/db.
 | `artists` | 艺人（名称唯一，不分大小写） |
 | `artist_aliases` | 艺人别名（合并记忆）：旧名 → 主艺人 id；规整与自定义合并后写入，扫描按名字解析旧名 |
 | `albums` | 专辑：`key` 唯一键（`标题\|合辑艺人\|年份` 小写）、`has_cover`、`cover_url`(WebDAV) |
-| `tracks` | 曲目：`path`(来源内唯一)、标签/音频属性、`fav`、`play_count`/`last_played_at`、`meta_state`(0=快速导入待补全) |
+| `tracks` | 曲目：`path`(来源内唯一)、标签/音频属性、`fav`、`play_count`/`last_played_at`、`meta_state`(0=快速导入待补全)、`rg_track_gain`/`rg_track_peak`(音量归一化的增益 dB 与采样峰值；优先取内嵌 ReplayGain 标签，缺失时由前端分析写入) |
 | `playlists` / `playlist_items` | 歌单与条目（`playlists` 新增 `description` 简介列；`playlist_items` 新增 `added_at` 时间戳，按加入时间倒序排列，级联删除） |
 | `lrc_files` | 外挂歌词：`track_id` 主键；`path` 为本地路径（local）或完整 URL（webdav） |
 | `play_history` | 播放历史流水（听歌统计）：`track_id`（级联删除）、`played_at`、`seconds`（实际收听秒数，快进跳过不计）、`mode`（收听时的播放模式） |
@@ -318,6 +331,11 @@ SQLite（WAL 模式，外键开启），建表与列迁移见 `src-tauri/src/db.
 | `lm.lastTrack` / `lm.lastPos` | 上一首曲目 id / 播放进度（秒） |
 | `lm.volume` / `lm.muted` / `lm.mode` | 音量 / 静音 / 播放模式 |
 | `lm.rate` | 播放倍速（0.5/0.75/1/1.25/1.5/2） |
+| `lm.eq` | 均衡器状态 `{enabled, preset, gains[10]}`（**默认关闭**，仅显式启用为开；预设名对应 `useAudioGraph.ts::EQ_PRESETS`） |
+| `lm.normOn` | 音量归一化（ReplayGain）开关（**默认关闭**，仅显式存 `'1'` 为开） |
+| `lm.sleepTimerMode` | 睡眠定时器上次选择（分钟数或 `endOfTrack`；仅作 UI 默认值，倒计时不跨重启保留） |
+| `lm.nowPlaying` | 系统级「正在播放」开关（**默认开启**，存 `'0'` 为关；SMTC / Now Playing / MPRIS） |
+| `lm.mediaControls` | 全局媒体键开关（**默认关闭**，仅显式存 `'1'` 为开；仅 Windows 生效；与 `lm.nowPlaying` 互斥） |
 | `lm.sort` | 曲目列表排序 |
 | `lm.skin` | 频谱皮肤 `{on, style: particles\|tree}` |
 | `lm.theme` | 主题模式 `light\|dark\|system`（默认 system，跟随系统亮暗） |
@@ -410,7 +428,7 @@ SQLite（WAL 模式，外键开启），建表与列迁移见 `src-tauri/src/db.
 - WebDAV 源无法目录监听（远端文件系统变化对本机不可见），需手动「重新扫描」
 - WebDAV 曲目没有 MV：同名视频文件的检测与播放入口目前只对本地来源生效
 - 安装包未做 OS 代码签名，Windows 首次运行 SmartScreen 提示属正常现象
-- 播放控制未接系统媒体键（SMTC/MPRIS），由应用内快捷键、托盘菜单与 Windows 任务栏缩略图按钮承担
+- 系统级「正在播放」由 souvlaki 承担（Windows SMTC / macOS Now Playing / Linux MPRIS，默认开启）；全局媒体键热键仅 Windows 生效且与其互斥，仅作 SMTC 不可用时的兜底。souvlaki 的 Windows 后端需独立编译一份 `windows 0.44`（与 Tauri 的 `windows 0.61` 并存，编译时间略增）。其余播放控制仍由应用内快捷键、托盘菜单与 Windows 任务栏缩略图按钮承担
 
 ## 免责声明
 

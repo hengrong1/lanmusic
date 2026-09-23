@@ -34,6 +34,10 @@ export interface Track {
   artists?: TrackArtistRef[]
   /** 命中的搜索字段（title/artist/album/lyrics/filename），仅搜索结果非空 */
   matchedFields?: string[]
+  /** ReplayGain 曲目增益（dB）；标签缺失或未分析为 null */
+  rgTrackGain?: number | null
+  /** ReplayGain 曲目峰值（线性，0~1）；标签缺失或未分析为 null */
+  rgTrackPeak?: number | null
 }
 
 /** 曲目关联艺人 */
@@ -269,7 +273,15 @@ export interface TrackQuery {
   pinyin?: boolean
 }
 
-export type ViewName = 'tracks' | 'albums' | 'artists' | 'playlist' | 'settings' | 'stats'
+export type ViewName =
+  | 'tracks'
+  | 'albums'
+  | 'artists'
+  | 'playlist'
+  | 'settings'
+  | 'stats'
+  | 'folder'
+  | 'smart'
 
 export interface NavRoute {
   view: ViewName
@@ -282,6 +294,31 @@ export interface NavRoute {
   recent?: boolean
   favorites?: boolean
   search?: string
+  /** 文件夹视图：当前目录（相对来源根的路径，空 = 根目录） */
+  folderPath?: string
+  /** 智能歌单：规则标识（recent / recentPlayed / frequent / favorite / neverPlayed / random） */
+  smartKind?: string
+}
+
+/** 文件夹视图：一个子目录节点 */
+export interface FolderItem {
+  /** 相对路径（以 / 分隔） */
+  path: string
+  /** 目录名（最后一段） */
+  name: string
+  /** 该目录（含子目录）下的曲目总数 */
+  trackCount: number
+}
+
+/** 系统级「正在播放」（SMTC / Now Playing / MPRIS）：推送给系统的当前曲目元数据 */
+export interface NowPlayingMeta {
+  title: string
+  artist?: string | null
+  album?: string | null
+  /** 曲目时长（毫秒） */
+  durationMs?: number | null
+  /** 专辑 id：Rust 侧据此找已缓存的封面文件（covers/{albumId}.jpg） */
+  albumId?: number | null
 }
 
 export interface Playlist {

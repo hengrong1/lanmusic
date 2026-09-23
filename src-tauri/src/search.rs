@@ -158,6 +158,8 @@ fn row_hit(r: &rusqlite::Row) -> rusqlite::Result<Hit> {
             fav: r.get::<_, i64>(16)? != 0,
             artists: Vec::new(),
             matched_fields: Vec::new(),
+            rg_track_gain: r.get(20)?,
+            rg_track_peak: r.get(21)?,
         },
         score: 0,
         added_at: r.get(17)?,
@@ -234,7 +236,7 @@ pub fn search_tracks(conn: &Connection, q: &TrackQuery) -> Result<Page<Track>, S
     let sql = format!(
         "SELECT t.id, t.title, a.name, t.artist_id, al.title, t.album_id, t.track_no, t.disc_no, \
                 t.duration, t.bitrate, t.sample_rate, t.bit_depth, t.format, t.path, t.has_embedded_lyrics, t.has_mv, t.fav, \
-                t.added_at, t.play_count, IFNULL(li.text,'') \
+                t.added_at, t.play_count, IFNULL(li.text,''), t.rg_track_gain, t.rg_track_peak \
          FROM tracks t \
          LEFT JOIN artists a ON a.id = t.artist_id \
          LEFT JOIN albums al ON al.id = t.album_id \

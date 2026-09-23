@@ -260,6 +260,9 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
     ensure_column(conn, "tracks", "raw_artist", "TEXT")?;
     // 播放历史的收听模式（order/loop/one/shuffle）：占比统计用，老流水 NULL 归「未知」
     ensure_column(conn, "play_history", "mode", "TEXT")?;
+    // ReplayGain：轨道增益（dB）与峰值（线性）。扫描时从标签读取，或由「分析响度」回填
+    ensure_column(conn, "tracks", "rg_track_gain", "REAL")?;
+    ensure_column(conn, "tracks", "rg_track_peak", "REAL")?;
     // 旧数据无加入时间：回填 0 视为最早加入，倒序时排在最前
     conn.execute(
         "UPDATE playlist_items SET added_at = 0 WHERE added_at IS NULL",

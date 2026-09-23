@@ -6,12 +6,16 @@ import { HeartIcon as HeartBold } from '@solar-icons/vue/bold/heart'
 import { MicrophoneIcon as MicBold } from '@solar-icons/vue/bold/microphone'
 import { MusicNoteIcon as MusicBold } from '@solar-icons/vue/bold/music-note'
 import { VinylRecordIcon as Disc3Bold } from '@solar-icons/vue/bold/vinyl-record'
+import { Folder2Icon as Folder2Bold } from '@solar-icons/vue/bold/folder-2'
+import { MagicWand2Icon as MagicWandBold } from '@solar-icons/vue/bold/magic-wand-2'
 import { VinylRecordIcon as Disc3 } from '@solar-icons/vue/linear/vinyl-record'
 import { HeartIcon as Heart } from '@solar-icons/vue/linear/heart'
 import { HistoryIcon as History } from '@solar-icons/vue/linear/history'
 import { GraphUpIcon as GraphUp } from '@solar-icons/vue/linear/graph-up'
 import { MicrophoneIcon as Mic } from '@solar-icons/vue/linear/microphone'
 import { MusicNoteIcon as Music } from '@solar-icons/vue/linear/music-note'
+import { Folder2Icon as Folder2 } from '@solar-icons/vue/linear/folder-2'
+import { MagicWand2Icon as MagicWand } from '@solar-icons/vue/linear/magic-wand-2'
 import { AddIcon as Plus } from '@solar-icons/vue/linear/add'
 import { useStatsEntry } from '@/composables/useStatsEntry'
 import { useI18n } from 'vue-i18n'
@@ -155,6 +159,8 @@ const entries = computed<NavEntry[]>(() => [
   { route: { view: 'albums' }, label: t('library.albums'), icon: Disc3, iconActive: Disc3Bold, count: () => library.stats.albums },
   { route: { view: 'artists' }, label: t('library.artists'), icon: Mic, iconActive: MicBold, count: () => library.stats.artists },
   { route: { view: 'tracks', recent: true }, label: t('nav.recent'), icon: History, iconActive: HistoryBold },
+  { route: { view: 'folder' }, label: t('nav.folder'), icon: Folder2, iconActive: Folder2Bold },
+  { route: { view: 'smart' }, label: t('nav.smart'), icon: MagicWand, iconActive: MagicWandBold },
   // 听歌统计入口默认隐藏（设置 → 通用可开启）；统计流水始终在记录，开关只控制入口显示
   ...(statsEnabled.value ? [{ route: { view: 'stats' as const }, label: t('nav.stats'), icon: GraphUp, iconActive: GraphUpBold }] : []),
 ])
@@ -187,6 +193,12 @@ function isActive(e: NavEntry) {
   }
   if (e.route.view === 'stats') {
     return r.view === 'stats'
+  }
+  if (e.route.view === 'folder') {
+    return r.view === 'folder'
+  }
+  if (e.route.view === 'smart') {
+    return r.view === 'smart'
   }
   if (e.route.view === 'settings') {
     return r.view === e.route.view

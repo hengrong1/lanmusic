@@ -8,8 +8,10 @@ mod fonts;
 mod global_shortcuts;
 mod keyring;
 mod lyrics;
+mod media_controls;
 mod metadata;
 mod network;
+mod now_playing;
 pub mod qrc;
 mod scanner;
 mod scheme;
@@ -24,6 +26,21 @@ mod watcher;
 
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, Manager, PhysicalPosition};
+
+/// WebView2 额外浏览器参数：在 wry 默认禁用的三项之上，再禁用 Chromium 的
+/// 媒体会话服务（MediaSessionService）。
+///
+/// 不禁的话，`<audio>` 会在系统媒体浮层（SMTC）注册一个**空元数据的幽灵会话**
+/// （显示为「应用名 + 三个按钮」的紧凑卡片）：播放中我们每秒更新 souvlaki 会话、
+/// 活跃度压过它看不出异常；**一旦暂停**我们的会话静默，浮层就切到幽灵会话、
+/// 卡片塌缩，恢复播放又切回来。SMTC 由 Rust 侧 souvlaki 全权负责
+/// （见 now_playing.rs），WebView2 的媒体会话对本应用毫无用处，直接关掉。
+///
+/// 注意：`additional_browser_args` 会**整体替换** wry 的默认值，故必须带上原三项
+/// （msWebOOUI=迷你菜单 wry#535、msPdfOOUI、msSmartScreenProtection tauri#1345）。
+#[cfg(windows)]
+const WEBVIEW2_BROWSER_ARGS: &str =
+    "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection,MediaSessionService";
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -106,6 +123,9 @@ pub fn run() {
                 .inner_size(1280.0, 820.0)
                 .min_inner_size(980.0, 640.0)
                 .center();
+            // 禁用 WebView2 幽灵媒体会话（暂停时顶掉 SMTC 卡片，见 WEBVIEW2_BROWSER_ARGS 注释）
+            #[cfg(windows)]
+            let win_builder = win_builder.additional_browser_args(WEBVIEW2_BROWSER_ARGS);
             #[cfg(target_os = "macos")]
             let win_builder = win_builder.title_bar_style(tauri::TitleBarStyle::Transparent);
             #[cfg(not(target_os = "macos"))]
@@ -122,6 +142,11 @@ pub fn run() {
                 let ns_window = unsafe { &*ns_window_ptr };
                 ns_window.setBackgroundColor(Some(&NSColor::windowBackgroundColor()));
             }
+
+            // 系统级「正在播放」（SMTC / Now Playing / MPRIS，默认开启）。
+            // 必须在主窗口创建之后：Windows 侧要拿 hwnd 绑 SMTC（缺失会 panic）。
+            // 用户主动关闭过的（lm.nowPlaying='0'），前端启动对账时会调 now_playing_enable(false) 关掉。
+            now_playing::init(app.handle());
 
             // 关闭窗口行为：
             // - 用户已选择过（lm.closeAction = 'tray' | 'quit'）→ 按选择执行；
@@ -277,6 +302,9 @@ pub fn run() {
                     .focused(false)
                     .visible(false)
                     .inner_size(TRAY_MENU_W, TRAY_MENU_H);
+            // 托盘窗口也承载完整前端（含 player store），同样禁幽灵会话（见上）
+            #[cfg(windows)]
+            let tray_builder = tray_builder.additional_browser_args(WEBVIEW2_BROWSER_ARGS);
             // 透明背景：托盘弹窗圆角浮窗需要（macOS 已启用 macos-private-api，见 Cargo.toml / tauri.conf.json）
             let tray_builder = tray_builder.transparent(true);
             let tray_window = tray_builder.build()?;
@@ -354,6 +382,14 @@ pub fn run() {
             commands::query_tracks,
             commands::query_albums,
             commands::query_artists,
+            commands::query_folders,
+            commands::query_tracks_by_folder,
+            commands::smart_playlist,
+            commands::save_loudness,
+            commands::media_controls_enable,
+            commands::now_playing_set,
+            commands::now_playing_state,
+            commands::now_playing_enable,
             commands::get_track,
             commands::get_tracks_by_ids,
             commands::get_stream_url,

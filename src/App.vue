@@ -23,12 +23,16 @@ const ArtistsView = lazyView(() => import('@/views/ArtistsView.vue'))
 const PlaylistView = lazyView(() => import('@/views/PlaylistView.vue'))
 const SettingsView = lazyView(() => import('@/views/SettingsView.vue'))
 const StatsView = lazyView(() => import('@/views/StatsView.vue'))
+const FolderView = lazyView(() => import('@/views/FolderView.vue'))
+const SmartPlaylistView = lazyView(() => import('@/views/SmartPlaylistView.vue'))
 import { useLibraryStore } from '@/stores/library'
 import { usePlayerStore } from '@/stores/player'
 import { useNav } from '@/composables/useNav'
 import { useAmbient } from '@/composables/useAmbient'
 import { useSkin, useSkinOpen } from '@/composables/useSkin'
-import { ensureAnalyser } from '@/composables/useSpectrum'
+import { ensureGraph, eqEnabled, normEnabled } from '@/composables/useAudioGraph'
+import { useMediaControls } from '@/composables/useMediaControls'
+import { useNowPlaying } from '@/composables/useNowPlaying'
 import { useDesktopLyrics } from '@/composables/useDesktopLyrics'
 import { useTrayMenu } from '@/composables/useTrayMenu'
 import { useMvPlayer } from '@/composables/useMvPlayer'
@@ -53,6 +57,10 @@ const mv = useMvPlayer()
 // 快捷键：应用内快捷键表（设置 → 通用 → 快捷键）；全局快捷键在此初始化（事件分发 + 启动恢复）
 const shortcuts = useShortcuts()
 useGlobalShortcuts()
+// 系统媒体键：启动时若此前已启用则重新注册（模块单例，内部只初始化一次监听）
+useMediaControls()
+// 系统级「正在播放」（SMTC / Now Playing / MPRIS）：推送当前曲目与进度，响应系统控制
+useNowPlaying()
 const { palette, setAlbum } = useAmbient()
 // 自定义背景：设置 → 外观选择图片（useBackground 模块级单例，设置页改后这里即时生效）
 const { file: bgFile, blur: bgBlur, set: setBg } = useBackground()
@@ -79,14 +87,14 @@ watch(
 )
 
 const skin = useSkin()
-// 频谱链路预热：开启频谱（皮肤）时，首次开始播放就建立 Web Audio 链路。
+// 频谱链路预热：开启频谱（皮肤）或任一音频处理特性（均衡器 / 音量归一化）时，
+// 首次开始播放就建立共享 Web Audio 链路（ensureGraph 内部含用户手势检查与创建失败降级）。
 // 若等到进入播放页挂载频谱画布时才 createMediaElementSource，WebKit 重配置音频管线
-// 会让正在播放的歌曲停顿约半秒（表现为进场动画结束后声音才恢复）；播放前重路由则无感知。
-// （ensureAnalyser 内部有用户手势检查，无手势时自动推迟，不会创建出静音的挂起 context）
+// 会让正在播放的歌曲停顿约半秒；播放前重路由则无感知。
 watch(
-  [() => player.playing, () => skin.value.on],
+  [() => player.playing, () => skin.value.on, () => eqEnabled.value, () => normEnabled.value],
   ([playing, on]) => {
-    if (playing && on) ensureAnalyser()
+    if (playing && (on || eqEnabled.value || normEnabled.value)) ensureGraph()
   },
   { immediate: true },
 )
@@ -197,6 +205,10 @@ const viewComponent = computed(() => {
       return SettingsView
     case 'stats':
       return StatsView
+    case 'folder':
+      return FolderView
+    case 'smart':
+      return SmartPlaylistView
     default:
       return TracksView
   }

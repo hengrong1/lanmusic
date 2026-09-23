@@ -15,6 +15,8 @@ import type {
   ListenStreak,
   ListenSummary,
   ListenTopItem,
+  FolderItem,
+  NowPlayingMeta,
   Page,
   Playlist,
   QrcLine,
@@ -58,6 +60,13 @@ export const api = {
   getTracksByIds: (ids: number[]) => invoke<Track[]>('get_tracks_by_ids', { ids }),
   getStreamUrl: (id: number) => invoke<string>('get_stream_url', { id }),
   libraryStats: () => invoke<LibraryStats>('library_stats'),
+  // 文件夹视图：列出 parent 目录（null = 根）下的直接子目录；列出某目录下直接存放的曲目
+  queryFolders: (parent: string | null) => invoke<FolderItem[]>('query_folders', { parent }),
+  queryTracksByFolder: (folder: string | null) =>
+    invoke<Track[]>('query_tracks_by_folder', { folder }),
+  // 智能歌单：按规则动态生成（recent/recentPlayed/frequent/favorite/neverPlayed/random）
+  smartPlaylist: (kind: string, limit?: number) =>
+    invoke<Track[]>('smart_playlist', { kind, limit: limit ?? null }),
 
   // 其他
   revealTrack: (id: number) => invoke<void>('reveal_track', { id }),
@@ -130,6 +139,18 @@ export const api = {
   setPreventSleep: (prevent: boolean) => invoke<void>('set_prevent_sleep', { prevent }),
   // 获取 MV 视频流 URL（同名视频文件不存在时返回 null）
   getMvUrl: (trackId: number) => invoke<string | null>('get_mv_url', { trackId }),
+  // 写入曲目响度分析结果（ReplayGain 增益 dB + 峰值）；分析在前端 Web Audio 完成
+  saveLoudness: (id: number, gainDb: number, peak: number) =>
+    invoke<void>('save_loudness', { id, gainDb, peak }),
+  // 启用 / 禁用系统媒体键（注册为全局快捷键；非 Windows 为空操作）。
+  // 返回值：注册失败的加速键名列表（如被其他播放器占用），通常为空数组。
+  mediaControlsEnable: (enabled: boolean) => invoke<string[]>('media_controls_enable', { enabled }),
+  // 系统级「正在播放」（SMTC / Now Playing / MPRIS，见 now_playing.rs）：
+  // 推送当前曲目元数据（null = 清空）；播放状态与进度；启用/禁用注册
+  nowPlayingSet: (meta: NowPlayingMeta | null) => invoke<void>('now_playing_set', { meta }),
+  nowPlayingState: (playing: boolean, positionMs: number) =>
+    invoke<void>('now_playing_state', { playing, positionMs }),
+  nowPlayingEnable: (enabled: boolean) => invoke<void>('now_playing_enable', { enabled }),
 
   // 全局快捷键（Rust 侧注册系统热键；触发后经 global-shortcut 事件分发，见 useShortcuts.ts）
   /** 整体替换注册（先注销旧注册）；任一组合被其他程序占用则整体失败并返回错误 */

@@ -53,6 +53,10 @@ pub struct Track {
     pub artists: Vec<TrackArtistRef>,
     /// 命中的搜索字段（title/artist/album/lyrics/filename），仅搜索时非空
     pub matched_fields: Vec<String>,
+    /// ReplayGain 轨道增益（dB）；标签缺失或未分析为 null
+    pub rg_track_gain: Option<f64>,
+    /// ReplayGain 轨道峰值（线性）；标签缺失或未分析为 null
+    pub rg_track_peak: Option<f64>,
 }
 
 /// 曲目关联艺人（track_artists）
@@ -89,6 +93,18 @@ pub struct ArtistItem {
     pub track_count: i64,
 }
 
+/// 文件夹视图：一个子目录（相对来源根目录的路径）
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FolderItem {
+    /// 相对路径（以 / 分隔），作为进入下一级的 parent 参数
+    pub path: String,
+    /// 目录名（最后一段）
+    pub name: String,
+    /// 该目录（含子目录）下的曲目总数
+    pub track_count: i64,
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LibraryStats {
@@ -116,7 +132,8 @@ pub struct TrackQuery {
 // ---------- 行映射 ----------
 
 const TRACK_SELECT: &str = "SELECT t.id, t.title, a.name, t.artist_id, al.title, t.album_id, t.track_no, \
-     t.disc_no, t.duration, t.bitrate, t.sample_rate, t.bit_depth, t.format, t.path, t.has_embedded_lyrics, t.has_mv, t.fav \
+     t.disc_no, t.duration, t.bitrate, t.sample_rate, t.bit_depth, t.format, t.path, t.has_embedded_lyrics, t.has_mv, t.fav, \
+     t.rg_track_gain, t.rg_track_peak \
      FROM tracks t \
      LEFT JOIN artists a ON a.id = t.artist_id \
      LEFT JOIN albums al ON al.id = t.album_id";
@@ -142,6 +159,8 @@ fn row_track(r: &rusqlite::Row) -> rusqlite::Result<Track> {
         fav: r.get::<_, i64>(16)? != 0,
         artists: Vec::new(),
         matched_fields: Vec::new(),
+        rg_track_gain: r.get(17)?,
+        rg_track_peak: r.get(18)?,
     })
 }
 
@@ -743,6 +762,254 @@ pub fn get_tracks_by_ids(state: State<'_, AppState>, ids: Vec<i64>) -> Result<Ve
     }
     attach_artists(&conn, &mut items)?;
     Ok(items)
+}
+
+/// 文件夹视图：列出 `parent` 目录（相对来源根路径，空串/None = 根）下的**直接子目录**及曲目数。
+/// 前端用返回的 path 作为进入下一级的 parent，配合面包屑逐级浏览。
+#[tauri::command]
+pub fn query_folders(
+    state: State<'_, AppState>,
+    parent: Option<String>,
+) -> Result<Vec<FolderItem>, String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    let parent = parent.unwrap_or_default();
+    // rest = 去掉 parent 前缀后的相对路径；child = rest 的第一段（无 '/' 表示该曲目直接位于 parent 中）
+    let sql = "SELECT child, COUNT(*) FROM ( \
+                   SELECT CASE WHEN instr(rest, '/') > 0 THEN substr(rest, 1, instr(rest, '/') - 1) ELSE '' END AS child \
+                   FROM (SELECT CASE WHEN ?1 = '' THEN t.path ELSE substr(t.path, length(?1) + 2) END AS rest \
+                         FROM tracks t WHERE (?1 = '' OR t.path LIKE ?1 || '/%')) \
+               ) WHERE child <> '' GROUP BY child ORDER BY child COLLATE PINYIN";
+    let mut stmt = conn.prepare(sql).map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map(params![parent], |r| {
+            let name: String = r.get(0)?;
+            let count: i64 = r.get(1)?;
+            let path = if parent.is_empty() {
+                name.clone()
+            } else {
+                format!("{parent}/{name}")
+            };
+            Ok(FolderItem {
+                path,
+                name,
+                track_count: count,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+    let mut items = Vec::new();
+    for r in rows {
+        items.push(r.map_err(|e| e.to_string())?);
+    }
+    Ok(items)
+}
+
+/// 文件夹视图：`folder` 目录下**直接存放**的曲目（不含子目录）。
+#[tauri::command]
+pub fn query_tracks_by_folder(
+    state: State<'_, AppState>,
+    folder: Option<String>,
+) -> Result<Vec<Track>, String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    let folder = folder.unwrap_or_default();
+    let sql = format!(
+        "{TRACK_SELECT} WHERE (?1 = '' OR t.path LIKE ?1 || '/%') \
+         AND instr(CASE WHEN ?1 = '' THEN t.path ELSE substr(t.path, length(?1) + 2) END, '/') = 0 \
+         ORDER BY t.path COLLATE PINYIN"
+    );
+    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+    let mut items: Vec<Track> = stmt
+        .query_map(params![folder], row_track)
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+    attach_artists(&conn, &mut items)?;
+    Ok(items)
+}
+
+/// 智能歌单：按规则动态生成的曲目列表（不落库，每次进入重新计算）。
+/// kind: recent(最近添加) / recentPlayed(最近播放) / frequent(最常播放) /
+/// favorite(我喜欢的) / neverPlayed(从未播放) / random(随机漫游)
+#[tauri::command]
+pub fn smart_playlist(
+    state: State<'_, AppState>,
+    kind: String,
+    limit: Option<i64>,
+) -> Result<Vec<Track>, String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    let limit = limit.unwrap_or(200).clamp(1, 5000);
+    let (where_sql, order_sql) = match kind.as_str() {
+        "recent" => ("", "ORDER BY t.id DESC"),
+        "recentPlayed" => (
+            "WHERE t.last_played_at IS NOT NULL",
+            "ORDER BY t.last_played_at DESC",
+        ),
+        "frequent" => (
+            "WHERE IFNULL(t.play_count, 0) > 0",
+            "ORDER BY t.play_count DESC, t.last_played_at DESC",
+        ),
+        "favorite" => (
+            "WHERE t.fav = 1",
+            "ORDER BY CASE WHEN t.last_played_at IS NULL THEN 1 ELSE 0 END, t.last_played_at DESC",
+        ),
+        "neverPlayed" => ("WHERE IFNULL(t.play_count, 0) = 0", "ORDER BY t.id DESC"),
+        "random" => ("", "ORDER BY RANDOM()"),
+        _ => ("", "ORDER BY t.id DESC"),
+    };
+    let sql = format!("{TRACK_SELECT} {where_sql} {order_sql} LIMIT {limit}");
+    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+    let mut items: Vec<Track> = stmt
+        .query_map([], row_track)
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+    attach_artists(&conn, &mut items)?;
+    Ok(items)
+}
+
+/// 写入某曲目的响度分析结果（ReplayGain 轨道增益 dB + 峰值）。
+/// 分析在前端用 Web Audio 完成（见 src/composables/useLoudness.ts），此处只负责落库。
+#[tauri::command]
+pub fn save_loudness(
+    state: State<'_, AppState>,
+    id: i64,
+    gain_db: f64,
+    peak: f64,
+) -> Result<(), String> {
+    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    conn.execute(
+        "UPDATE tracks SET rg_track_gain = ?1, rg_track_peak = ?2 WHERE id = ?3",
+        params![gain_db, peak, id],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// 启用 / 禁用系统媒体键（注册为全局快捷键，见 media_controls.rs；其他平台空操作）。
+#[tauri::command]
+pub fn media_controls_enable(app: AppHandle, enabled: bool) -> Result<Vec<String>, String> {
+    Ok(crate::media_controls::set_enabled(&app, enabled))
+}
+
+// —— 系统级「正在播放」（souvlaki，见 now_playing.rs）——
+
+/// 前端推送的当前曲目元数据（字段名经 camelCase 转换）
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NpMeta {
+    pub title: String,
+    pub artist: Option<String>,
+    pub album: Option<String>,
+    pub duration_ms: Option<u64>,
+    pub album_id: Option<i64>,
+}
+
+/// SMTC 无封面时的占位图：应用图标（编译期写死，首用落盘到 covers/_placeholder.png）。
+/// covers 的两处清理（purge / enforce_limit）只动 `{id}.jpg` 与 `{id}.none`，占位图不受影响。
+const NP_PLACEHOLDER_PNG: &[u8] = include_bytes!("../icons/128x128@2x.png");
+
+/// 占位图 URL（落盘一次、复用；写失败返回 None，届时系统侧维持原图——可接受的兜底）
+fn placeholder_cover_url(covers_dir: &std::path::Path) -> Option<String> {
+    let p = covers_dir.join("_placeholder.png");
+    if !p.is_file() {
+        std::fs::write(&p, NP_PLACEHOLDER_PNG).ok()?;
+    }
+    Some(format!("file://{}", p.display()))
+}
+
+/// 封面快路径：只用已落盘的缓存 `covers/{album_id}.jpg`（一次 stat，零网络零提取锁）。
+/// 没有现成缓存时由调用方决定「占位 + 后台提取」（见 now_playing_set）。
+/// URL 拼法三平台统一（见 now_playing.rs 模块注释）：`file://` + 路径原样。
+fn np_cover_url(covers_dir: &std::path::Path, album_id: Option<i64>) -> Option<String> {
+    let id = album_id?;
+    let jpg = covers_dir.join(format!("{id}.jpg"));
+    jpg.is_file().then(|| format!("file://{}", jpg.display()))
+}
+
+/// 推送当前曲目元数据（切歌时调用；传 null 清空 → 系统侧 Stopped）。
+///
+/// 封面策略（修「切歌后系统浮层一直显示上一首封面」）：
+/// - 缓存已有 → 随首推直接带上；
+/// - 缓存未就绪 → 先推**应用图标占位**（souvlaki 不带封面时不清系统侧缩略图，
+///   上一首的封面会一直挂着），同时后台调 `ensure_cover` 提取：300ms 内完成则
+///   改推真封面（本地封面通常走这条，用户无感）；超时（远程 WebDAV 常见）由
+///   后台任务等提取结果，成功且仍是当前曲目时补推（`refresh_cover` 按 album_id
+///   严格校验，切歌后到期的补推自动丢弃）；
+/// - 确认无封面（`.none` 哨兵）→ 占位即终态。
+/// set_metadata 会阻塞等封面文件加载（见 now_playing.rs），必须 spawn_blocking。
+#[tauri::command]
+pub async fn now_playing_set(app: AppHandle, meta: Option<NpMeta>) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let Some(m) = meta else {
+            return crate::now_playing::set_metadata(None, None);
+        };
+        let covers_dir = app.state::<AppState>().covers_dir.clone();
+        // 快路径：封面已缓存
+        if let Some(url) = m
+            .album_id
+            .and_then(|id| np_cover_url(&covers_dir, Some(id)))
+        {
+            return crate::now_playing::set_metadata(Some(m), Some(url));
+        }
+        // 无现成缓存：先推占位图，绝不让上一首的缩略图滞留
+        let placeholder = placeholder_cover_url(&covers_dir);
+        if let Some(id) = m.album_id {
+            if !covers_dir.join(format!("{id}.none")).is_file() {
+                let (tx, rx) = std::sync::mpsc::channel();
+                let app2 = app.clone();
+                std::thread::spawn(move || {
+                    let _ = tx.send(crate::covers::ensure_cover(&app2, id));
+                });
+                const FAST_WAIT: std::time::Duration = std::time::Duration::from_millis(300);
+                match rx.recv_timeout(FAST_WAIT) {
+                    // 本地封面极快：等到了直接随首推带上（用户无感，无占位闪烁）
+                    Ok(Ok(Some(path))) => {
+                        return crate::now_playing::set_metadata(
+                            Some(m),
+                            Some(format!("file://{}", path.display())),
+                        );
+                    }
+                    // 确认无封面 / 提取失败：占位即终态
+                    Ok(_) => {}
+                    // 提取仍在进行（远程封面常见）：后台等结果，仍是当前曲目时补推
+                    Err(_) => {
+                        let meta2 = m.clone();
+                        tauri::async_runtime::spawn_blocking(move || {
+                            if let Ok(Ok(Some(path))) = rx.recv() {
+                                if let Err(e) = crate::now_playing::refresh_cover(
+                                    id,
+                                    meta2,
+                                    Some(format!("file://{}", path.display())),
+                                ) {
+                                    log::warn!("补推封面到系统媒体控件失败: {e}");
+                                }
+                            }
+                        });
+                    }
+                }
+            }
+        }
+        crate::now_playing::set_metadata(Some(m), placeholder)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// 推送播放状态与进度（播放暂停变化即时调用 + 前端 1Hz 心跳）
+#[tauri::command]
+pub async fn now_playing_state(playing: bool, position_ms: u64) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::now_playing::set_state(playing, position_ms)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// 启用 / 禁用系统媒体控件（设置开关调用；重新启用会恢复上次的元数据显示）
+#[tauri::command]
+pub async fn now_playing_enable(app: AppHandle, enabled: bool) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || crate::now_playing::enable(&app, enabled))
+        .await
+        .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]

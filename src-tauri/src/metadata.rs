@@ -2,7 +2,7 @@ use lofty::config::ParseOptions;
 use lofty::picture::PictureType;
 use lofty::prelude::*;
 use lofty::probe::Probe;
-use lofty::tag::{ItemKey, Tag};
+use lofty::tag::{ItemKey, ItemValue, Tag};
 use std::io::Cursor;
 use std::path::Path;
 
@@ -25,6 +25,10 @@ pub struct TrackMeta {
     /// 歌词正文（内嵌 USLT），用于歌词展示
     pub lyrics: Option<String>,
     pub cover: Option<Vec<u8>>,
+    /// ReplayGain 轨道增益（dB，如 -6.12）；标签缺失为 None
+    pub rg_track_gain: Option<f64>,
+    /// ReplayGain 轨道峰值（线性 0..1+，如 0.987654）；标签缺失为 None
+    pub rg_track_peak: Option<f64>,
 }
 
 /// 解析 "3/12" 这类带总轨数的字段
@@ -96,11 +100,45 @@ fn from_tagged(tagged: lofty::file::TaggedFile, include_cover: bool) -> TrackMet
                 meta.lyrics = Some(text);
             }
         }
+        let (rg_gain, rg_peak) = parse_replaygain(tag);
+        meta.rg_track_gain = rg_gain;
+        meta.rg_track_peak = rg_peak;
         if include_cover {
             meta.cover = pick_cover(tag);
         }
     }
     meta
+}
+
+/// 读取 ReplayGain 轨道增益/峰值。lofty 0.25 把这两项统一落为字符串
+/// （增益形如 "-6.12 dB"，峰值为线性小数如 "0.987654"），因此提取其中的数字再解析。
+fn parse_replaygain(tag: &Tag) -> (Option<f64>, Option<f64>) {
+    let mut gain = None;
+    let mut peak = None;
+    for item in tag.items() {
+        match item.key() {
+            ItemKey::ReplayGainTrackGain => gain = rg_value(item.value()),
+            ItemKey::ReplayGainTrackPeak => peak = rg_value(item.value()),
+            _ => {}
+        }
+    }
+    (gain, peak)
+}
+
+/// 从 ReplayGain 文本（如 "-6.12 dB" / "0.987654"）提取数值部分
+fn rg_value(v: &ItemValue) -> Option<f64> {
+    let s = match v {
+        ItemValue::Text(s) | ItemValue::Locator(s) => s,
+        ItemValue::Binary(_) => return None,
+    };
+    let cleaned: String = s
+        .chars()
+        .filter(|c| c.is_ascii_digit() || *c == '.' || *c == '-' || *c == '+')
+        .collect();
+    if cleaned.is_empty() {
+        return None;
+    }
+    cleaned.parse::<f64>().ok()
 }
 
 fn pick_cover(tag: &Tag) -> Option<Vec<u8>> {

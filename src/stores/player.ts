@@ -20,6 +20,7 @@ import { looksBinaryish, looksLikeHexQrc, qrcToLrcLines } from '@/utils/qrc'
 import { insertNextAfter } from '@/utils/queue'
 import type { QrcLine } from '@/types'
 import { applyPowerGuard } from '@/composables/usePowerGuard'
+import { setNormalizeGain, normEnabled } from '@/composables/useAudioGraph'
 import { errorText } from '@/i18n/error'
 
 export type PlayMode = 'order' | 'loop' | 'one' | 'shuffle'
@@ -697,6 +698,16 @@ export const usePlayerStore = defineStore('player', () => {
   function snapshotQueue() {
     saveQueueSnapshot(queue.value, index.value)
   }
+
+  /**
+   * 音量归一化（ReplayGain）：把当前曲目的增益写入共享音频图的归一化节点。
+   * 无增益数据时写 0（增益=1，不改变音量）；开启归一化后切歌/切换开关即时生效。
+   */
+  function applyCurrentNormalize() {
+    const db = current.value?.rgTrackGain ?? 0
+    setNormalizeGain(db)
+  }
+  watch([current, normEnabled], () => applyCurrentNormalize())
 
   // 系统托盘控制（M2）
   void listen<string>('tray', (e) => {

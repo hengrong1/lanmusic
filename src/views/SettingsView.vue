@@ -37,6 +37,7 @@ import { getPreventSleep, setPreventSleepSetting } from '@/composables/usePowerG
 import { useUpdater } from '@/composables/useUpdater'
 import { useStatsEntry } from '@/composables/useStatsEntry'
 import { useNav } from '@/composables/useNav'
+import AudioEffectsPanel from '@/components/AudioEffectsPanel.vue'
 import {
   SHORTCUT_DEFS,
   GLOBAL_DEFS,
@@ -82,7 +83,7 @@ const player = usePlayerStore()
 const { t, locale } = useI18n()
 
 // ---- 锚点目录：六个分类纵向铺开；顶部目录点击滚动跳转，滚动时反向高亮当前分区 ----
-const CATEGORY_IDS = ['library', 'appearance', 'playback', 'search', 'lyrics', 'general'] as const
+const CATEGORY_IDS = ['library', 'appearance', 'playback', 'search', 'lyrics', 'general', 'audio'] as const
 type CategoryId = (typeof CATEGORY_IDS)[number]
 const SECTION_ID_PREFIX = 'settings-section-'
 
@@ -103,6 +104,7 @@ const categories = computed(() => [
   { id: 'search' as const, icon: Search, iconActive: SearchBold, label: t('settings.search'), desc: t('settings.searchDesc') },
   { id: 'lyrics' as const, icon: Subtitles, iconActive: SubtitlesBold, label: t('settings.lyrics'), desc: t('settings.lyricsDesc') },
   { id: 'general' as const, icon: Settings, iconActive: SettingsBold, label: t('settings.general'), desc: t('settings.generalDesc') },
+  { id: 'audio' as const, icon: Play, iconActive: PlayBold, label: t('settings.audio'), desc: t('settings.audioDesc') },
 ])
 
 // ---- 语言 ----
@@ -2078,6 +2080,19 @@ const showWebdavLimits = computed(() => showWebdav.value || library.sources.some
               </div>
             </section>
           </div>
+        </section>
+
+        <!-- 音频：均衡器 / 音量归一化 / 睡眠定时器 / 系统媒体键 -->
+        <section
+          :id="`settings-section-audio`"
+          data-settings-section="audio"
+          class="mt-8 scroll-mt-4 border-t border-zinc-100 pt-8 dark:border-zinc-800"
+        >
+          <header data-stagger class="mb-5">
+            <h2 class="text-lg font-semibold text-zinc-900 dark:text-zinc-50">{{ t('settings.audio') }}</h2>
+            <p class="mt-0.5 text-xs text-zinc-400">{{ t('settings.audioDesc') }}</p>
+          </header>
+          <AudioEffectsPanel />
         </section>
       </div>
     </div>
