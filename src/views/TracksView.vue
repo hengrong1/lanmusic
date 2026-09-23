@@ -291,6 +291,8 @@ async function batchRemoveFromLibrary() {
         :tracks="library.trackPage.items"
         :sort="library.query.sort"
         :batch-mode="batchMode"
+        follow-playing
+        paginate-missing
         @selection="onSelection"
         @sort-change="(v: string) => library.setQuery({ sort: v })"
         @near-end="library.loadMore()"

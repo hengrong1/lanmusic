@@ -152,7 +152,7 @@ function playAll() {
 
       <!-- 当前目录下的歌曲 -->
       <div v-if="tracks.length" class="min-h-0 flex-1">
-        <TrackTable :tracks="tracks" />
+        <TrackTable :tracks="tracks" follow-playing />
       </div>
       <div v-else-if="!folders.length" class="min-h-0 flex-1">
         <EmptyState :icon="MusicNote" :title="$t('empty.folderTitle')" :description="$t('empty.folderHint')" />

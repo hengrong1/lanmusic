@@ -85,7 +85,16 @@ function scrollToIndex(index: number, align: 'top' | 'center' = 'center', behavi
       : target
   container.value.scrollTo({ top: Math.max(0, top), behavior })
 }
-defineExpose({ scrollToTop, scrollToIndex })
+
+/** 指定行当前是否完整落在可视区内（±1px 容差）：
+ *  切歌自动跟随的判据——可见就不动，不可见才滚（纯 scrollTop 数学，不依赖行是否已渲染） */
+function isIndexVisible(index: number): boolean {
+  if (!container.value) return false
+  const top = props.padTop + index * props.itemHeight
+  const st = container.value.scrollTop
+  return top >= st - 1 && top + props.itemHeight <= st + container.value.clientHeight + 1
+}
+defineExpose({ scrollToTop, scrollToIndex, isIndexVisible })
 </script>
 
 <template>

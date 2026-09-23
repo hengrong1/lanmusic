@@ -190,7 +190,22 @@ watch(
 )
 watch(
   () => player.index,
-  () => void nextTick(updateActiveVisible),
+  () => {
+    // 切歌自动跟随：面板开着且新活动行不在可视区就滚过去居中（与打开面板时的定位同款），
+    // 省得每次切歌都要手动点定位按钮；行已在可视区则只更新按钮显隐，不打断浏览
+    if (!props.open) return
+    void nextTick(() => {
+      syncMetrics()
+      updateActiveVisible()
+      if (!activeVisible.value && player.index >= 0) {
+        vlist.value?.scrollToIndex(player.index, 'center', 'auto')
+        void nextTick(() => {
+          syncMetrics()
+          updateActiveVisible()
+        })
+      }
+    })
+  },
 )
 </script>
 

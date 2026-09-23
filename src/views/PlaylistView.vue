@@ -329,6 +329,7 @@ async function onPickerAdded() {
         :sort="sort"
         :playlist-id="playlistId ?? undefined"
         :batch-mode="batchMode"
+        follow-playing
         @selection="onSelection"
         @sort-change="onSortChange"
         @refresh="load"

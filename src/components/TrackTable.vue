@@ -31,7 +31,7 @@ import { confirmDialog } from '@/composables/useConfirm'
 import { useI18n } from 'vue-i18n'
 import { errorText } from '@/i18n/error'
 
-const props = defineProps<{ tracks: Track[]; playlistId?: number; favoritesView?: boolean; sort?: string; reorderable?: boolean; batchMode?: boolean }>()
+const props = defineProps<{ tracks: Track[]; playlistId?: number; favoritesView?: boolean; sort?: string; reorderable?: boolean; batchMode?: boolean; /** 切歌时自动滚动到正在播放的行（全部歌曲/歌单/文件夹视图启用） */ followPlaying?: boolean; /** 列表是分页加载的：跟随的歌不在已加载页里时自动翻页找它（目前=全部歌曲/喜欢视图） */ paginateMissing?: boolean }>()
 const emit = defineEmits<{
   nearEnd: []
   refresh: []
@@ -56,7 +56,12 @@ const filenameTip = (p: string) => tr('library.filenameHit', { path: p })
 const searchTerm = computed(() => nav.current.value.search ?? '')
 
 // ---- 表头点击排序（传入 sort 属性时启用；歌单视图保持拖拽顺序不启用）----
-const vlist = ref<{ scrollToTop: () => void; scrollToIndex: (i: number) => void } | null>(null)
+/** 结构化类型：泛型组件不支持 InstanceType 提取（与 QueuePanel 同款） */
+const vlist = ref<{
+  scrollToTop: () => void
+  scrollToIndex: (i: number, align?: 'top' | 'center', behavior?: ScrollBehavior) => void
+  isIndexVisible: (i: number) => boolean
+} | null>(null)
 const sortCols = computed(
   () =>
     [
@@ -111,6 +116,43 @@ async function locatePlaying() {
     locating.value = false
   }
 }
+// ---- 切歌自动跟随（followPlaying 视图启用：全部歌曲/歌单/文件夹）----
+// 新歌的行不在可视区就滚过去居中；已在可视区完全不动，不打断浏览。
+// paginateMissing（分页列表）：新歌可能还没加载进来 → 翻页找它再滚（与
+// 「定位正在播放」按钮同款，代价是列表会重建）；歌单/文件夹是全量加载不走这步。
+// 连按下一首时 watch 会被锁挡掉 → 用 pendingId 收敛，永远追平到最新一首。
+let following = false
+let pendingId: number | null | undefined = null
+watch(
+  () => player.current?.id,
+  (id) => {
+    pendingId = id
+    void followPlaying()
+  },
+)
+async function followPlaying() {
+  if (!props.followPlaying || following) return
+  following = true
+  try {
+    for (let round = 0; ; round++) {
+      const cur = player.current
+      if (!cur || pendingId !== cur.id || round > 20) return
+      let idx = props.tracks.findIndex((t) => t.id === cur.id)
+      if (idx < 0) {
+        if (!props.paginateMissing) return
+        idx = await library.indexOfTrack(cur.id)
+        if (player.current?.id !== cur.id) continue // 翻页期间又切了歌，重判最新目标
+      }
+      if (idx >= 0 && !vlist.value?.isIndexVisible(idx)) {
+        vlist.value?.scrollToIndex(idx, 'center', 'auto')
+      }
+      if (pendingId === cur.id) return
+    }
+  } finally {
+    following = false
+  }
+}
+
 function scrollToTop() {
   vlist.value?.scrollToTop()
 }
@@ -356,7 +398,7 @@ function onDragEnd() {
       <template v-for="col in sortCols" :key="col.field">
         <button
           v-if="props.sort !== undefined"
-          class="flex cursor-pointer items-center gap-1 transition hover:text-zinc-700 dark:hover:text-zinc-200"
+          class="flex cursor-pointer items-center gap-1 p-0 transition hover:text-zinc-700 dark:hover:text-zinc-200"
           :class="[col.field === 'duration' ? 'w-full justify-end' : '', (isAsc(col.field) || isDesc(col.field)) ? 'text-violet-500' : '']"
           @click="toggleSort(col.field)"
         >
@@ -457,7 +499,7 @@ function onDragEnd() {
                 <span v-if="i > 0" class="opacity-50"> / </span>
                 <button
                   v-if="a.id != null"
-                  class="max-w-full cursor-pointer truncate transition hover:text-violet-600 hover:underline dark:hover:text-violet-400"
+                  class="max-w-full cursor-pointer truncate p-0 transition hover:text-violet-600 hover:underline dark:hover:text-violet-400"
                   v-tooltip="artistTip(a.name)"
                   @click.stop="openArtist(a)"
                 ><HighlightText :text="a.name" :keyword="searchTerm" /></button>
@@ -466,7 +508,7 @@ function onDragEnd() {
             </div>
             <div class="min-w-0 truncate text-zinc-500 dark:text-zinc-400">
               <button
-                class="max-w-full cursor-pointer truncate transition hover:text-violet-600 hover:underline dark:hover:text-violet-400"
+                class="max-w-full cursor-pointer truncate p-0 transition hover:text-violet-600 hover:underline dark:hover:text-violet-400"
                 v-tooltip="albumTip(t.album)"
                 @click.stop="openAlbum(t)"
               ><HighlightText :text="t.album ?? $t('album.unknownAlbum')" :keyword="searchTerm" /></button>
