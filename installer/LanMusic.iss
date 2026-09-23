@@ -29,6 +29,14 @@ AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppVerName={#MyAppName} {#MyAppVersion}
 AppPublisher={#MyAppName}
+; 卸载面板描述：AppComments 写入 Uninstall 键的 Comments 值，控制面板「程序和功能」
+; 中选中应用时在底部详情区显示（Win11 新版「设置→应用」不展示该字段，需看程序和功能）
+AppComments=本地 + 局域网音乐播放器：本地与 WebDAV 音乐库、逐字歌词、歌单、均衡器与音量归一化、睡眠定时器、桌面歌词、系统媒体键、全局快捷键与应用内更新。
+; 详情区链接字段：PublisherURL→URLInfoAbout、SupportURL→HelpLink（帮助链接）、
+; UpdatesURL→URLUpdateInfo，随 Comments 一起在「程序和功能」详情区展示
+AppPublisherURL=https://github.com/hengrong1/lanmusic
+AppSupportURL=https://github.com/hengrong1/lanmusic/issues
+AppUpdatesURL=https://github.com/hengrong1/lanmusic/releases
 DefaultDirName={autopf}\{#MyAppName}
 DisableProgramGroupPage=yes
 OutputDir=output
