@@ -61,7 +61,6 @@ const vlist = ref<{
   scrollToTop: () => void
   scrollToIndex: (i: number, align?: 'top' | 'center', behavior?: ScrollBehavior) => void
   isIndexVisible: (i: number) => boolean
-  getScrollEl?: () => HTMLElement | null
 } | null>(null)
 const sortCols = computed(
   () =>

@@ -94,7 +94,7 @@ function isIndexVisible(index: number): boolean {
   const st = container.value.scrollTop
   return top >= st - 1 && top + props.itemHeight <= st + container.value.clientHeight + 1
 }
-defineExpose({ scrollToTop, scrollToIndex, isIndexVisible, getScrollEl: () => container.value })
+defineExpose({ scrollToTop, scrollToIndex, isIndexVisible })
 </script>
 
 <template>

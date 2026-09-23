@@ -90,10 +90,8 @@ async function fetchBytes(
  */
 async function fetchPrefix(url: string, durationSec?: number | null): Promise<ArrayBuffer> {
   // 1) 先无 Range 取首块，拿到 total 与首 2MB
-  console.log('[loudness] fetch first chunk...')
   const first = await fetchBytes(url, undefined)
   if (first.status === 200) {
-    console.log('[loudness] got whole file, bytes =', first.buf.length)
     return first.buf.buffer as ArrayBuffer
   }
 
@@ -106,17 +104,14 @@ async function fetchPrefix(url: string, durationSec?: number | null): Promise<Ar
   } else if (Number.isFinite(total)) {
     cap = Math.min(total, MAX_FETCH_BYTES)
   }
-  console.log('[loudness] total =', total, 'cap =', cap, 'duration =', durationSec)
 
   // 首块已够覆盖所需前缀 → 直接用它（如短曲目、或 cap <= 2MB）
   if (cap <= first.buf.length) {
-    console.log('[loudness] first chunk sufficient, bytes =', first.buf.length)
     return first.buf.buffer as ArrayBuffer
   }
   if (cap > MAX_FETCH_BYTES) throw new Error('audio too large')
 
   // 2) 一次性闭区间 Range 精确取前缀（Rust 端对 bytes=start- 会回整段剩余，故必须闭区间）
-  console.log('[loudness] fetch prefix bytes 0-', cap - 1)
   const r = await fetchBytes(url, `bytes=0-${cap - 1}`)
   return r.buf.buffer as ArrayBuffer
 }
@@ -133,7 +128,6 @@ export async function analyzeLoudness(
 /** analyzeLoudness 的实际实现；外层套总超时，确保任何环节挂起都能恢复。 */
 async function innerAnalyze(trackId: number, durationSec?: number | null): Promise<LoudnessResult> {
   const url = await api.getStreamUrl(trackId)
-  console.log('[loudness] stream url =', url)
   let buf = await fetchPrefix(url, durationSec)
 
   const ctx = new AudioContext({ sampleRate: DECODE_SAMPLE_RATE })
@@ -143,7 +137,6 @@ async function innerAnalyze(trackId: number, durationSec?: number | null): Promi
       // decodeAudioData 在部分 WebView2 环境（无音频设备 / 音频服务异常）下
       // Promise 会永久不 resolve → 前端永远停在「分析中」。用超时兜住，超时就
       // 抛错让调用方结束 loading 并提示，而不是卡死。
-      console.log('[loudness] decoding', buf.byteLength, 'bytes ...')
       audio = await withTimeout(ctx.decodeAudioData(buf), DECODE_TIMEOUT_MS, '音频解码')
     } catch (e) {
       // 极少数容器（需完整文件才能解码）在截断前缀上会失败 → 回退取整首再解一次
@@ -152,7 +145,6 @@ async function innerAnalyze(trackId: number, durationSec?: number | null): Promi
       audio = await withTimeout(ctx.decodeAudioData(buf), DECODE_TIMEOUT_MS, '音频解码')
     }
 
-    console.log('[loudness] decoded, frames =', audio.length)
     const { rmsDb, peak } = measure(audio)
     let gainDb = TARGET_RMS_DB - rmsDb
     // 峰值限制：应用增益后峰值不得超过 PEAK_HEADROOM_DB
@@ -165,7 +157,6 @@ async function innerAnalyze(trackId: number, durationSec?: number | null): Promi
     const rounded = round2(gainDb)
 
     await api.saveLoudness(trackId, rounded, round2(peak))
-    console.log('[loudness] done, gain =', rounded, 'peak =', round2(peak))
     return { gainDb: rounded, peak: round2(peak) }
   } finally {
     void ctx.close().catch(() => {})
