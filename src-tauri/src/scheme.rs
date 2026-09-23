@@ -78,8 +78,11 @@ fn bg_handle<R: Runtime>(app: AppHandle<R>, req: Request<Vec<u8>>) -> Response<V
             .to_string()
     };
     // 白名单字符：只放行 bg-<毫秒>.<ext> 形态，杜绝路径穿越
-    let valid =
-        !name.is_empty() && name.starts_with("bg-") && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '.');
+    let valid = !name.is_empty()
+        && name.starts_with("bg-")
+        && name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '.');
     if !valid {
         return not_found();
     }

@@ -10,7 +10,8 @@ import { usePlayerStore } from '@/stores/player'
 // - inputGain：纯透传（保留扩展位）
 // - BiquadFilter 段：图形均衡器
 // - normalizeGain：ReplayGain / 音量归一化（在用户音量之上再乘一个修正增益）
-// - analyser：频谱旁路取样（不连到 destination，避免重复输出；真正出声走 normalizeGain -> destination）
+// - analyser：频谱取样，串在主输出链上（normalizeGain -> analyser -> destination），
+//   频谱从它读数据；音频经 analyser 直通扬声器
 
 export const EQ_FREQS = [31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000]
 export const EQ_BANDS = EQ_FREQS.length
@@ -53,6 +54,23 @@ function resumeIfNeeded() {
 
 function hasUserGesture(): boolean {
   return navigator.userActivation?.isActive ?? true
+}
+
+// 无手势时的延迟建图：只挂一次监听（固定闭包引用），手势到来时建图并自摘。
+// deferredArmed 防重复挂；建图失败（createFailed）后允许重新挂——用户手势内
+// 重建有可能成功（此前失败可能只是无手势上下文）
+let deferredArmed = false
+function armDeferredCreate() {
+  if (deferredArmed) return
+  deferredArmed = true
+  const tryCreate = () => {
+    window.removeEventListener('pointerdown', tryCreate)
+    window.removeEventListener('keydown', tryCreate)
+    deferredArmed = false
+    if (!analyser && !createFailed) ensureGraph()
+  }
+  window.addEventListener('pointerdown', tryCreate)
+  window.addEventListener('keydown', tryCreate)
 }
 
 function armGesture() {
@@ -138,16 +156,10 @@ export function ensureGraph(): AudioGraph | null {
   }
   if (createFailed) return null
   if (!hasUserGesture()) {
-    // 推迟到首次用户手势时创建（Autoplay 策略要求 context 在手势内创建/恢复）
-    const tryCreate = () => {
-      if (!analyser) ensureGraph()
-      if (analyser || createFailed) {
-        window.removeEventListener('pointerdown', tryCreate)
-        window.removeEventListener('keydown', tryCreate)
-      }
-    }
-    window.addEventListener('pointerdown', tryCreate)
-    window.addEventListener('keydown', tryCreate)
+    // 推迟到首次用户手势时创建（Autoplay 策略要求 context 在手势内创建/恢复）。
+    // 只挂一次监听：频谱逐帧轮询会反复走到这里（媒体键播放时 userActivation 过期），
+    // 逐次挂监听器会堆积成百上千个，直到下一次真实点击才被批量清理
+    armDeferredCreate()
     return null
   }
   try {
@@ -187,6 +199,12 @@ export function ensureGraph(): AudioGraph | null {
   } catch {
     // 创建失败（如二次创建）：静默降级为无音效处理，不影响播放
     createFailed = true
+    // 释放半建成的 AudioContext（占用音频线程资源，不 close 会成孤儿）
+    try {
+      ctx?.close()
+    } catch {
+      /* 关闭失败无需处理 */
+    }
     ctx = null
     source = null
     analyser = null

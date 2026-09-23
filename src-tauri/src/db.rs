@@ -225,7 +225,9 @@ pub fn open_conn(path: &Path, init: bool) -> rusqlite::Result<Connection> {
     // 不符合直觉，注册自定义 collation 供「按标题/专辑/艺人」等 ORDER BY 使用。
     // 比较时即时转换（无缓存）：万首规模单次排序在几十 ms 内，够用；
     // 库规模显著增长后再考虑入库时预计算拼音辅助列。
-    conn.create_collation("PINYIN", |a: &str, b: &str| pinyin_key(a).cmp(&pinyin_key(b)))?;
+    conn.create_collation("PINYIN", |a: &str, b: &str| {
+        pinyin_key(a).cmp(&pinyin_key(b))
+    })?;
     if init {
         conn.execute_batch(SCHEMA)?;
         migrate(&conn)?;
@@ -289,7 +291,9 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
     // 多艺人拆分（track_artists）上线：已完整解析过的曲目需重新读标签才能按
     // 分隔符拆出独立艺人。置回 meta_state=0 让下次扫描自动重解析（一次性）。
     if get_setting(conn, "track_artists_migrated").is_none() {
-        log::info!("迁移：多艺人拆分上线，全部已解析曲目置回待补全（meta_state=0），下次扫描自动重解析");
+        log::info!(
+            "迁移：多艺人拆分上线，全部已解析曲目置回待补全（meta_state=0），下次扫描自动重解析"
+        );
         conn.execute("UPDATE tracks SET meta_state = 0", [])?;
         set_setting(conn, "track_artists_migrated", "1")?;
     }

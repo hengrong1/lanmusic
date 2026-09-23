@@ -18,6 +18,8 @@ import { api } from '@/api/commands'
 
 const LS = 'lm.nowPlaying'
 let started = false
+/** useNowPlaying() 初始化后桥接出来的元数据推送函数（见 setNowPlayingEnabled） */
+let pushMetaFn: (() => void) | null = null
 
 /** 默认开启：键不存在或非 '0' 都视为开（默认开开关存 '0' 才算关） */
 export const nowPlayingEnabled = ref(localStorage.getItem(LS) !== '0')
@@ -46,6 +48,8 @@ export function useNowPlaying() {
     // 刚换曲进度已归零：立即同步一次，别等心跳（避免系统浮层短暂显示上一首的进度）
     pushState()
   }
+  // 单例桥接：模块级 setNowPlayingEnabled 开启开关时要立即补推一次元数据
+  pushMetaFn = pushMeta
 
   function pushState() {
     if (!nowPlayingEnabled.value) return
@@ -112,4 +116,6 @@ export async function setNowPlayingEnabled(v: boolean) {
   } catch {
     /* ignore */
   }
+  // 重新开启时系统浮层还空着：立即推一次当前曲元数据，别等下次切歌
+  if (v) pushMetaFn?.()
 }

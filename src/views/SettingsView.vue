@@ -34,6 +34,7 @@ import { useStagger } from '@/composables/useStagger'
 import { useDesktopLyrics } from '@/composables/useDesktopLyrics'
 import { getAppFont, setAppFont } from '@/composables/useAppFont'
 import { dialogBlur, dialogDraggable, type DialogBlur } from '@/composables/useDialogPrefs'
+import { isFocusModeEnabled, setFocusModeEnabled } from '@/composables/useFocusMode'
 import { useBackground } from '@/composables/useBackground'
 import { getPreventSleep, setPreventSleepSetting } from '@/composables/usePowerGuard'
 import { useUpdater } from '@/composables/useUpdater'
@@ -85,7 +86,7 @@ const player = usePlayerStore()
 const { t, locale } = useI18n()
 
 // ---- 锚点目录：六个分类纵向铺开；顶部目录点击滚动跳转，滚动时反向高亮当前分区 ----
-const CATEGORY_IDS = ['library', 'appearance', 'playback', 'search', 'lyrics', 'general', 'audio'] as const
+const CATEGORY_IDS = ['library', 'appearance', 'playback', 'audio', 'search', 'lyrics', 'general'] as const
 type CategoryId = (typeof CATEGORY_IDS)[number]
 const SECTION_ID_PREFIX = 'settings-section-'
 
@@ -103,10 +104,10 @@ const categories = computed(() => [
   { id: 'library' as const, icon: HardDrive, iconActive: HardDriveBold, label: t('settings.library'), desc: t('settings.libraryDesc') },
   { id: 'appearance' as const, icon: Palette, iconActive: PaletteBold, label: t('settings.appearance'), desc: t('settings.appearanceDesc') },
   { id: 'playback' as const, icon: Play, iconActive: PlayBold, label: t('settings.playback'), desc: t('settings.playbackDesc') },
+  { id: 'audio' as const, icon: MusicNote, iconActive: MusicNoteBold, label: t('settings.audio'), desc: t('settings.audioDesc') },
   { id: 'search' as const, icon: Search, iconActive: SearchBold, label: t('settings.search'), desc: t('settings.searchDesc') },
   { id: 'lyrics' as const, icon: Subtitles, iconActive: SubtitlesBold, label: t('settings.lyrics'), desc: t('settings.lyricsDesc') },
   { id: 'general' as const, icon: Settings, iconActive: SettingsBold, label: t('settings.general'), desc: t('settings.generalDesc') },
-  { id: 'audio' as const, icon: MusicNote, iconActive: MusicNoteBold, label: t('settings.audio'), desc: t('settings.audioDesc') },
 ])
 
 // ---- 语言 ----
@@ -733,10 +734,11 @@ function clearBgImage() {
 }
 
 // ---- 播放页专注模式（默认开启、5 秒；App.vue 播放时按此计时隐藏控制条）----
-const focusModeOn = ref(localStorage.getItem('lm.focusMode') !== '0')
+// 开关读写走 useFocusMode 单点（与 App.vue 同一口径）
+const focusModeOn = ref(isFocusModeEnabled())
 function setFocusMode(v: boolean) {
   focusModeOn.value = v
-  localStorage.setItem('lm.focusMode', v ? '1' : '0')
+  setFocusModeEnabled(v)
 }
 const FOCUS_DELAY_KEY = 'lm.focusDelay'
 const focusDelay = ref(Number(localStorage.getItem(FOCUS_DELAY_KEY)) || 5)
@@ -1655,6 +1657,24 @@ const showWebdavLimits = computed(() => showWebdav.value || library.sources.some
           </div>
         </section>
 
+        <!-- 音频：均衡器 / 音量归一化 / 睡眠定时器 / 系统媒体键 -->
+        <section
+          :id="`settings-section-audio`"
+          data-settings-section="audio"
+          class="mt-14 scroll-mt-4"
+        >
+          <header data-stagger class="mb-5 flex items-center gap-3.5">
+            <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-50 text-violet-500 dark:bg-violet-500/10 dark:text-violet-300">
+              <MusicNote class="h-5 w-5" />
+            </div>
+            <div class="min-w-0">
+              <h2 class="text-lg font-semibold text-zinc-900 dark:text-zinc-50">{{ t('settings.audio') }}</h2>
+              <p class="mt-0.5 text-xs text-zinc-400">{{ t('settings.audioDesc') }}</p>
+            </div>
+          </header>
+          <AudioEffectsPanel />
+        </section>
+
       <!-- ===== 搜索 ===== -->
 
         <section :id="`settings-section-search`" data-settings-section="search" class="mt-14 scroll-mt-4">
@@ -2095,24 +2115,6 @@ const showWebdavLimits = computed(() => showWebdav.value || library.sources.some
               </div>
             </section>
           </div>
-        </section>
-
-        <!-- 音频：均衡器 / 音量归一化 / 睡眠定时器 / 系统媒体键 -->
-        <section
-          :id="`settings-section-audio`"
-          data-settings-section="audio"
-          class="mt-14 scroll-mt-4"
-        >
-          <header data-stagger class="mb-5 flex items-center gap-3.5">
-            <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-50 text-violet-500 dark:bg-violet-500/10 dark:text-violet-300">
-              <MusicNote class="h-5 w-5" />
-            </div>
-            <div class="min-w-0">
-              <h2 class="text-lg font-semibold text-zinc-900 dark:text-zinc-50">{{ t('settings.audio') }}</h2>
-              <p class="mt-0.5 text-xs text-zinc-400">{{ t('settings.audioDesc') }}</p>
-            </div>
-          </header>
-          <AudioEffectsPanel />
         </section>
       </div>
     </div>

@@ -149,7 +149,40 @@ struct ParsedTrack {
 /// 「未知艺人」「曲库不动」类问题先看这里的记录。
 pub fn scan_source(app: AppHandle, source_id: i64, full_rescan: bool) {
     let started = Instant::now();
-    log::info!("扫描开始 source {source_id}（{}）", if full_rescan { "完整解析" } else { "增量" });
+    log::info!(
+        "扫描开始 source {source_id}（{}）",
+        if full_rescan {
+            "完整解析"
+        } else {
+            "增量"
+        }
+    );
+    // 来源可能在触发后被删除（remove_source 与触发方/去抖线程存在检查窗口）：
+    // 直接静默退出，不 emit scan:error——对已删来源报错只会困扰用户
+    let source_gone = {
+        let state = app.state::<AppState>();
+        state
+            .db
+            .lock()
+            .ok()
+            .and_then(|conn| {
+                conn.query_row("SELECT 1 FROM sources WHERE id = ?1", [source_id], |_| {
+                    Ok(())
+                })
+                .ok()
+            })
+            .is_none()
+    };
+    if source_gone {
+        let state = app.state::<AppState>();
+        state
+            .scanning
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .remove(&source_id);
+        log::info!("扫描取消 source {source_id}：来源已删除");
+        return;
+    }
     let result = load_source(&app, source_id).and_then(|(kind, base_path, base_url, config)| {
         match kind.as_str() {
             "local" => run_local_scan(
@@ -168,7 +201,11 @@ pub fn scan_source(app: AppHandle, source_id: i64, full_rescan: bool) {
     });
 
     let state = app.state::<AppState>();
-    state.scanning.lock().unwrap().remove(&source_id);
+    state
+        .scanning
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .remove(&source_id);
 
     match result {
         Ok((added, updated, removed)) => {
@@ -176,7 +213,13 @@ pub fn scan_source(app: AppHandle, source_id: i64, full_rescan: bool) {
             log::info!("扫描完成 source {source_id}：新增 {added}，更新 {updated}，移除 {removed}，耗时 {ms} ms");
             let _ = app.emit(
                 "scan:done",
-                ScanDone { source_id, added, updated, removed, ms },
+                ScanDone {
+                    source_id,
+                    added,
+                    updated,
+                    removed,
+                    ms,
+                },
             );
             // 扫描历史：落一行供「音乐库体检」展示最近几次增删改
             let state = app.state::<AppState>();
@@ -348,7 +391,10 @@ fn run_local_scan(
         .collect();
 
     // 诊断：枚举阶段耗时（到 diff 开始为止）
-    crate::diagnostics::LAST_SCAN_ENUM_MS.store(enum_started.elapsed().as_millis() as u64, std::sync::atomic::Ordering::Relaxed);
+    crate::diagnostics::LAST_SCAN_ENUM_MS.store(
+        enum_started.elapsed().as_millis() as u64,
+        std::sync::atomic::Ordering::Relaxed,
+    );
     let parse_started = std::time::Instant::now();
 
     // ---- 3. 并发解析 ----
@@ -420,7 +466,10 @@ fn run_local_scan(
     .map_err(|e| e.to_string())?;
 
     // 诊断：解析+diff 阶段耗时（最近一次）
-    crate::diagnostics::LAST_SCAN_PARSE_MS.store(parse_started.elapsed().as_millis() as u64, std::sync::atomic::Ordering::Relaxed);
+    crate::diagnostics::LAST_SCAN_PARSE_MS.store(
+        parse_started.elapsed().as_millis() as u64,
+        std::sync::atomic::Ordering::Relaxed,
+    );
 
     Ok((added, updated, removed))
 }
@@ -522,7 +571,10 @@ fn run_webdav_scan(
     let total = files.len();
     emit_parse(app, source_id, 0, total);
     // 诊断：PROPFIND 枚举阶段耗时
-    crate::diagnostics::LAST_SCAN_ENUM_MS.store(enum_started.elapsed().as_millis() as u64, std::sync::atomic::Ordering::Relaxed);
+    crate::diagnostics::LAST_SCAN_ENUM_MS.store(
+        enum_started.elapsed().as_millis() as u64,
+        std::sync::atomic::Ordering::Relaxed,
+    );
     let parse_started = std::time::Instant::now();
 
     // ---- 2. diff（mtime 不可靠，仅按 size + meta_state）----
@@ -619,7 +671,10 @@ fn run_webdav_scan(
     .map_err(|e| e.to_string())?;
 
     // 诊断：解析+diff 阶段耗时（最近一次）
-    crate::diagnostics::LAST_SCAN_PARSE_MS.store(parse_started.elapsed().as_millis() as u64, std::sync::atomic::Ordering::Relaxed);
+    crate::diagnostics::LAST_SCAN_PARSE_MS.store(
+        parse_started.elapsed().as_millis() as u64,
+        std::sync::atomic::Ordering::Relaxed,
+    );
 
     Ok((added, updated, removed))
 }

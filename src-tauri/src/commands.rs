@@ -323,7 +323,7 @@ pub fn remove_source(app: AppHandle, state: State<'_, AppState>, id: i64) -> Res
     {
         return Err(err(codes::SOURCE_SCANNING_BUSY));
     }
-    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    let mut conn = state.db.lock().map_err(|e| e.to_string())?;
     let kind: Option<String> = conn
         .query_row("SELECT kind FROM sources WHERE id = ?1", params![id], |r| {
             r.get(0)
@@ -332,33 +332,36 @@ pub fn remove_source(app: AppHandle, state: State<'_, AppState>, id: i64) -> Res
     // 先删曲目再删来源。现库 schema 的 tracks.source_id 带 ON DELETE CASCADE（连接均开启
     // 外键），删来源本可级联清曲目；这里改为显式删除，让子表清理真实执行——既兼容外键
     // 未生效的异常连接，也让每条 DELETE 都作用于真实存在的行，而不是恒为空的子查询。
-    conn.execute(
+    // 主删除链 + 孤儿专辑/艺人清理整体入事务：任一步失败全部回滚，不会停在
+    // 「曲目删了来源还在」之类的半删除态（对齐 remove_tracks 的口径）。
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    tx.execute(
         "DELETE FROM track_artists WHERE track_id IN (SELECT id FROM tracks WHERE source_id = ?1)",
         params![id],
     )
     .map_err(|e| e.to_string())?;
-    conn.execute(
+    tx.execute(
         "DELETE FROM playlist_items WHERE track_id IN (SELECT id FROM tracks WHERE source_id = ?1)",
         params![id],
     )
     .map_err(|e| e.to_string())?;
-    conn.execute(
+    tx.execute(
         "DELETE FROM lrc_files WHERE track_id IN (SELECT id FROM tracks WHERE source_id = ?1)",
         params![id],
     )
     .map_err(|e| e.to_string())?;
-    conn.execute(
+    tx.execute(
         "DELETE FROM lyrics_index WHERE track_id IN (SELECT id FROM tracks WHERE source_id = ?1)",
         params![id],
     )
     .map_err(|e| e.to_string())?;
-    conn.execute("DELETE FROM tracks WHERE source_id = ?1", params![id])
+    tx.execute("DELETE FROM tracks WHERE source_id = ?1", params![id])
         .map_err(|e| e.to_string())?;
-    conn.execute("DELETE FROM sources WHERE id = ?1", params![id])
+    tx.execute("DELETE FROM sources WHERE id = ?1", params![id])
         .map_err(|e| e.to_string())?;
-    // 曲目删除后再查真正的孤儿专辑
+    // 曲目删除后在同一事务里删孤儿专辑（先收集 id，提交后按它清缓存）
     let orphan_albums: Vec<i64> = {
-        let mut stmt = conn
+        let mut stmt = tx
             .prepare("SELECT id FROM albums WHERE id NOT IN (SELECT DISTINCT album_id FROM tracks)")
             .map_err(|e| e.to_string())?;
         let rows = stmt
@@ -367,12 +370,6 @@ pub fn remove_source(app: AppHandle, state: State<'_, AppState>, id: i64) -> Res
         rows.collect::<Result<Vec<_>, _>>()
             .map_err(|e| e.to_string())?
     };
-    // 先删封面文件再删 DB 行：如果先删 DB 行后 SQLite rowid 被复用，后续 purge 可能误删新专辑同名缓存
-    let covers_dir = state.covers_dir.clone();
-    drop(conn);
-    crate::covers::purge(&covers_dir, &orphan_albums);
-    let conn = state.db.lock().map_err(|e| e.to_string())?;
-    // 按已收集的 id 精确删除（与传给 purge 的集合完全一致）
     if !orphan_albums.is_empty() {
         let placeholders = orphan_albums
             .iter()
@@ -380,17 +377,25 @@ pub fn remove_source(app: AppHandle, state: State<'_, AppState>, id: i64) -> Res
             .collect::<Vec<_>>()
             .join(",");
         let sql = format!("DELETE FROM albums WHERE id IN ({placeholders})");
-        let _ = conn.execute(&sql, rusqlite::params_from_iter(orphan_albums.iter()));
+        tx.execute(&sql, rusqlite::params_from_iter(orphan_albums.iter()))
+            .map_err(|e| e.to_string())?;
     }
     // 专辑归属艺人（albums.artist_id）可能没有直接归属的曲目，删除时需一并排除
-    conn.execute(
+    tx.execute(
         "DELETE FROM artists WHERE id NOT IN (SELECT DISTINCT artist_id FROM tracks)
          AND id NOT IN (SELECT DISTINCT artist_id FROM track_artists)
          AND id NOT IN (SELECT DISTINCT artist_id FROM albums)",
         [],
     )
     .map_err(|e| e.to_string())?;
+    tx.commit().map_err(|e| e.to_string())?;
     drop(conn);
+
+    // 事务已提交、DB 行已删：按收集到的 id 清理封面缓存（与 remove_tracks 同序——
+    // 先 DB 后文件；缓存可重建， purge 失败只影响下次加载速度）
+    if !orphan_albums.is_empty() {
+        crate::covers::purge(&state.covers_dir, &orphan_albums);
+    }
 
     // 清理收尾：webdav 来源移除钥匙串凭证；本地来源停止目录监听
     match kind.as_deref() {
@@ -399,7 +404,10 @@ pub fn remove_source(app: AppHandle, state: State<'_, AppState>, id: i64) -> Res
         _ => {}
     }
     // 破坏性操作留痕：日志里能看到来源何时被删（曲目、歌单引用随之清除）
-    log::info!("已删除来源 {id}（{}）", kind.as_deref().unwrap_or("未知类型"));
+    log::info!(
+        "已删除来源 {id}（{}）",
+        kind.as_deref().unwrap_or("未知类型")
+    );
     Ok(())
 }
 
@@ -773,15 +781,17 @@ pub fn query_folders(
 ) -> Result<Vec<FolderItem>, String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     let parent = parent.unwrap_or_default();
-    // rest = 去掉 parent 前缀后的相对路径；child = rest 的第一段（无 '/' 表示该曲目直接位于 parent 中）
+    // rest = 去掉 parent 前缀后的相对路径；child = rest 的第一段（无 '/' 表示该曲目直接位于 parent 中）。
+    // LIKE 模式必须转义通配符：含 %/_ 的合法目录名（如 "90's_Hits"）会跨目录误匹配
+    let pattern = format!("{}/%", crate::search::like_escape(&parent));
     let sql = "SELECT child, COUNT(*) FROM ( \
                    SELECT CASE WHEN instr(rest, '/') > 0 THEN substr(rest, 1, instr(rest, '/') - 1) ELSE '' END AS child \
                    FROM (SELECT CASE WHEN ?1 = '' THEN t.path ELSE substr(t.path, length(?1) + 2) END AS rest \
-                         FROM tracks t WHERE (?1 = '' OR t.path LIKE ?1 || '/%')) \
+                         FROM tracks t WHERE (?1 = '' OR t.path LIKE ?2 ESCAPE '\\')) \
                ) WHERE child <> '' GROUP BY child ORDER BY child COLLATE PINYIN";
     let mut stmt = conn.prepare(sql).map_err(|e| e.to_string())?;
     let rows = stmt
-        .query_map(params![parent], |r| {
+        .query_map(params![parent, pattern], |r| {
             let name: String = r.get(0)?;
             let count: i64 = r.get(1)?;
             let path = if parent.is_empty() {
@@ -811,14 +821,16 @@ pub fn query_tracks_by_folder(
 ) -> Result<Vec<Track>, String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     let folder = folder.unwrap_or_default();
+    // LIKE 模式转义同 query_folders：含 %/_ 的合法目录名不能跨目录误匹配
+    let pattern = format!("{}/%", crate::search::like_escape(&folder));
     let sql = format!(
-        "{TRACK_SELECT} WHERE (?1 = '' OR t.path LIKE ?1 || '/%') \
+        "{TRACK_SELECT} WHERE (?1 = '' OR t.path LIKE ?2 ESCAPE '\\') \
          AND instr(CASE WHEN ?1 = '' THEN t.path ELSE substr(t.path, length(?1) + 2) END, '/') = 0 \
          ORDER BY t.path COLLATE PINYIN"
     );
     let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
     let mut items: Vec<Track> = stmt
-        .query_map(params![folder], row_track)
+        .query_map(params![folder, pattern], row_track)
         .map_err(|e| e.to_string())?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?;
@@ -1578,8 +1590,17 @@ pub fn report_listen(
 /// 汇总：总收听时长 / 片段数 / 今日 / 近 7 天（本地时区自然日）+
 /// 曲库累计播放次数 / 有效播放次数（一曲一天一次）/ 独立曲目·艺人·专辑数 /
 /// 首末收听时间 / 有收听记录的自然日数。
+/// play_history 全表聚合在重度用户（数十万行）上可能超 100ms：放 spawn_blocking。
 #[tauri::command]
-pub fn listen_stats_summary(state: State<'_, AppState>) -> Result<ListenSummary, String> {
+pub async fn listen_stats_summary(app: AppHandle) -> Result<ListenSummary, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        listen_stats_summary_impl(&app.state::<AppState>())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+fn listen_stats_summary_impl(state: &AppState) -> Result<ListenSummary, String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     let (total_seconds, total_plays, today_seconds, week_seconds) = conn
         .query_row(
@@ -1688,9 +1709,8 @@ pub fn listen_top_tracks(
         "genre" => " AND TRIM(IFNULL(t.genre,'')) != ''",
         _ => "",
     };
-    let sql = format!(
-        "{select_sql} {base}{extra_where}{group_sql} ORDER BY 5 DESC, 6 DESC LIMIT ?2"
-    );
+    let sql =
+        format!("{select_sql} {base}{extra_where}{group_sql} ORDER BY 5 DESC, 6 DESC LIMIT ?2");
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
     let items = stmt
@@ -1820,11 +1840,20 @@ fn civil_to_days(s: &str) -> Option<i64> {
 
 /// 连续听歌天数：current = 最近一次连续段（最后收听日为今天或昨天才有效，否则 0）；
 /// longest = 历史最长连续收听天数。均按本地时区自然日。
+/// play_history 全表扫描+排序，放 spawn_blocking（同 listen_stats_summary）。
 #[tauri::command]
-pub fn listen_streak(state: State<'_, AppState>) -> Result<(i64, i64), String> {
+pub async fn listen_streak(app: AppHandle) -> Result<(i64, i64), String> {
+    tauri::async_runtime::spawn_blocking(move || listen_streak_impl(&app.state::<AppState>()))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+fn listen_streak_impl(state: &AppState) -> Result<(i64, i64), String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     let mut days: Vec<i64> = conn
-        .prepare("SELECT DISTINCT date(played_at,'unixepoch','localtime') FROM play_history ORDER BY 1")
+        .prepare(
+            "SELECT DISTINCT date(played_at,'unixepoch','localtime') FROM play_history ORDER BY 1",
+        )
         .map_err(|e| e.to_string())?
         .query_map([], |r| r.get::<_, String>(0))
         .map_err(|e| e.to_string())?
@@ -1851,7 +1880,9 @@ pub fn listen_streak(state: State<'_, AppState>) -> Result<(i64, i64), String> {
     }
     // 当前连续：最后收听日必须是今天或昨天（本地时区），否则连续已中断
     let today = conn
-        .query_row("SELECT date('now','localtime')", [], |r| r.get::<_, String>(0))
+        .query_row("SELECT date('now','localtime')", [], |r| {
+            r.get::<_, String>(0)
+        })
         .map_err(|e| e.to_string())?;
     let today_days = civil_to_days(&today).unwrap_or(0);
     let last = *days.last().unwrap();
@@ -1916,8 +1947,15 @@ pub struct LibraryHealth {
 }
 
 /// 音乐库体检：曲库构成、格式/来源/年份/码率分布、歌词/封面/MV/元数据覆盖率、疑似重复。
+/// 多次全表聚合，放 spawn_blocking（同 listen_stats_summary）。
 #[tauri::command]
-pub fn library_health(state: State<'_, AppState>) -> Result<LibraryHealth, String> {
+pub async fn library_health(app: AppHandle) -> Result<LibraryHealth, String> {
+    tauri::async_runtime::spawn_blocking(move || library_health_impl(&app.state::<AppState>()))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+fn library_health_impl(state: &AppState) -> Result<LibraryHealth, String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     let q1 = |sql: &str| -> Result<i64, String> {
         conn.query_row(sql, [], |r| r.get(0))
@@ -2075,8 +2113,13 @@ pub fn scan_history_list(state: State<'_, AppState>) -> Result<Vec<ScanHistoryIt
 }
 
 #[tauri::command]
-pub fn get_lyrics(app: AppHandle, id: i64) -> Result<Option<String>, String> {
-    crate::lyrics::fetch(&app, id)
+pub async fn get_lyrics(app: AppHandle, id: i64) -> Result<Option<String>, String> {
+    // WebDAV 外挂歌词/内嵌头部拉取是网络 IO（单次总超时 60s，最多串 3 次）：
+    // 同步 command 跑主线程，断网/限流时会冻结整个 UI 消息泵（窗口、SMTC、
+    // 全部 IPC 全卡）——必须 spawn_blocking
+    tauri::async_runtime::spawn_blocking(move || crate::lyrics::fetch(&app, id))
+        .await
+        .map_err(|e| e.to_string())?
 }
 
 /// QRC 逐字歌词解析：解密（新旧两种加密格式）+ 词级毫秒时间轴，见 qrc.rs。
@@ -2133,11 +2176,9 @@ pub async fn check_github_update(
     tauri::async_runtime::spawn_blocking(move || {
         let result = crate::updater::latest_release(&current);
         match &result {
-            Ok(Some(info)) => log::info!(
-                "检查更新：发现新版本 {}（当前 {}）",
-                info.version,
-                current
-            ),
+            Ok(Some(info)) => {
+                log::info!("检查更新：发现新版本 {}（当前 {}）", info.version, current)
+            }
             Ok(None) => log::info!("检查更新：已是最新（{current}）"),
             Err(e) => log::warn!("检查更新失败：{e}"),
         }
@@ -2204,7 +2245,10 @@ pub fn set_setting(state: State<'_, AppState>, key: String, value: String) -> Re
 /// 设置页把这批「关键字」单独标出来，避免用户以为需要自己添加。
 #[tauri::command]
 pub fn get_builtin_skip_dirs() -> Vec<String> {
-    scanner::BUILTIN_SKIP_DIRS.iter().map(|s| s.to_string()).collect()
+    scanner::BUILTIN_SKIP_DIRS
+        .iter()
+        .map(|s| s.to_string())
+        .collect()
 }
 
 // ---------- 全局快捷键（设置 → 通用 → 快捷键，见 global_shortcuts.rs） ----------
@@ -2257,9 +2301,13 @@ const MIN_BG_DIMENSION: u32 = 600;
 /// （避免引入图像解码依赖），无法识别的布局返回 None（调用方放行）。
 fn image_dimensions(path: &std::path::Path) -> Option<(u32, u32)> {
     use std::io::Read;
+    // 只读文件头（256KB 足够 PNG/GIF/BMP/WebP 与绝大多数 JPEG 的 SOF 段），
+    // 不把整张图读进内存——本函数跑在同步 command 主线程上，100MB 位图就是
+    // 100MB 的磁盘读 + 内存分配；截断时下方解析自然返回 None（放行逻辑兜底）
     let mut data = Vec::new();
     std::fs::File::open(path)
         .ok()?
+        .take(256 * 1024)
         .read_to_end(&mut data)
         .ok()?;
     image_dimensions_bytes(&data)
@@ -2327,7 +2375,8 @@ fn image_dimensions_bytes(data: &[u8]) -> Option<(u32, u32)> {
                 continue;
             }
             // SOF0~3 / SOF9~11（基线/渐进/算术）帧头：len(2) + 精度(1) + 高(2, 大端) + 宽(2)
-            if (0xc0..=0xcf).contains(&marker) && marker != 0xc4 && marker != 0xc8 && marker != 0xcc {
+            if (0xc0..=0xcf).contains(&marker) && marker != 0xc4 && marker != 0xc8 && marker != 0xcc
+            {
                 if i + 9 > data.len() {
                     return None;
                 }
@@ -2346,8 +2395,15 @@ fn image_dimensions_bytes(data: &[u8]) -> Option<(u32, u32)> {
 /// 天然防缓存），返回协议访问用的文件名（前端拼 bg://file/{name}）。旧背景文件一并
 /// 清理，不堆积。放数据目录而非缓存目录：Windows 存储感知/清理工具会清理缓存目录，
 /// 背景图会莫名消失（前端自愈回默认背景并提示），用户数据目录才稳。
+/// 文件头解析 + 目录清理 + 文件复制都是磁盘 IO：整体放 spawn_blocking，不占主线程。
 #[tauri::command]
-pub fn set_background_image(app: AppHandle, path: String) -> Result<String, String> {
+pub async fn set_background_image(app: AppHandle, path: String) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || set_background_image_impl(&app, path))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+fn set_background_image_impl(app: &AppHandle, path: String) -> Result<String, String> {
     let ext = std::path::Path::new(&path)
         .extension()
         .and_then(|e| e.to_str())
@@ -2409,21 +2465,38 @@ pub fn get_artist_separators(state: State<'_, AppState>) -> Result<String, Strin
 
 /// 设置多艺人分隔符并立即按新分隔符重拆曲库，返回受影响曲目的变更列表。
 /// raw_artist 尚未回填的曲目（待下次扫描完整解析）不在本次重拆范围内。
+/// 全库 track_artists 重拆（读全部关联行 + 逐行重写）万曲级可秒级，期间 db 锁
+/// 被占、其他 IPC 全部排队——放 spawn_blocking 不占主线程。
 #[tauri::command]
-pub fn set_artist_separators(
-    state: State<'_, AppState>,
+pub async fn set_artist_separators(
+    app: AppHandle,
+    value: String,
+) -> Result<Vec<ArtistSplitChange>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        set_artist_separators_impl(&state, value)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+fn set_artist_separators_impl(
+    state: &AppState,
     value: String,
 ) -> Result<Vec<ArtistSplitChange>, String> {
     let seps = scanner::parse_separators(&value);
     let mut conn = state.db.lock().map_err(|e| e.to_string())?;
+
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+
+    // 分隔符设置与重拆在同一个事务里落库：重拆失败回滚时设置一并回滚，
+    // 不会出现「设置已是新值、存量数据还是旧拆法」的永久不一致
     db::set_setting(
-        &conn,
+        &tx,
         scanner::ARTIST_SEPARATORS_KEY,
         &seps.iter().collect::<String>(),
     )
     .map_err(|e| e.to_string())?;
-
-    let tx = conn.transaction().map_err(|e| e.to_string())?;
 
     // 现有关联：track_id → [(artist_id, name)]（按 ord 排序）
     let mut current: HashMap<i64, Vec<(i64, String)>> = HashMap::new();
@@ -2904,10 +2977,24 @@ pub struct RemovedRestoreResult {
 /// 删除对应记录并对来源触发一次增量扫描——增量管线发现「库里没有、磁盘上有」
 /// 会按标准路径重新入库（元数据/歌词/封面全走既有逻辑）。来源正在扫描时不重复
 /// 触发（进行中的扫描本就会把它捞回来）。
+/// WebDAV 探测是逐条网络请求（单条 10s 超时）：同步 command 跑主线程，勾 30 条
+/// 不可达记录会冻结 UI 最长 300s——整体放 spawn_blocking。
 #[tauri::command]
-pub fn restore_removed_tracks(
+pub async fn restore_removed_tracks(
     app: AppHandle,
-    state: State<'_, AppState>,
+    ids: Vec<i64>,
+) -> Result<RemovedRestoreResult, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        restore_removed_tracks_impl(&app, &state, ids)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+fn restore_removed_tracks_impl(
+    app: &AppHandle,
+    state: &AppState,
     ids: Vec<i64>,
 ) -> Result<RemovedRestoreResult, String> {
     if ids.is_empty() {
@@ -2916,7 +3003,6 @@ pub fn restore_removed_tracks(
             missing: 0,
         });
     }
-    let placeholders = ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     /// 移除记录行：(记录 id, 相对路径, 来源 id, 来源类型, 本地根目录, WebDAV 根地址)
     type RestoreRow = (
@@ -2927,30 +3013,38 @@ pub fn restore_removed_tracks(
         Option<String>,
         Option<String>,
     );
-    // 记录 + 来源信息（来源已删除的按 missing 处理）
+    // 记录 + 来源信息（来源已删除的按 missing 处理）；IN 列表分批
+    // （SQLite 变量上限防御，对齐 remove_tracks 的 500/批）
     let rows: Vec<RestoreRow> = {
-        let mut stmt = conn
-            .prepare(&format!(
-                "SELECT r.id, r.path, r.source_id, s.kind, s.base_path, s.base_url \
-                 FROM removed_tracks r \
-                 LEFT JOIN sources s ON s.id = r.source_id \
-                 WHERE r.id IN ({placeholders})"
-            ))
-            .map_err(|e| e.to_string())?;
-        let rows = stmt
-            .query_map(params_from_iter(ids.iter()), |r| {
-                Ok((
-                    r.get(0)?,
-                    r.get(1)?,
-                    r.get(2)?,
-                    r.get(3)?,
-                    r.get(4)?,
-                    r.get(5)?,
+        let mut out: Vec<RestoreRow> = Vec::new();
+        for chunk in ids.chunks(500) {
+            let placeholders = chunk.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+            let mut stmt = conn
+                .prepare(&format!(
+                    "SELECT r.id, r.path, r.source_id, s.kind, s.base_path, s.base_url \
+                     FROM removed_tracks r \
+                     LEFT JOIN sources s ON s.id = r.source_id \
+                     WHERE r.id IN ({placeholders})"
                 ))
-            })
-            .map_err(|e| e.to_string())?;
-        rows.collect::<Result<Vec<_>, _>>()
-            .map_err(|e| e.to_string())?
+                .map_err(|e| e.to_string())?;
+            let rows = stmt
+                .query_map(params_from_iter(chunk.iter()), |r| {
+                    Ok((
+                        r.get(0)?,
+                        r.get(1)?,
+                        r.get(2)?,
+                        r.get(3)?,
+                        r.get(4)?,
+                        r.get(5)?,
+                    ))
+                })
+                .map_err(|e| e.to_string())?;
+            out.extend(
+                rows.collect::<Result<Vec<_>, _>>()
+                    .map_err(|e| e.to_string())?,
+            );
+        }
+        out
     };
     drop(conn);
 
@@ -3001,16 +3095,19 @@ pub fn restore_removed_tracks(
 
     if !restorable.is_empty() {
         let conn = state.db.lock().map_err(|e| e.to_string())?;
-        let placeholders = restorable.iter().map(|_| "?").collect::<Vec<_>>().join(",");
-        conn.execute(
-            &format!("DELETE FROM removed_tracks WHERE id IN ({placeholders})"),
-            params_from_iter(restorable.iter()),
-        )
-        .map_err(|e| e.to_string())?;
+        // DELETE 同样分批，与上方 SELECT 的 500/批一致
+        for chunk in restorable.chunks(500) {
+            let placeholders = chunk.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+            conn.execute(
+                &format!("DELETE FROM removed_tracks WHERE id IN ({placeholders})"),
+                params_from_iter(chunk.iter()),
+            )
+            .map_err(|e| e.to_string())?;
+        }
         drop(conn);
         // 触发来源增量扫描（正在扫描中的来源跳过：进行中的扫描本就会重新入库）
         for source_id in sources_to_scan {
-            let _ = spawn_scan(&app, &state, source_id, false);
+            let _ = spawn_scan(app, state, source_id, false);
         }
     }
     Ok(RemovedRestoreResult {
@@ -3122,11 +3219,28 @@ pub fn remove_tracks(state: State<'_, AppState>, ids: Vec<i64>) -> Result<usize,
 
 // ================================================================ WebDAV 来源（M3）
 
-/// 添加 WebDAV 来源（NAS），验证连通性后扫描
+/// 添加 WebDAV 来源（NAS），验证连通性后扫描。
+/// 连通性验证是 PROPFIND 网络请求（http_client 总超时 60s）：同步 command 跑主线程，
+/// 用户输入不可达的 NAS 地址点「添加」会冻结 UI 整整一分钟——整体放 spawn_blocking。
 #[tauri::command]
-pub fn webdav_add_source(
+pub async fn webdav_add_source(
     app: AppHandle,
-    state: State<'_, AppState>,
+    url: String,
+    username: String,
+    password: String,
+    name: Option<String>,
+) -> Result<Source, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        webdav_add_source_impl(&app, &state, url, username, password, name)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+fn webdav_add_source_impl(
+    app: &AppHandle,
+    state: &AppState,
     url: String,
     username: String,
     password: String,
@@ -3175,7 +3289,7 @@ pub fn webdav_add_source(
     drop(conn);
     log::info!("已添加 WebDAV 来源 {id}: {}", base.as_str());
 
-    spawn_scan(&app, &state, id, false)?;
+    spawn_scan(app, state, id, false)?;
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     conn.query_row(
         &format!("{SOURCE_SELECT} WHERE s.id = ?1"),

@@ -59,8 +59,8 @@ fn enabled_fields(q: &TrackQuery) -> Vec<String> {
     }
 }
 
-/// SQL LIKE 通配符转义
-fn like_escape(s: &str) -> String {
+/// SQL LIKE 通配符转义（query_folders 等按路径前缀 LIKE 的查询也要用它）
+pub(crate) fn like_escape(s: &str) -> String {
     s.replace('\\', "\\\\")
         .replace('%', "\\%")
         .replace('_', "\\_")

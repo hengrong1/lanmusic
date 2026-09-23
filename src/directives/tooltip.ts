@@ -129,15 +129,7 @@ function bindGlobals() {
 export const tooltip: Directive<HTMLElement, string | null | undefined> = {
   mounted(el, binding: DirectiveBinding<string | null | undefined>) {
     bindGlobals()
-    const onEnter = (e: MouseEvent) => {
-      const b = bindings.get(el)
-      if (!b) return
-      const text = b.text()
-      if (!text) return
-      b.x = e.clientX
-      b.y = e.clientY
-      // 抢占用：进入更内层的元素时取消外层待显示的气泡（如 BaseColorPicker 里悬停色块），
-      // 全局只有一个气泡，谁最后进入谁显示。
+    const arm = () => {
       if (timer != null) window.clearTimeout(timer)
       pendingOn = el
       timer = window.setTimeout(() => {
@@ -148,12 +140,28 @@ export const tooltip: Directive<HTMLElement, string | null | undefined> = {
         if (cur) place(el, cur.side, cur.text(), cur.x, cur.y)
       }, DELAY_MS)
     }
+    const onEnter = (e: MouseEvent) => {
+      const b = bindings.get(el)
+      if (!b) return
+      const text = b.text()
+      if (!text) return
+      b.x = e.clientX
+      b.y = e.clientY
+      // 抢占用：进入更内层的元素时取消外层待显示的气泡（如 BaseColorPicker 里悬停色块），
+      // 全局只有一个气泡，谁最后进入谁显示。
+      arm()
+    }
     const onMove = (e: MouseEvent) => {
       const b = bindings.get(el)
       if (!b) return
       // 延迟期间跟着光标更新落点；已经显示后不再移动（与原生 title 一致，避免抖动）
       b.x = e.clientX
       b.y = e.clientY
+      // 嵌套恢复：从带提示的子元素移回父元素时，子元素的 onLeave 已收起气泡，
+      // 但父元素的 mouseenter 不会重新触发（指针从未离开过父元素）——气泡完全
+      // 空闲时在这里补排定。pending/shown 还属于内层元素时绝不动（mousemove 会
+      // 冒泡到父，谁最内层谁显示）
+      if (pendingOn === null && shownOn === null && timer == null && b.text()) arm()
     }
     const onLeave = () => {
       // 只收起自己名下（待显示或正在显示）的气泡；mouseleave 不会因进入子元素而触发，

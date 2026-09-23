@@ -288,12 +288,10 @@ pub mod webdav {
         if let Some((s, e)) = range {
             req = req.header("Range", format!("bytes={s}-{e}"));
         }
-        let resp = req
-            .send()
-            .map_err(|e| {
-                crate::diagnostics::webdav_done(false, started.elapsed().as_millis() as u64);
-                crate::error::err1(crate::error::codes::DOWNLOAD_FAILED, "error", e)
-            })?;
+        let resp = req.send().map_err(|e| {
+            crate::diagnostics::webdav_done(false, started.elapsed().as_millis() as u64);
+            crate::error::err1(crate::error::codes::DOWNLOAD_FAILED, "error", e)
+        })?;
         if !resp.status().is_success() {
             crate::diagnostics::webdav_done(false, started.elapsed().as_millis() as u64);
             return Err(crate::error::err1(
@@ -331,8 +329,7 @@ pub mod webdav {
         }
         let bytes = resp.bytes().map_err(|e| e.to_string());
         crate::diagnostics::webdav_done(bytes.is_ok(), started.elapsed().as_millis() as u64);
-        bytes
-            .map(|b| Some(crate::lyrics::decode_lyric_bytes(&b)))
+        bytes.map(|b| Some(crate::lyrics::decode_lyric_bytes(&b)))
     }
 
     #[cfg(test)]

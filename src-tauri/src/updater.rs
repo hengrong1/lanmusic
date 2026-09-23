@@ -94,7 +94,9 @@ fn system_proxy() -> Option<reqwest::Proxy> {
     let url = if server.contains('=') {
         let (mut https_one, mut http_one) = (None, None);
         for kv in server.split(';') {
-            let Some((k, v)) = kv.split_once('=') else { continue };
+            let Some((k, v)) = kv.split_once('=') else {
+                continue;
+            };
             match k.trim() {
                 "https" => https_one = Some(v.trim().to_string()),
                 "http" => http_one = Some(v.trim().to_string()),
@@ -108,7 +110,11 @@ fn system_proxy() -> Option<reqwest::Proxy> {
     if url.is_empty() {
         return None;
     }
-    let full = if url.contains("://") { url } else { format!("http://{url}") };
+    let full = if url.contains("://") {
+        url
+    } else {
+        format!("http://{url}")
+    };
     match reqwest::Proxy::all(&full) {
         Ok(p) => {
             log::info!("更新通道使用系统代理：{full}");
@@ -368,7 +374,20 @@ fn sanitize_html(html: &str) -> Option<String> {
             .split(|c: char| !(c.is_ascii_alphanumeric() || c == '-' || c == ':'))
             .next()
             .unwrap_or("");
-        if !is_close && matches!(name, "script" | "style" | "iframe" | "object" | "embed" | "svg" | "math" | "form" | "button") {
+        if !is_close
+            && matches!(
+                name,
+                "script"
+                    | "style"
+                    | "iframe"
+                    | "object"
+                    | "embed"
+                    | "svg"
+                    | "math"
+                    | "form"
+                    | "button"
+            )
+        {
             // 整元素剔除：跳到对应闭合标签之后（找不到闭合则丢弃余下全部）
             let close = format!("</{name}");
             let base = gt + 1;
@@ -382,7 +401,12 @@ fn sanitize_html(html: &str) -> Option<String> {
             }
             continue;
         }
-        if !is_close && matches!(name, "img" | "input" | "video" | "audio" | "source" | "track" | "picture") {
+        if !is_close
+            && matches!(
+                name,
+                "img" | "input" | "video" | "audio" | "source" | "track" | "picture"
+            )
+        {
             i = gt + 1;
             continue;
         }
@@ -441,15 +465,15 @@ fn sanitize_attrs(inner: &str) -> String {
             seg_end = i;
         }
         let seg = &rest[start..seg_end];
-        let url_dropped = matches!(attr_name.as_str(), "href" | "src" | "xlink:href" | "action" | "formaction")
-            && seg
-                .split_once('=')
-                .is_none_or(|(_, v)| {
-                    // 先去引号再 trim：值形如 `" javascript:…"` 时引号内可能有前导空白
-                    let v = v.trim().trim_matches(['"', '\'']).trim();
-                    let v = v.to_ascii_lowercase();
-                    v.starts_with("javascript:") || v.starts_with("vbscript:")
-                });
+        let url_dropped = matches!(
+            attr_name.as_str(),
+            "href" | "src" | "xlink:href" | "action" | "formaction"
+        ) && seg.split_once('=').is_none_or(|(_, v)| {
+            // 先去引号再 trim：值形如 `" javascript:…"` 时引号内可能有前导空白
+            let v = v.trim().trim_matches(['"', '\'']).trim();
+            let v = v.to_ascii_lowercase();
+            v.starts_with("javascript:") || v.starts_with("vbscript:")
+        });
         if !attr_name.starts_with("on") && !url_dropped {
             out.push(' ');
             out.push_str(seg);
@@ -584,7 +608,10 @@ impl ProgressEmit {
             if last.elapsed() >= std::time::Duration::from_millis(200) {
                 let _ = self.app.emit(
                     PROGRESS_EVENT,
-                    DownloadProgress { downloaded, total: self.total },
+                    DownloadProgress {
+                        downloaded,
+                        total: self.total,
+                    },
                 );
                 *last = std::time::Instant::now();
             }
@@ -593,7 +620,11 @@ impl ProgressEmit {
 
     /// 收尾事件：必定发送，总量未知（0）时用实际字节数补齐
     fn emit_final(&self, downloaded: u64) {
-        let total = if self.total == 0 { downloaded } else { self.total };
+        let total = if self.total == 0 {
+            downloaded
+        } else {
+            self.total
+        };
         let _ = self
             .app
             .emit(PROGRESS_EVENT, DownloadProgress { downloaded, total });
@@ -787,7 +818,8 @@ async fn download_single_stream(
         loop {
             match resp.chunk().await {
                 Ok(Some(chunk)) => {
-                    file.write_all(&chunk).map_err(|e| format!("写入失败：{e}"))?;
+                    file.write_all(&chunk)
+                        .map_err(|e| format!("写入失败：{e}"))?;
                     downloaded += chunk.len() as u64;
                     progress.store(downloaded, Ordering::Relaxed);
                     emit.emit(downloaded);
@@ -818,7 +850,9 @@ fn sha256_file(path: &Path) -> Result<String, String> {
     let mut hasher = Sha256::new();
     let mut buf = [0u8; 256 * 1024];
     loop {
-        let n = file.read(&mut buf).map_err(|e| format!("读取下载文件失败：{e}"))?;
+        let n = file
+            .read(&mut buf)
+            .map_err(|e| format!("读取下载文件失败：{e}"))?;
         if n == 0 {
             break;
         }
@@ -853,12 +887,18 @@ pub fn download_installer(
     // 已存在且 SHA-256 与校验资产一致时直接跳过整包下载——
     // 「下载完成后重新检查更新再点下载」不再浪费流量；无校验资产或校验不符则重新下载覆盖。
     'reuse: {
-        let Some(sha_url) = sha256_url else { break 'reuse };
+        let Some(sha_url) = sha256_url else {
+            break 'reuse;
+        };
         if !dest.is_file() {
             break 'reuse;
         }
-        let Ok(existing) = sha256_file(&dest) else { break 'reuse };
-        let Ok(client) = http_client() else { break 'reuse };
+        let Ok(existing) = sha256_file(&dest) else {
+            break 'reuse;
+        };
+        let Ok(client) = http_client() else {
+            break 'reuse;
+        };
         if fetch_sha256(&client, sha_url).as_deref() == Ok(existing.as_str()) {
             log::info!("临时目录已有校验一致的安装包，跳过下载：{}", dest.display());
             return Ok(dest);
@@ -958,7 +998,9 @@ pub fn cleanup_old_installers() {
     let mut removed = 0usize;
     for entry in entries.flatten() {
         let file_name = entry.file_name();
-        let Some(name) = file_name.to_str() else { continue };
+        let Some(name) = file_name.to_str() else {
+            continue;
+        };
         let Some(ver) = name
             .strip_prefix("LanMusic_")
             .and_then(|s| s.strip_suffix("_x64-setup.exe"))
@@ -1024,7 +1066,10 @@ mod tests {
         assert_eq!(parse_sha256_text(&hex).unwrap(), hex);
         // sha256sum 输出：<hex>  <file>（大写也归一化为小写）
         let upper = "A".repeat(64);
-        assert_eq!(parse_sha256_text(&format!("{upper}  LanMusic_0.4.1_x64-setup.exe\n")).unwrap(), hex);
+        assert_eq!(
+            parse_sha256_text(&format!("{upper}  LanMusic_0.4.1_x64-setup.exe\n")).unwrap(),
+            hex
+        );
         // 不像摘要的内容应报错
         assert!(parse_sha256_text("not a hash").is_err());
     }
@@ -1076,11 +1121,7 @@ mod tests {
         );
         // tag 自带的大写 V 前缀同样要去掉
         assert_eq!(
-            version_from_entry(
-                "LanMusic",
-                "https://github.com/x/y/releases/tag/V0.6.0"
-            )
-            .as_deref(),
+            version_from_entry("LanMusic", "https://github.com/x/y/releases/tag/V0.6.0").as_deref(),
             Some("0.6.0")
         );
     }
@@ -1134,7 +1175,10 @@ mod tests {
         assert!(!s.contains(".x") && !s.contains("<style"));
         assert!(!s.contains("iframe") && !s.contains("evil.example"));
         assert!(!s.contains("<img") && !s.contains("onerror"));
-        assert!(s.contains("前") && s.contains("中") && s.contains("后"), "安全内容应保留：{s}");
+        assert!(
+            s.contains("前") && s.contains("中") && s.contains("后"),
+            "安全内容应保留：{s}"
+        );
     }
 
     #[test]
@@ -1152,7 +1196,10 @@ mod tests {
     #[test]
     fn sanitize_handles_unclosed_and_empty() {
         // 无闭合 script：丢弃到结尾
-        assert_eq!(sanitize_html("<p>说明</p><script>bad").unwrap(), "<p>说明</p>");
+        assert_eq!(
+            sanitize_html("<p>说明</p><script>bad").unwrap(),
+            "<p>说明</p>"
+        );
         // 纯空白 → None（前端回退纯文本）
         assert_eq!(sanitize_html("   "), None);
         // 残缺标签按文本透传

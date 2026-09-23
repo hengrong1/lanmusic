@@ -147,8 +147,10 @@ pub fn fetch(app: &AppHandle, track_id: i64) -> Result<Option<String>, String> {
             crate::diagnostics::LYRICS_FAIL.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         }
     }
-    crate::diagnostics::LYRICS_TOTAL_MS
-        .fetch_add(started.elapsed().as_millis() as u64, std::sync::atomic::Ordering::Relaxed);
+    crate::diagnostics::LYRICS_TOTAL_MS.fetch_add(
+        started.elapsed().as_millis() as u64,
+        std::sync::atomic::Ordering::Relaxed,
+    );
     result
 }
 

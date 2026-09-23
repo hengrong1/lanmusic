@@ -37,8 +37,10 @@ pub fn ensure_cover<R: Runtime>(
     if result.is_err() {
         crate::diagnostics::COVER_EXTRACT_FAIL.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
-    crate::diagnostics::COVER_TOTAL_MS
-        .fetch_add(started.elapsed().as_millis() as u64, std::sync::atomic::Ordering::Relaxed);
+    crate::diagnostics::COVER_TOTAL_MS.fetch_add(
+        started.elapsed().as_millis() as u64,
+        std::sync::atomic::Ordering::Relaxed,
+    );
     result
 }
 

@@ -290,10 +290,14 @@ pub fn run() {
                 log::info!("执行封面缓存一次性自愈（covers.selfheal.v1）：清空 covers/ 待惰性重建");
                 let _ = std::fs::remove_dir_all(&covers_dir);
                 std::fs::create_dir_all(&covers_dir)?;
-                let _ = conn.execute(
+                // 标志必须落库：写失败的话下次启动 covers_selfheal 仍为 none，
+                // 会再清一次 covers/ → WebDAV 封面每次启动都重新下载
+                if let Err(e) = conn.execute(
                     "INSERT OR REPLACE INTO app_settings (key, value) VALUES ('covers.selfheal.v1', '1')",
                     [],
-                );
+                ) {
+                    log::error!("封面自愈标志写入失败（下次启动将重复清空 covers/）：{e}");
+                }
             }
 
             app.manage(state::AppState {

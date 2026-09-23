@@ -154,7 +154,11 @@ pub fn init(app: AppHandle, hwnd: HWND) {
             // 兜底：启动广播可能在子类化安装前已发出（窗口默认可见），
             // 后台线程定期在主线程重试添加，成功即停。
             let app = match STATE.get() {
-                Some(s) => s.lock().unwrap().app.clone(),
+                Some(s) => s
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .app
+                    .clone(),
                 None => return,
             };
             std::thread::spawn(move || {
@@ -221,13 +225,13 @@ pub fn set_playing(playing: bool) {
     let Some(m) = STATE.get() else { return };
     // 先原子记录播放状态，并取回 AppHandle 用于派发到主线程
     let app = {
-        let s = m.lock().unwrap();
+        let s = m.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         s.playing.store(playing, Ordering::SeqCst);
         s.app.clone()
     };
     let _ = app.run_on_main_thread(move || unsafe {
         let Some(m) = STATE.get() else { return };
-        let s = m.lock().unwrap();
+        let s = m.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         let icon = if s.playing.load(Ordering::SeqCst) {
             s.icon_pause
         } else {
@@ -242,7 +246,7 @@ unsafe fn add_buttons() -> windows::core::Result<()> {
     let Some(m) = STATE.get() else {
         return Err(windows::core::Error::from_win32());
     };
-    let s = m.lock().unwrap();
+    let s = m.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     s.taskbar.HrInit()?;
     let playing = s.playing.load(Ordering::SeqCst);
     let buttons = [
@@ -304,7 +308,7 @@ unsafe extern "system" fn subclass_proc(
         };
         if let Some(action) = action {
             if let Some(m) = STATE.get() {
-                let s = m.lock().unwrap();
+                let s = m.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
                 let _ = s.app.emit("tray", action);
             }
         }
@@ -339,7 +343,7 @@ unsafe fn immersive_color_set(lparam: LPARAM) -> bool {
 /// 刷新成功后销毁旧图标并替换（失败则保留旧图标继续生效）。
 unsafe fn rebuild_icons_on_theme_change() {
     let Some(m) = STATE.get() else { return };
-    let mut s = m.lock().unwrap();
+    let mut s = m.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     let light_ui = uses_light_ui();
     let playing = s.playing.load(Ordering::SeqCst);
     let icons = [
@@ -497,7 +501,7 @@ fn in_tri(px: f32, py: f32, a: (f32, f32), b: (f32, f32), c: (f32, f32)) -> bool
 pub fn set_album(album_id: Option<i64>) {
     let Some(m) = STATE.get() else { return };
     let (app, gen) = {
-        let mut s = m.lock().unwrap();
+        let mut s = m.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         if s.album == album_id {
             return; // 同专辑重复推送（如队列内连播同一专辑），无需重复加载
         }
@@ -511,7 +515,7 @@ pub fn set_album(album_id: Option<i64>) {
     // 先关闭 iconic 预览并作废旧位图，避免缩略图继续显示上一首封面
     let _ = app.run_on_main_thread(move || unsafe {
         if let Some(m) = STATE.get() {
-            let s = m.lock().unwrap();
+            let s = m.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
             set_iconic_attrs(s.hwnd, false);
             let _ = DwmInvalidateIconicBitmaps(s.hwnd);
         }
@@ -528,7 +532,7 @@ pub fn set_album(album_id: Option<i64>) {
         let _ = done.run_on_main_thread(move || unsafe {
             let Some(m) = STATE.get() else { return };
             let (hwnd, thumb_size) = {
-                let mut s = m.lock().unwrap();
+                let mut s = m.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
                 if s.cover_gen != gen {
                     return; // 加载期间又切了歌，丢弃过期结果
                 }
@@ -567,7 +571,9 @@ unsafe fn on_iconic_thumbnail_request(hwnd: HWND, lparam: LPARAM) {
     }
     if let Some(m) = STATE.get() {
         // 记住尺寸：封面切换完成后可主动补刷一帧，不必等下次悬停
-        m.lock().unwrap().thumb_size = Some((max_w, max_h));
+        m.lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .thumb_size = Some((max_w, max_h));
     }
     submit_iconic_bitmap(hwnd, max_w, max_h, false);
 }
@@ -593,7 +599,12 @@ unsafe fn on_iconic_live_preview_request(hwnd: HWND) {
 /// 封面未就绪时直接返回（DWM 会显示自己的默认内容）。
 unsafe fn submit_iconic_bitmap(hwnd: HWND, w: u32, h: u32, live_preview: bool) {
     // 先复制封面再渲染，避免渲染期间长时间占用 STATE 锁（阻塞其它线程的按钮同步）
-    let Some(src) = STATE.get().and_then(|m| m.lock().unwrap().cover.clone()) else {
+    let Some(src) = STATE.get().and_then(|m| {
+        m.lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .cover
+            .clone()
+    }) else {
         return;
     };
     let (w, h) = clamp_preview_size(w, h);

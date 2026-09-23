@@ -67,6 +67,11 @@ export function startSleepTimerEndOfTrack() {
     /* ignore */
   }
   const player = usePlayerStore()
+  // 当前曲已播完停在结尾时 ended 不会再派发，监听会永久挂起——直接按到点处理
+  if (player.audio.ended) {
+    fire()
+    return
+  }
   onEnded = () => fire()
   player.audio.addEventListener('ended', onEnded)
   toast(tr('toast.sleepTimerEndOfTrack'), 'info', 'sleep-timer')

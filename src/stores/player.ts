@@ -261,6 +261,23 @@ export const usePlayerStore = defineStore('player', () => {
   // 顺着队列一路跳会持续发请求，反而把封锁窗口不断续期，越跳越恢复不了。
   const MAX_AUTO_SKIP = 5
   let errorStreak = 0
+  // 失败自动跳歌的延时器：用户在窗口期内手动选歌要作废它，否则会覆盖用户的选择
+  let autoSkipTimer: ReturnType<typeof setTimeout> | null = null
+  // requestPlay 的 canplay 重试监听：换源/暂停时摘除，避免残留的 once 监听
+  // 在用户已经暂停后把播放悄悄拉起来
+  let pendingCanplayRetry: (() => void) | null = null
+  function cancelAutoSkip() {
+    if (autoSkipTimer !== null) {
+      clearTimeout(autoSkipTimer)
+      autoSkipTimer = null
+    }
+  }
+  function cancelCanplayRetry() {
+    if (pendingCanplayRetry) {
+      audio.removeEventListener('canplay', pendingCanplayRetry)
+      pendingCanplayRetry = null
+    }
+  }
 
   // ---------- 听歌统计：实际收听心跳 ----------
   // 只计「真实在听」的秒数：暂停/缓冲不派发 timeupdate 天然不计，快进跳过的段落不在
@@ -364,9 +381,16 @@ export const usePlayerStore = defineStore('player', () => {
     }
   }
 
+  // lastPos 落盘节流：timeupdate 约 4Hz，localStorage 是同步 IO，逐次写会在慢盘上
+  // 造成主线程毛刺。2s 一次足够（恢复进度误差 ≤2s，且暂停/换曲时都有强制落盘点）
+  let lastPosSavedAt = 0
   audio.addEventListener('timeupdate', () => {
     position.value = audio.currentTime
-    if (audio.currentTime > 0) localStorage.setItem(LS.lastPos, String(audio.currentTime))
+    const now = performance.now()
+    if (audio.currentTime > 0 && now - lastPosSavedAt >= 2000) {
+      lastPosSavedAt = now
+      localStorage.setItem(LS.lastPos, String(audio.currentTime))
+    }
     // 收听心跳：timeupdate 仅在播放推进时派发（暂停/缓冲不触发，天然不计）；
     // delta 用墙钟差并钳制 5s，防后台节流/睡眠唤醒后一次补算出巨大时长
     if (listenTrackId && current.value?.id === listenTrackId) {
@@ -425,7 +449,10 @@ export const usePlayerStore = defineStore('player', () => {
     // （远端限流期间那样做会把封锁窗口不断续期，越跳越恢复不了）
     errorStreak++
     if (errorStreak < MAX_AUTO_SKIP) {
-      setTimeout(() => next(true), 400)
+      autoSkipTimer = setTimeout(() => {
+        autoSkipTimer = null
+        next(true)
+      }, 400)
     } else {
       toast(tr('toast.playFailedTooMany', { count: errorStreak }), 'error')
       errorStreak = 0
@@ -451,13 +478,12 @@ export const usePlayerStore = defineStore('player', () => {
         if (audio.readyState >= 2) {
           void audio.play().catch(() => (buffering.value = false))
         } else {
-          audio.addEventListener(
-            'canplay',
-            () => {
-              void audio.play().catch(() => (buffering.value = false))
-            },
-            { once: true },
-          )
+          const retry = () => {
+            pendingCanplayRetry = null
+            void audio.play().catch(() => (buffering.value = false))
+          }
+          pendingCanplayRetry = retry
+          audio.addEventListener('canplay', retry, { once: true })
         }
       })
     }
@@ -468,6 +494,9 @@ export const usePlayerStore = defineStore('player', () => {
     const doLoad = () => {
       // 换曲：结算上一首未落库的收听尾巴，并切换心跳归属
       flushListen(true)
+      // 作废还在等待的失败自动跳歌（用户手动选歌优先）与 canplay 重试监听
+      cancelAutoSkip()
+      cancelCanplayRetry()
       listenTrackId = t.id
       listenSeconds = 0
       lastListenTick = performance.now()
@@ -477,7 +506,9 @@ export const usePlayerStore = defineStore('player', () => {
       // 切换新歌立即进入加载态，直到 canplay/playing 事件清除
       buffering.value = true
       localStorage.setItem(LS.lastPos, '0')
-      errorStreak = 0
+      // 注意：这里不能清 errorStreak——自动跳歌链路也走 doLoad，
+      // 清零会让 MAX_AUTO_SKIP 熔断永不触发（成功出声在 playing 事件清、
+      // 用户手动选择在 playAt/playList 清）
       void loadLyrics(t)
       if (autoplay) {
         audio.volume = 0 // 淡入起点
@@ -513,8 +544,11 @@ export const usePlayerStore = defineStore('player', () => {
     playAt(idx)
   }
 
-  function playAt(i: number) {
+  function playAt(i: number, fromAutoSkip = false) {
     if (i < 0 || i >= queue.value.length) return
+    // 用户手动选歌/切换=重新开始计数；fromAutoSkip（失败自动跳歌）不清零，
+    // 否则连续失败熔断（MAX_AUTO_SKIP）永远不会触发
+    if (!fromAutoSkip) errorStreak = 0
     index.value = i
     load(queue.value[i])
     snapshotQueue()
@@ -528,8 +562,14 @@ export const usePlayerStore = defineStore('player', () => {
       requestPlay()
       fadeIn()
     } else {
-      // 暂停前先淡出，避免音量突变
-      fadeOut(() => audio.pause())
+      // 暂停前先淡出，避免音量突变。同时：摘除挂起的 canplay 重试（用户要暂停，
+      // 不能让残留监听在缓冲完成后把播放悄悄拉起）、强制落盘一次进度
+      // （timeupdate 的 lastPos 写入有节流，暂停点要存准确值）
+      fadeOut(() => {
+        cancelCanplayRetry()
+        localStorage.setItem(LS.lastPos, String(audio.currentTime))
+        audio.pause()
+      })
     }
   }
 
@@ -539,13 +579,13 @@ export const usePlayerStore = defineStore('player', () => {
     if (mode.value === 'shuffle' && n > 1) {
       let r = index.value
       while (r === index.value) r = Math.floor(Math.random() * n)
-      playAt(r)
+      playAt(r, fromError)
       return
     }
     const i = index.value + 1
     if (i >= n) {
       if (mode.value === 'loop') {
-        playAt(0)
+        playAt(0, fromError)
       } else if (!fromError) {
         fadeOut(() => {
           audio.pause()
@@ -553,7 +593,7 @@ export const usePlayerStore = defineStore('player', () => {
         })
       }
     } else {
-      playAt(i)
+      playAt(i, fromError)
     }
   }
 

@@ -105,6 +105,20 @@ pub fn init(app: AppHandle) {
         };
         for id in due {
             let state = app.state::<AppState>();
+            // 来源可能刚被删除（remove_source 与本线程的检查存在窗口）：
+            // 先确认来源仍在再占位，避免对已删来源启动扫描（tracks INSERT 撞外键）
+            let exists = state
+                .db
+                .lock()
+                .ok()
+                .and_then(|conn| {
+                    conn.query_row("SELECT 1 FROM sources WHERE id = ?1", [id], |_| Ok(()))
+                        .ok()
+                })
+                .is_some();
+            if !exists {
+                continue;
+            }
             let mut scanning = match state.scanning.lock() {
                 Ok(s) => s,
                 Err(_) => continue,

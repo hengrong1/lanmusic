@@ -33,6 +33,7 @@ import { ensureGraph, eqEnabled, normEnabled } from '@/composables/useAudioGraph
 import { useMediaControls } from '@/composables/useMediaControls'
 import { useNowPlaying } from '@/composables/useNowPlaying'
 import { useDesktopLyrics } from '@/composables/useDesktopLyrics'
+import { isFocusModeEnabled } from '@/composables/useFocusMode'
 import { useTrayMenu } from '@/composables/useTrayMenu'
 import { useMvPlayer } from '@/composables/useMvPlayer'
 import { useThemeColor } from '@/composables/useThemeColor'
@@ -120,7 +121,7 @@ let focusTimer: ReturnType<typeof setTimeout> | undefined
 const skinOpen = useSkinOpen()
 /** 专注模式开关与进入延时（设置 → 播放；默认开启、5 秒）。
  * computed 依赖播放/面板状态，设置变更在下一次状态变化后生效 */
-const focusEnabled = () => localStorage.getItem('lm.focusMode') !== '0'
+const focusEnabled = isFocusModeEnabled
 const focusDelayMs = () => {
   const s = Number(localStorage.getItem('lm.focusDelay'))
   return Number.isFinite(s) && s > 0 ? s * 1000 : 5000
