@@ -273,6 +273,7 @@ export function setEqBandGain(index: number, db: number) {
   const s = loadEq()
   if (index < 0 || index >= s.gains.length) return
   s.gains[index] = clampGain(db)
+  s.preset = 'custom' // 手动微调即视为自定义，脱离原预设（前端据此自动选中「自定义」）
   s.enabled = true
   eqEnabled.value = true
   applyEqState(s)

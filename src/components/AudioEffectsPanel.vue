@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { BaseSwitch, BaseSelect, BaseButton } from '@/components/ui'
+import { BaseSwitch, BaseButton } from '@/components/ui'
 import {
   eqEnabled,
   normEnabled,
@@ -34,9 +34,10 @@ const eqState = getEqState()
 const preset = ref(eqState.preset)
 const gains = ref<number[]>([...eqState.gains])
 
-const presetOptions = computed(() =>
-  Object.keys(EQ_PRESETS).map((k) => ({ value: k, label: t(`effects.preset.${k}`) })),
-)
+const presetOptions = computed(() => [
+  ...Object.keys(EQ_PRESETS).map((k) => ({ value: k, label: t(`effects.preset.${k}`) })),
+  { value: 'custom', label: t('effects.preset.custom') },
+])
 
 function fmtFreq(f: number): string {
   return f >= 1000 ? `${f / 1000}k` : `${f}`
@@ -48,6 +49,11 @@ function onEqToggle(v: boolean) {
 }
 function onPreset(v: string | number) {
   const key = String(v)
+  // 「自定义」是手动微调后的状态标记，不是可应用的预设：点击不改增益，仅保持当前状态
+  if (key === 'custom') {
+    preset.value = 'custom'
+    return
+  }
   preset.value = key
   applyEqPreset(key)
   gains.value = [...(EQ_PRESETS[key] ?? EQ_PRESETS.flat)]
@@ -55,6 +61,13 @@ function onPreset(v: string | number) {
 function onBand(i: number, db: number) {
   gains.value[i] = db
   setEqBandGain(i, db)
+  // 手动微调后脱离原预设，标记为「自定义」
+  preset.value = 'custom'
+}
+/** ±按钮微调某频段增益（dB），与滑块共用 onBand（自动标为自定义） */
+function bumpBand(i: number, delta: number) {
+  const next = Math.max(-12, Math.min(12, (gains.value[i] ?? 0) + delta))
+  onBand(i, next)
 }
 
 // ---------- 音量归一化 ----------
@@ -137,15 +150,30 @@ function onNpToggle(v: boolean) {
         class="rounded-2xl shadow-sm hover-accent-border border border-zinc-200 bg-white p-4 text-sm dark:border-zinc-800 dark:bg-zinc-900"
         :class="eqOn ? '' : 'opacity-60'"
       >
-        <div class="mb-3 flex items-center gap-3">
-          <span class="text-xs text-zinc-500">{{ t('effects.preset.label') }}</span>
-          <div class="w-40">
-            <BaseSelect :model-value="preset" :options="presetOptions" @update:model-value="onPreset" />
-          </div>
+        <div class="mb-3 flex flex-wrap gap-1.5">
+          <button
+            v-for="opt in presetOptions"
+            :key="opt.value"
+            type="button"
+            class="cursor-pointer rounded-lg border px-2.5 py-1 text-xs transition-colors"
+            :class="preset === opt.value
+              ? 'border-violet-500 bg-violet-50 text-violet-600 dark:bg-violet-500/10 dark:text-violet-400'
+              : 'hover-accent-border border-zinc-200 bg-zinc-50 text-zinc-600 hover:text-violet-600 dark:border-zinc-700 dark:bg-zinc-800/60 dark:text-zinc-300 dark:hover:text-violet-300'"
+            :disabled="!eqOn"
+            @click="onPreset(opt.value)"
+          >
+            {{ opt.label }}
+          </button>
         </div>
         <div class="flex items-end justify-between gap-1 overflow-x-auto pb-1">
           <div v-for="(f, i) in EQ_FREQS" :key="f" class="flex w-12 shrink-0 flex-col items-center gap-1.5">
             <span class="tabular-nums text-[10px] text-zinc-400">{{ gains[i] > 0 ? '+' : '' }}{{ gains[i] }}</span>
+            <button
+              type="button"
+              class="flex h-5 w-5 cursor-pointer items-center justify-center rounded-md border border-zinc-200 bg-zinc-50 text-sm leading-none text-zinc-500 transition-colors hover-accent-border hover:bg-violet-100 hover:text-violet-700 disabled:cursor-not-allowed disabled:opacity-40 dark:border-zinc-700 dark:bg-zinc-800/60 dark:text-zinc-400 dark:hover:bg-violet-500/20 dark:hover:text-violet-300"
+              :disabled="!eqOn"
+              @click="bumpBand(i, -1)"
+            >−</button>
             <input
               type="range"
               min="-12"
@@ -157,6 +185,12 @@ function onNpToggle(v: boolean) {
               :style="{ '--v': ((gains[i] + 12) / 24) * 100 + '%' }"
               @input="(e) => onBand(i, Number((e.target as HTMLInputElement).value))"
             />
+            <button
+              type="button"
+              class="flex h-5 w-5 cursor-pointer items-center justify-center rounded-md border border-zinc-200 bg-zinc-50 text-sm leading-none text-zinc-500 transition-colors hover-accent-border hover:bg-violet-100 hover:text-violet-700 disabled:cursor-not-allowed disabled:opacity-40 dark:border-zinc-700 dark:bg-zinc-800/60 dark:text-zinc-400 dark:hover:bg-violet-500/20 dark:hover:text-violet-300"
+              :disabled="!eqOn"
+              @click="bumpBand(i, 1)"
+            >+</button>
             <span class="text-[10px] text-zinc-500">{{ fmtFreq(f) }}</span>
           </div>
         </div>
@@ -264,14 +298,15 @@ function onNpToggle(v: boolean) {
   writing-mode: vertical-lr;
   direction: rtl;
   width: 6px;
-  height: 96px;
+  height: 120px;
   border-radius: 9999px;
+  /* 进度（已增益部分）跟随主题强调色；未增益部分为中性 zinc */
   background: linear-gradient(
     to top,
-    rgb(139 92 246) 0%,
-    rgb(139 92 246) var(--v, 50%),
-    rgb(212 212 216) var(--v, 50%),
-    rgb(212 212 216) 100%
+    var(--color-violet-500) 0%,
+    var(--color-violet-500) var(--v, 50%),
+    var(--color-zinc-300) var(--v, 50%),
+    var(--color-zinc-300) 100%
   );
   outline: none;
   cursor: pointer;
@@ -287,7 +322,7 @@ function onNpToggle(v: boolean) {
   height: 14px;
   border-radius: 9999px;
   background: #fff;
-  border: 2px solid rgb(139 92 246);
+  border: 2px solid var(--color-violet-500);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
 }
 .eq-slider::-moz-range-thumb {
@@ -295,15 +330,22 @@ function onNpToggle(v: boolean) {
   height: 14px;
   border-radius: 9999px;
   background: #fff;
-  border: 2px solid rgb(139 92 246);
+  border: 2px solid var(--color-violet-500);
 }
 .dark .eq-slider {
+  /* 深色下强调色用 violet-400（更亮，匹配暗背景），未增益部分为 zinc-700 */
   background: linear-gradient(
     to top,
-    rgb(167 139 250) 0%,
-    rgb(167 139 250) var(--v, 50%),
-    rgb(63 63 70) var(--v, 50%),
-    rgb(63 63 70) 100%
+    var(--color-violet-400) 0%,
+    var(--color-violet-400) var(--v, 50%),
+    var(--color-zinc-700) var(--v, 50%),
+    var(--color-zinc-700) 100%
   );
+}
+.dark .eq-slider::-webkit-slider-thumb {
+  border-color: var(--color-violet-400);
+}
+.dark .eq-slider::-moz-range-thumb {
+  border-color: var(--color-violet-400);
 }
 </style>

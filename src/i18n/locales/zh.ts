@@ -30,7 +30,7 @@ export default {
     preset: {
       label: '预设',
       flat: '平直', rock: '摇滚', pop: '流行', classical: '古典', jazz: '爵士',
-      bass: '重低音', vocal: '人声', treble: '高音',
+      bass: '重低音', vocal: '人声', treble: '高音', custom: '自定义',
     },
     normalize: '音量归一化',
     normalizeEnable: '启用',

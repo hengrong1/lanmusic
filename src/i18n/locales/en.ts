@@ -30,7 +30,7 @@ export default {
     preset: {
       label: 'Preset',
       flat: 'Flat', rock: 'Rock', pop: 'Pop', classical: 'Classical', jazz: 'Jazz',
-      bass: 'Bass Boost', vocal: 'Vocal', treble: 'Treble',
+      bass: 'Bass Boost', vocal: 'Vocal', treble: 'Treble', custom: 'Custom',
     },
     normalize: 'Volume Normalization',
     normalizeEnable: 'Enable',
