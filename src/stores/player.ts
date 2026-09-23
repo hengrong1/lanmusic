@@ -20,6 +20,7 @@ import { looksBinaryish, looksLikeHexQrc, qrcToLrcLines } from '@/utils/qrc'
 import { insertNextAfter } from '@/utils/queue'
 import type { QrcLine } from '@/types'
 import { applyPowerGuard } from '@/composables/usePowerGuard'
+import { consumeSleepStop } from '@/composables/useSleepTimer'
 import { setNormalizeGain, normEnabled } from '@/composables/useAudioGraph'
 import { errorText } from '@/i18n/error'
 
@@ -300,7 +301,10 @@ export const usePlayerStore = defineStore('player', () => {
   /** 平滑淡入：从当前音量升到用户设定音量 */
   function fadeIn() {
     cancelFade()
-    if (!fadeEnabled()) {
+    // 后台窗口（document.hidden）：timer 被强节流（挂机数分钟后每分钟才 tick 一次），
+    // 800ms 的淡入会拖到几十秒，期间音量贴 0 ≈ 无声——用户会以为「播放没反应」。
+    // 后台听不见过渡，直接到位（前台行为不变）。
+    if (!fadeEnabled() || document.hidden) {
       audio.volume = volume.value
       return
     }
@@ -325,7 +329,10 @@ export const usePlayerStore = defineStore('player', () => {
   }
   /** 平滑淡出：降到 0 后执行回调（暂停/换源） */
   function fadeOut(cb?: () => void) {
-    if (!fadeEnabled() || audio.paused) {
+    // 后台窗口直达（原因同 fadeIn）：睡眠定时器挂机触发时尤其重要，
+    // 别让 600ms 的动画在强节流下把暂停拖到几十秒之后
+    if (!fadeEnabled() || audio.paused || document.hidden) {
+      audio.volume = 0
       cb?.()
       return
     }
@@ -398,6 +405,11 @@ export const usePlayerStore = defineStore('player', () => {
     // 手动切歌的淡出正在进行（fadeOut 的 600ms 窗口内旧曲自然播完）：
     // 以用户的手动选择为准，自动推进作废，否则会取消掉用户刚点的歌
     if (fadeRaf !== 0) return
+    // 睡眠定时器「播完当前曲」：到此为止，不自动切下一首
+    if (consumeSleepStop()) {
+      audio.pause()
+      return
+    }
     if (mode.value === 'one') {
       audio.currentTime = 0
       void audio.play().catch(() => {})

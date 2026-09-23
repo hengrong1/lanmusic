@@ -358,7 +358,16 @@ fn apply_playback(guard: &mut NpState, playing: bool, position_ms: u64) -> Resul
                 return r.inspect_err(|e| log::warn!("推送播放状态到系统媒体控件失败: {e}"));
             }
         } else if position_ms == old_pos {
-            return Ok(()); // 暂停中的心跳：位置没动，无事可做
+            // 暂停中的对账（前端暂停期每 ≥30s 重发一次）：位置没动，但状态要重申——
+            // 后台节流下「暂停瞬间的那次推送」存在丢失窗口，系统侧可能停在 Playing。
+            // SetPlaybackStatus 幂等且不碰时间轴，重发对 Win11 塌缩怪癖安全。
+            if let Some(r) = status_only(guard, false) {
+                return r
+                    .inspect(|_| log::info!("SMTC 状态对账重发: Paused"))
+                    .inspect_err(|e| log::warn!("推送播放状态到系统媒体控件失败: {e}"));
+            }
+            // 旁路不可用（非 Windows）：无事可做
+            return Ok(());
         }
         // 暂停中的 seek（位置变化）或旁路不可用（非 Windows）→ 走下方完整推送
     }

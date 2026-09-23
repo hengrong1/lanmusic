@@ -79,9 +79,23 @@ function fire() {
     cancelSleepTimer()
     return
   }
-  if (!player.audio.paused) player.toggle() // 播放中 → 淡出 + 暂停
+  // 「播完当前曲」模式的暂停由 player 的 ended 处理器拦截（consumeSleepStop，
+  // 防止自动切下一首）；走到这里的若已是暂停/结束态就不再 toggle
+  if (mode.value !== 'endOfTrack' && !player.audio.paused) player.toggle()
   toast(tr('toast.sleepTimerFired'), 'info', 'sleep-timer')
   cancelSleepTimer()
+}
+
+/**
+ * player 的 ended 处理器最先调用：「播完当前曲」模式到此为止（消费掉标志并
+ * 返回 true），player 据此跳过自动切下一首。返回 false = 非睡眠停止，正常推进。
+ */
+export function consumeSleepStop(): boolean {
+  if (mode.value !== 'endOfTrack') return false
+  clearTimers()
+  remaining.value = 0
+  mode.value = null
+  return true
 }
 
 export function useSleepTimer() {
