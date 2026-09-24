@@ -30,8 +30,8 @@ import { useNowPlayingStyle, useNpAccentMode } from '@/composables/useNowPlaying
 import { CloseIcon as X } from '@solar-icons/vue/linear/close'
 import { ensureAnalyser, readSpectrum } from '@/composables/useSpectrum'
 import { activeLineIndex } from '@/utils/lrc'
-import type { QrcWord } from '@/types'
 import CoverImg from '@/components/CoverImg.vue'
+import KaraokeWords from '@/components/KaraokeWords.vue'
 import MarqueeText from '@/components/MarqueeText.vue'
 import { useI18n } from 'vue-i18n'
 
@@ -227,27 +227,45 @@ function colorToRgb(g: CanvasRenderingContext2D, color: string): [number, number
   return [139, 92, 246]
 }
 
-function loopTree() {
-  try {
-    drawTree()
-  } catch {
-    /* 单帧绘制失败不中断循环 */
+// ---- 绘制循环管理：播放与暂停衰减期统一 60fps rAF，能量衰减到静默后完全停帧省电。
+//      衰减期（暂停后残留柱头缩回）不能降频：低频定时器抽帧会像幻灯片一样一顿一顿；
+//      60fps 下 analyser 平滑衰减约 0.25s 收尾，视觉与播放时完全一致，归零后即停帧 ----
+function treeHasEnergy(): boolean {
+  for (let i = 0; i < treeFreq.length; i++) {
+    if (treeFreq[i] > 4) return true
   }
-  treeRaf = requestAnimationFrame(loopTree)
+  return false
+}
+
+function stopTreeLoops() {
+  cancelAnimationFrame(treeRaf)
+}
+
+function syncTreeLoop(open: boolean, on: boolean, style: string, el: HTMLCanvasElement | null, playing: boolean) {
+  stopTreeLoops()
+  if (!open || !on || style !== 'tree' || !el) return
+  ensureAnalyser()
+  const loop = () => {
+    try {
+      drawTree()
+    } catch {
+      /* 单帧绘制失败不中断循环 */
+    }
+    if (!playing && !treeHasEnergy()) {
+      stopTreeLoops() // 画布已空：取消未触发的下一帧并退出，循环终止
+      return
+    }
+    treeRaf = requestAnimationFrame(loop)
+  }
+  treeRaf = requestAnimationFrame(loop)
 }
 
 watch(
-  [() => props.nowPlayingOpen, () => skin.value.on, () => skin.value.style, treeCanvas],
-  ([open, on, style, el]) => {
-    cancelAnimationFrame(treeRaf)
-    if (open && on && style === 'tree' && el) {
-      ensureAnalyser()
-      treeRaf = requestAnimationFrame(loopTree)
-    }
-  },
+  [() => props.nowPlayingOpen, () => skin.value.on, () => skin.value.style, treeCanvas, () => player.playing],
+  ([open, on, style, el, playing]) => syncTreeLoop(open, on, style, el, playing),
   { immediate: true },
 )
-onUnmounted(() => cancelAnimationFrame(treeRaf))
+onUnmounted(() => stopTreeLoops())
 
 // 播放页展开时：进度/音量条填充色与播放按钮跟随封面主色
 const accentVarStyle = computed(() => {
@@ -384,35 +402,12 @@ const activeWords = computed(() => {
   const line = wl[player.activeLyricIndex]
   return line && line.words.length > 1 ? line.words : null
 })
-/** 逐字行歌词轴位置（毫秒，含偏移）：rAF 直读 audio，比 timeupdate 事件平滑 */
-const karaokeMs = ref(0)
-let karaokeRaf = 0
-watch(activeWords, (w) => {
-  cancelAnimationFrame(karaokeRaf)
-  if (!w) return
-  const loop = () => {
-    karaokeMs.value = (player.audio.currentTime - player.lyricOffset) * 1000
-    karaokeRaf = requestAnimationFrame(loop)
-  }
-  karaokeRaf = requestAnimationFrame(loop)
-})
-onUnmounted(() => cancelAnimationFrame(karaokeRaf))
+/** 逐字行歌词填充由 KaraokeWords 子组件自驱动 rAF（进度时钟不再拖着整个播放条每帧重渲染） */
+
 /** 逐字填充的已唱色：播放页展开跟随封面主色，未展开跟随设置里的主题色（见 themeAmbientPalette） */
 const lyricSung = computed(() => accent.value ?? themeAmbientPalette().accent)
-/** 单词样式：按播放进度双色渐变（已唱强调色 → 未唱半透明），与播放页歌词面板同款 */
-function barWordStyle(w: QrcWord) {
-  const dur = Math.max(1, w.endTime - w.startTime)
-  const p = Math.min(1, Math.max(0, (karaokeMs.value - w.startTime) / dur))
-  const unsung = `color-mix(in srgb, ${lyricSung.value} 38%, transparent)`
-  if (p >= 1) return { color: lyricSung.value }
-  if (p <= 0) return { color: unsung }
-  return {
-    background: `linear-gradient(90deg, ${lyricSung.value} ${p * 100}%, ${unsung} ${p * 100}%)`,
-    WebkitBackgroundClip: 'text',
-    backgroundClip: 'text',
-    color: 'transparent',
-  }
-}
+/** 未唱色：已唱色压到 38% 透明（color-mix 随 sung 变化自动跟随） */
+const lyricUnsung = computed(() => `color-mix(in srgb, ${lyricSung.value} 38%, transparent)`)
 
 const pct = computed(() => (player.duration > 0 ? (player.position / player.duration) * 100 : 0))
 const volPct = computed(() => (player.muted ? 0 : player.volume * 100))
@@ -651,7 +646,7 @@ const theme = computed(() =>
           :style="!activeWords && accent && player.lyricsLines?.length ? { color: accent } : undefined"
         >
           <span v-if="activeWords" class="block truncate whitespace-pre">
-            <span v-for="(w, wi) in activeWords" :key="wi" :style="barWordStyle(w)">{{ w.word }}</span>
+            <KaraokeWords :words="activeWords" :sung="lyricSung" :unsung="lyricUnsung" />
           </span>
           <MarqueeText v-else :text="currentLyricLine" />
         </div>

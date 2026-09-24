@@ -4,6 +4,7 @@ import { usePlayerStore } from '@/stores/player'
 import { useAmbient } from '@/composables/useAmbient'
 import { useSkin, useSpectrumMode } from '@/composables/useSkin'
 import { ensureAnalyser, readSpectrum } from '@/composables/useSpectrum'
+import { coverUrl } from '@/api/scheme'
 import CoverImg from '@/components/CoverImg.vue'
 
 const props = withDefaults(defineProps<{ maxSize?: number }>(), { maxSize: 340 })
@@ -20,6 +21,11 @@ const circular = computed(() => spectrumMode.value === 'particles')
 const coverStyle = computed(() =>
   palette.value ? { boxShadow: `0 25px 80px -20px ${palette.value.glow}` } : undefined,
 )
+
+// ---- 氛围层：封面背后放大 + 模糊的同图光晕，垫出空间感（Apple Music 风）----
+// 低透明度 + 大模糊下，切歌时旧图消失/新图淡入的跳变几乎不可感知，单层淡入即可
+const ambientLoaded = ref(false)
+watch(() => player.current?.albumId, () => (ambientLoaded.value = false))
 
 // ---- 封面尺寸：恒为正方形，边长 = min(容器宽, 容器高, maxSize)，ResizeObserver 实测 ----
 // 不用 aspect-square + w-full/max-h 组合：宽高比失衡的容器（如上下布局）会把它压成矩形，
@@ -41,6 +47,9 @@ const coverSide = computed(() => {
   const heightCap = spectrumMode.value === 'particles' ? h * 0.75 : h
   return Math.max(0, Math.min(w, heightCap, props.maxSize))
 })
+
+/** 氛围层边长：封面 × 1.4，模糊后自然向外晕开 */
+const ambientSide = computed(() => Math.round(coverSide.value * 1.4))
 
 // 圆形粒子频谱：粒子沿封面外圈分布，幅度驱动半径与亮度；画布锚定封面容器，随布局移动
 const particleCanvas = ref<HTMLCanvasElement | null>(null)
@@ -130,31 +139,67 @@ function drawParticles() {
   g.globalAlpha = 1
 }
 
-function loopParticles() {
-  try {
-    drawParticles()
-  } catch {
-    /* 单帧绘制失败不中断循环 */
+// ---- 绘制循环管理：播放与暂停衰减期统一 60fps rAF，能量衰减到静默后完全停帧省电。
+//      衰减期（暂停后频谱余韵缩回）不能降频：低频定时器抽帧会像幻灯片一样一顿一顿；
+//      60fps 下 analyser 平滑衰减约 0.25s 收尾，视觉与播放时完全一致，归零后即停帧 ----
+function hasEnergy(): boolean {
+  for (let i = 0; i < particleFreq.length; i++) {
+    if (particleFreq[i] > 4) return true
   }
-  particleRaf = requestAnimationFrame(loopParticles)
+  return false
+}
+
+function stopLoops() {
+  cancelAnimationFrame(particleRaf)
+}
+
+function syncLoop(on: boolean, style: string, el: HTMLCanvasElement | null, playing: boolean) {
+  stopLoops()
+  if (!on || style !== 'particles' || !el) return
+  ensureAnalyser()
+  const loop = () => {
+    try {
+      drawParticles()
+    } catch {
+      /* 单帧绘制失败不中断循环 */
+    }
+    if (!playing && !hasEnergy()) {
+      stopLoops() // 画布已空：取消未触发的下一帧并退出，循环终止
+      return
+    }
+    particleRaf = requestAnimationFrame(loop)
+  }
+  particleRaf = requestAnimationFrame(loop)
 }
 
 watch(
-  [() => skin.value.on, () => skin.value.style, particleCanvas],
-  ([on, style, el]) => {
-    cancelAnimationFrame(particleRaf)
-    if (on && style === 'particles' && el) {
-      ensureAnalyser()
-      particleRaf = requestAnimationFrame(loopParticles)
-    }
-  },
+  [() => skin.value.on, () => skin.value.style, particleCanvas, () => player.playing],
+  ([on, style, el, playing]) => syncLoop(on, style, el, playing),
   { immediate: true },
 )
-onBeforeUnmount(() => cancelAnimationFrame(particleRaf))
+onBeforeUnmount(() => stopLoops())
 </script>
 
 <template>
   <div ref="coverBox" class="np-cover relative flex h-full min-w-0 w-full items-center justify-center">
+    <!-- 氛围层：封面背后放大 + 模糊的同图光晕，垫出空间感；容器统一控透明度，img 自身淡入。
+         必须排在粒子画布之前（同为 z-auto 定位元素按 DOM 序绘制）：粒子是前景动效，画在氛围层之上 -->
+    <div
+      v-if="player.current?.albumId != null"
+      class="ambient-art pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2"
+      :style="{ width: `${ambientSide}px`, height: `${ambientSide}px` }"
+    >
+      <img
+        :key="player.current.albumId"
+        :src="coverUrl(player.current.albumId) ?? ''"
+        alt=""
+        class="h-full w-full object-cover transition-opacity duration-700"
+        :class="ambientLoaded ? 'opacity-100' : 'opacity-0'"
+        draggable="false"
+        @load="ambientLoaded = true"
+        @error="ambientLoaded = false"
+      />
+    </div>
     <!-- 粒子画布：向四周扩出 32px，围绕封面外圈绘制不被裁切
          （canvas 是替换元素，必须显式给定宽高，否则 -inset-8 不会拉伸，会退化为 300x150 内在尺寸） -->
     <canvas
@@ -170,3 +215,11 @@ onBeforeUnmount(() => cancelAnimationFrame(particleRaf))
     />
   </div>
 </template>
+
+<style scoped>
+/* 氛围层：大模糊 + 提饱和，整体低透明度叠在深底渐变上形成光晕 */
+.ambient-art {
+  opacity: 0.5;
+  filter: blur(56px) saturate(1.35);
+}
+</style>

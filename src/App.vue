@@ -9,6 +9,7 @@ import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import CloseConfirmDialog from '@/components/CloseConfirmDialog.vue'
 import UpdateDialog from '@/components/UpdateDialog.vue'
 import NowPlayingView from '@/components/NowPlayingView.vue'
+import NpAmbientBg from '@/components/NpAmbientBg.vue'
 import Toast from '@/components/Toast.vue'
 import MvPlayer from '@/components/MvPlayer.vue'
 import { useUpdater } from '@/composables/useUpdater'
@@ -182,16 +183,8 @@ watch(focusActive, (active) => {
   }
 })
 
-/** 播放页环境渐变：铺满全窗（含播放条背后），歌词强调色变量也从这里下发 */
+/** 播放页环境强调色：歌词强调色变量从这里下发；渐变背景移入 NpAmbientBg（双层交叉淡入 + 光斑呼吸） */
 const npAccent = computed(() => palette.value?.accent ?? '#a78bfa')
-const npBgStyle = computed(() => {
-  const p = palette.value
-  return {
-    background: p
-      ? `linear-gradient(to bottom, ${p.glow} 0%, ${p.deep} 55%, #09090b 100%)`
-      : 'linear-gradient(to bottom, #2e1065 0%, #09090b 55%, #09090b 100%)',
-  }
-})
 
 const viewComponent = computed(() => {
   switch (nav.current.value.view) {
@@ -448,7 +441,7 @@ window.addEventListener('keydown', (e) => {
     <!-- 播放页环境：全窗渐变（含播放条背后）+ 上滑的内容层。z-15 低于播放条，播放条透明浮于其上 -->
     <div class="pointer-events-none absolute inset-0 z-[15] overflow-hidden" :style="{ '--np-accent': npAccent }">
       <Transition :css="false" @enter="npBgEnter" @leave="npBgLeave">
-        <div v-if="nowPlaying" class="absolute inset-0" :style="npBgStyle"></div>
+        <NpAmbientBg v-if="nowPlaying" />
       </Transition>
       <!-- 内容层底缘对齐播放条卡片上沿（92px = 播放条 80px + 上方间距 12px） -->
       <Transition :css="false" @enter="nowPlayingEnter" @leave="nowPlayingLeave">
