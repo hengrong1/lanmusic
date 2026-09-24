@@ -58,6 +58,9 @@ struct NpState {
     position_ms: u64,
     duration_ms: u64,
     playing: bool,
+    /// 本轮暂停期内「对账重发」已执行次数：首次重发 INFO 留痕，之后降 debug
+    /// （挂机暂停每 30s 一条纯噪音）。播放恢复/暂停瞬间清零，开新一轮周期。
+    paused_reissue: u32,
     /// 主窗口 HWND（仅 Windows）：纯状态旁路经 interop 再取同一 SMTC 实例用
     #[cfg(windows)]
     hwnd_usize: Option<usize>,
@@ -83,6 +86,7 @@ fn lock() -> Result<MutexGuard<'static, NpState>, String> {
             position_ms: 0,
             duration_ms: 0,
             playing: false,
+            paused_reissue: 0,
             #[cfg(windows)]
             hwnd_usize: None,
         })
@@ -347,6 +351,10 @@ fn apply_playback(guard: &mut NpState, playing: bool, position_ms: u64) -> Resul
     let old_pos = guard.position_ms;
     guard.playing = playing;
     guard.position_ms = position_ms;
+    if playing || was_playing {
+        // 播放中或暂停瞬间：非「暂停中对账」路径，重发计数清零开新一轮周期
+        guard.paused_reissue = 0;
+    }
     if guard.last_meta.is_none() || guard.controls.is_none() {
         return Ok(());
     }
@@ -361,9 +369,18 @@ fn apply_playback(guard: &mut NpState, playing: bool, position_ms: u64) -> Resul
             // 暂停中的对账（前端暂停期每 ≥30s 重发一次）：位置没动，但状态要重申——
             // 后台节流下「暂停瞬间的那次推送」存在丢失窗口，系统侧可能停在 Playing。
             // SetPlaybackStatus 幂等且不碰时间轴，重发对 Win11 塌缩怪癖安全。
+            // 首次重发 INFO 留痕（证明对账在工作），之后降 debug：挂机时每 30s
+            // 一条 INFO 是纯噪音。
+            guard.paused_reissue += 1;
             if let Some(r) = status_only(guard, false) {
                 return r
-                    .inspect(|_| log::info!("SMTC 状态对账重发: Paused"))
+                    .inspect(|_| {
+                        if guard.paused_reissue <= 1 {
+                            log::info!("SMTC 状态对账重发: Paused");
+                        } else {
+                            log::debug!("SMTC 状态对账重发 x{}: Paused", guard.paused_reissue);
+                        }
+                    })
                     .inspect_err(|e| log::warn!("推送播放状态到系统媒体控件失败: {e}"));
             }
             // 旁路不可用（非 Windows）：无事可做
