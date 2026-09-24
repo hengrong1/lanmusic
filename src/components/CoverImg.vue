@@ -21,7 +21,7 @@ const showFallback = computed(() => !src.value || failed.value)
 
 <template>
   <div
-    class="relative overflow-hidden bg-gradient-to-br from-zinc-200 to-zinc-300 dark:from-zinc-800 dark:to-zinc-800/50"
+    class="cover-fallback relative overflow-hidden"
     :class="rounded ?? 'rounded-md'"
   >
     <!-- 默认占位图常驻底层：封面未加载完成（网络慢 / 虚拟滚动刚挂载）或加载失败时显示，

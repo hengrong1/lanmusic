@@ -218,6 +218,36 @@ html.has-bg .app-surface-blur .hover\:bg-zinc-100\/80:hover,
 html.has-bg .app-surface-blur .group:hover .group-hover\:bg-zinc-200\/80 {
   background-color: rgb(9 9 11 / 0.14);
 }
+/* ---- 封面占位（CoverImg 根 .cover-fallback）：浅色 / 深色 / has-bg 三态收敛 ----
+   渐变工具类（from-* / to-*）的内部变量没法像 bg-zinc-* 那样稳定映射，故改语义类。
+   has-bg 恒用深玻璃观感（用户定稿：开背景图后亮暗同配方）——浅灰渐变在压暗底图上
+   是一块亮疤（歌单没加歌曲时的 80px 大封面最显眼）；取值与深色档完全一致。
+   图标色无需单独处理：text-zinc-400 的白字映射已覆盖（CoverImg 恒在 app-surface-blur
+   子树内），has-bg 亮暗两态同为白雾。 */
+.cover-fallback {
+  background-image: linear-gradient(to bottom right, var(--color-zinc-200), var(--color-zinc-300));
+}
+html.dark .cover-fallback,
+html.has-bg .cover-fallback {
+  background-image: linear-gradient(
+    to bottom right,
+    var(--color-zinc-800),
+    color-mix(in srgb, var(--color-zinc-800) 50%, transparent)
+  );
+}
+/* 设置页顶部目录（SettingsView header）：胶囊静态 bg-zinc-100/70 与悬停
+   hover:bg-white/60 / hover:text-zinc-800 无映射，has-bg 下随系统亮暗跳变
+   （胶囊发白、悬停出亮块和深字）→ 恒取深色档同款观感（亮暗同配方）。
+   has-bg 深色下本条与 dark: 变体同值，覆盖无感。 */
+html.has-bg .app-surface-blur .bg-zinc-100\/70 {
+  background-color: rgb(39 39 42 / 0.6);
+}
+html.has-bg .app-surface-blur .hover\:bg-white\/60:hover {
+  background-color: rgb(63 63 70 / 0.6);
+}
+html.has-bg .app-surface-blur .hover\:text-zinc-800:hover {
+  color: rgb(255 255 255 / 0.95);
+}
 /* 顶栏搜索框 focus:bg-white 纯白在深玻璃上是亮块 → 白雾微增亮 */
 html.has-bg .app-surface-blur .focus\:bg-white:focus {
   background-color: rgb(255 255 255 / 0.14);
