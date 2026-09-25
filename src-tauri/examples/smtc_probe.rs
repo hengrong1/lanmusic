@@ -12,7 +12,7 @@
 use windows::Media::Control::GlobalSystemMediaTransportControlsSessionManager;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mgr = GlobalSystemMediaTransportControlsSessionManager::RequestAsync()?.get()?;
+    let mgr = GlobalSystemMediaTransportControlsSessionManager::RequestAsync()?.join()?;
     let sessions = mgr.GetSessions()?;
     let count = sessions.Size()?;
     println!("SESSION_COUNT={count}");
@@ -25,7 +25,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .map(|st| format!("{st:?}"))
             .unwrap_or_else(|_| "?".into());
         let (title, artist) = match s.TryGetMediaPropertiesAsync() {
-            Ok(op) => match op.get() {
+            Ok(op) => match op.join() {
                 Ok(p) => (
                     p.Title().unwrap_or_default().to_string(),
                     p.Artist().unwrap_or_default().to_string(),
