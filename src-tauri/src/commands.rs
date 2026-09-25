@@ -53,6 +53,10 @@ pub struct Track {
     pub artists: Vec<TrackArtistRef>,
     /// 命中的搜索字段（title/artist/album/lyrics/filename），仅搜索时非空
     pub matched_fields: Vec<String>,
+    /// 艺人字段命中的艺人 id（含按合并别名 / 拼音命中者），仅搜索时非空——
+    /// 前端据此只给真正命中的艺人上主题色，合作艺人不受牵连
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub matched_artist_ids: Vec<i64>,
     /// ReplayGain 轨道增益（dB）；标签缺失或未分析为 null
     pub rg_track_gain: Option<f64>,
     /// ReplayGain 轨道峰值（线性）；标签缺失或未分析为 null
@@ -159,6 +163,7 @@ fn row_track(r: &rusqlite::Row) -> rusqlite::Result<Track> {
         fav: r.get::<_, i64>(16)? != 0,
         artists: Vec::new(),
         matched_fields: Vec::new(),
+        matched_artist_ids: Vec::new(),
         rg_track_gain: r.get(17)?,
         rg_track_peak: r.get(18)?,
     })

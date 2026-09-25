@@ -44,6 +44,22 @@ const recentSearches = ref<string[]>(loadRecent())
 const searchFocused = ref(false)
 /** 实时搜索结果（最多 20 条预览） */
 const results = ref<Track[]>([])
+
+/** 搜索下拉的艺人链接列表：优先完整艺人列表，无关联时回退主艺人串 */
+function topArtistLinks(t: Track): { id: number | null; name: string }[] {
+  if (t.artists?.length) return t.artists.map((a) => ({ id: a.id, name: a.name }))
+  if (t.artist) return [{ id: t.artistId, name: t.artist }]
+  return []
+}
+
+/** 艺人字段是否命中了这位艺人（含合并别名/拼音命中），用于主题色显示 */
+function artistFieldMatched(t: Track, artistId: number | null): boolean {
+  return (
+    t.matchedFields?.includes('artist') === true &&
+    artistId != null &&
+    (t.matchedArtistIds?.includes(artistId) ?? false)
+  )
+}
 const resultTotal = ref(0)
 // 带参翻译在 setup 内计算：模板里的 $t 全局注入没有带参重载
 const { t: translate } = useI18n()
@@ -306,6 +322,7 @@ defineExpose({ focusSearch })
                     <HighlightText
                       :text="t.title || $t('search.unknownTitle')"
                       :keyword="input.trim()"
+                      :field-matched="t.matchedFields?.includes('title')"
                       class="min-w-0 truncate text-sm font-medium text-zinc-800 dark:text-zinc-100"
                     />
                     <!-- 匹配字段徽标 -->
@@ -320,9 +337,19 @@ defineExpose({ focusSearch })
                     >{{ $t('settings.fieldFilename') }}</span>
                   </div>
                   <div class="mt-0.5 flex items-center gap-1 truncate text-xs text-zinc-500 dark:text-zinc-400">
-                    <HighlightText v-if="t.artist" :text="t.artist" :keyword="input.trim()" class="min-w-0 truncate" />
+                    <template v-if="t.artist">
+                      <template v-for="(a, i) in topArtistLinks(t)" :key="a.id ?? `na-${i}`">
+                        <span v-if="i > 0" class="shrink-0 opacity-50"> / </span>
+                        <HighlightText
+                          :text="a.name"
+                          :keyword="input.trim()"
+                          :field-matched="artistFieldMatched(t, a.id)"
+                          class="min-w-0 truncate"
+                        />
+                      </template>
+                    </template>
                     <span v-if="t.artist && t.album" class="shrink-0">·</span>
-                    <HighlightText v-if="t.album" :text="t.album" :keyword="input.trim()" class="min-w-0 truncate" />
+                    <HighlightText v-if="t.album" :text="t.album" :keyword="input.trim()" :field-matched="t.matchedFields?.includes('album')" class="min-w-0 truncate" />
                   </div>
                 </div>
               </button>

@@ -338,6 +338,15 @@ function openMenu(e: MouseEvent, t: Track) {
 }
 
 /** 行内展示的艺人列表：优先用后端拆分的多艺人（各自可点击），回退到合并字符串 */
+/** 艺人字段是否命中了这位艺人（含合并别名/拼音命中），用于主题色显示 */
+function artistFieldMatched(track: Track, artistId: number | null): boolean {
+  return (
+    track.matchedFields?.includes('artist') === true &&
+    artistId != null &&
+    (track.matchedArtistIds?.includes(artistId) ?? false)
+  )
+}
+
 function artistLinks(track: Track): { id: number | null; name: string }[] {
   if (track.artists?.length) return track.artists.map((a) => ({ id: a.id, name: a.name }))
   if (track.artist) return [{ id: track.artistId, name: track.artist }]
@@ -473,7 +482,7 @@ function onDragEnd() {
               </span>
             </div>
             <div class="flex min-w-0 items-center gap-1.5" :class="player.current?.id === t.id ? 'font-medium text-violet-600 dark:text-violet-400' : 'text-zinc-800 dark:text-zinc-100'">
-              <span class="truncate"><HighlightText :text="t.title" :keyword="searchTerm" /></span>
+              <span class="truncate"><HighlightText :text="t.title" :keyword="searchTerm" :field-matched="t.matchedFields?.includes('title')" /></span>
               <!-- 命中字段徽标：歌词 / 文件名 -->
               <span
                 v-if="t.matchedFields?.includes('lyrics')"
@@ -505,8 +514,8 @@ function onDragEnd() {
                   class="max-w-full cursor-pointer truncate p-0 text-left transition hover:text-violet-600 hover:underline dark:hover:text-violet-400"
                   v-tooltip="artistTip(a.name)"
                   @click.stop="openArtist(a)"
-                ><HighlightText :text="a.name" :keyword="searchTerm" /></button>
-                <span v-else><HighlightText :text="a.name" :keyword="searchTerm" /></span>
+                ><HighlightText :text="a.name" :keyword="searchTerm" :field-matched="artistFieldMatched(t, a.id)" /></button>
+                <span v-else><HighlightText :text="a.name" :keyword="searchTerm" :field-matched="artistFieldMatched(t, a.id)" /></span>
               </template>
             </div>
             <div class="min-w-0 truncate text-zinc-500 dark:text-zinc-400">
@@ -514,7 +523,7 @@ function onDragEnd() {
                 class="max-w-full cursor-pointer truncate p-0 text-left transition hover:text-violet-600 hover:underline dark:hover:text-violet-400"
                 v-tooltip="albumTip(t.album)"
                 @click.stop="openAlbum(t)"
-              ><HighlightText :text="t.album ?? $t('album.unknownAlbum')" :keyword="searchTerm" /></button>
+              ><HighlightText :text="t.album ?? $t('album.unknownAlbum')" :keyword="searchTerm" :field-matched="t.matchedFields?.includes('album')" /></button>
             </div>
             <div class="text-right font-mono text-xs tabular-nums transition-colors" :class="player.current?.id === t.id ? 'text-violet-500' : 'text-zinc-500 dark:text-zinc-400'">
               {{ fmtDuration(t.duration) }}

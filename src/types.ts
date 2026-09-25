@@ -34,6 +34,8 @@ export interface Track {
   artists?: TrackArtistRef[]
   /** 命中的搜索字段（title/artist/album/lyrics/filename），仅搜索结果非空 */
   matchedFields?: string[]
+  /** 艺人字段命中的艺人 id（含按合并别名/拼音命中者），仅搜索时非空 */
+  matchedArtistIds?: number[]
   /** ReplayGain 曲目增益（dB）；标签缺失或未分析为 null */
   rgTrackGain?: number | null
   /** ReplayGain 曲目峰值（线性，0~1）；标签缺失或未分析为 null */

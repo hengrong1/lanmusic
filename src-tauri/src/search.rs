@@ -158,6 +158,7 @@ fn row_hit(r: &rusqlite::Row) -> rusqlite::Result<Hit> {
             fav: r.get::<_, i64>(16)? != 0,
             artists: Vec::new(),
             matched_fields: Vec::new(),
+            matched_artist_ids: Vec::new(),
             rg_track_gain: r.get(20)?,
             rg_track_peak: r.get(21)?,
         },
@@ -287,60 +288,78 @@ pub fn search_tracks(conn: &Connection, q: &TrackQuery) -> Result<Page<Track>, S
         let mut score = 0i32;
         let mut matched: Vec<String> = Vec::new();
         for f in &fields {
-            let texts: Vec<&str> = match f.as_str() {
-                F_TITLE => vec![h.track.title.as_str()],
-                F_ARTIST => {
-                    let mut names: Vec<&str> = if !h.track.artists.is_empty() {
-                        h.track.artists.iter().map(|a| a.name.as_str()).collect()
-                    } else {
-                        h.track
-                            .artist
-                            .as_deref()
-                            .map(|s| vec![s])
-                            .unwrap_or_default()
-                    };
-                    // 合并记忆：别名（旧名）指向的正是这些艺人，命中等同命中本名
-                    let alias_ids = h
-                        .track
-                        .artists
-                        .iter()
-                        .map(|a| a.id)
-                        .chain(h.track.artist_id);
-                    for id in alias_ids {
-                        if let Some(list) = alias_by_artist.get(&id) {
-                            names.extend(list.iter().map(|s| s.as_str()));
+            let mut best = 0;
+            let mut artist_matched_ids: Vec<i64> = Vec::new();
+            if f.as_str() == F_ARTIST {
+                // (文本, 艺人 id)：本名 + 合并别名，命中的文本记到对应艺人名下——
+                // 前端只给真正命中的艺人上主题色，合作艺人不受牵连
+                let mut texts: Vec<(&str, i64)> = Vec::new();
+                for a in &h.track.artists {
+                    texts.push((a.name.as_str(), a.id));
+                    if let Some(list) = alias_by_artist.get(&a.id) {
+                        for al in list {
+                            texts.push((al.as_str(), a.id));
                         }
                     }
-                    names
                 }
-                F_ALBUM => h
-                    .track
-                    .album
-                    .as_deref()
-                    .map(|s| vec![s])
-                    .unwrap_or_default(),
-                F_FILENAME => vec![h.track.path.as_str()],
-                F_LYRICS => vec![h.lyrics.as_str()],
-                _ => Vec::new(),
-            };
-            let mut best = 0;
-            for text in texts {
-                let s = match_field(
-                    f,
-                    text,
-                    &q_lower,
-                    &q_full,
-                    &q_init,
-                    pinyin_active,
-                    &mut cache,
-                );
-                if s > best {
-                    best = s;
+                if texts.is_empty() {
+                    if let Some(n) = h.track.artist.as_deref() {
+                        texts.push((n, h.track.artist_id.unwrap_or(-1)));
+                    }
+                }
+                for (text, id) in &texts {
+                    let s = match_field(
+                        f,
+                        text,
+                        &q_lower,
+                        &q_full,
+                        &q_init,
+                        pinyin_active,
+                        &mut cache,
+                    );
+                    if s > 0 {
+                        if s > best {
+                            best = s;
+                        }
+                        if *id >= 0 && !artist_matched_ids.contains(id) {
+                            artist_matched_ids.push(*id);
+                        }
+                    }
+                }
+            } else {
+                let texts: Vec<&str> = match f.as_str() {
+                    F_TITLE => vec![h.track.title.as_str()],
+                    F_ALBUM => h
+                        .track
+                        .album
+                        .as_deref()
+                        .map(|s| vec![s])
+                        .unwrap_or_default(),
+                    F_FILENAME => vec![h.track.path.as_str()],
+                    F_LYRICS => vec![h.lyrics.as_str()],
+                    _ => Vec::new(),
+                };
+                for text in texts {
+                    let s = match_field(
+                        f,
+                        text,
+                        &q_lower,
+                        &q_full,
+                        &q_init,
+                        pinyin_active,
+                        &mut cache,
+                    );
+                    if s > best {
+                        best = s;
+                    }
                 }
             }
             if best > 0 {
                 score += best;
                 matched.push(f.clone());
+                if f.as_str() == F_ARTIST {
+                    h.track.matched_artist_ids = artist_matched_ids;
+                }
             }
         }
         h.score = score;
@@ -514,6 +533,9 @@ mod tests {
         let ids: Vec<i64> = page.items.iter().map(|t| t.id).collect();
         assert_eq!(ids, vec![1, 2]);
         assert!(page.items[0].matched_fields.contains(&"artist".to_string()));
+        // 精确到艺人：命中的是「新艺人」（含合作曲目），「其他人」不被牵连
+        assert_eq!(page.items[0].matched_artist_ids, vec![2]);
+        assert_eq!(page.items[1].matched_artist_ids, vec![2]);
 
         // 不相关关键词不命中
         let q = TrackQuery {
