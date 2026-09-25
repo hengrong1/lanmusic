@@ -48,7 +48,7 @@ miniz_oxide = "0.8"
 # use_zbus：Linux 侧走纯 Rust 的 zbus，避免依赖系统 libdbus
 souvlaki = { version = "0.8", default-features = false, features = ["use_zbus"] }
 walkdir = "2.5.0"
-notify = "7"
+notify = "8"
 keyring = "4"
 image = { version = "0.25.10", features = ["jpeg", "png"] }
 quick-xml = "0.42.0"
