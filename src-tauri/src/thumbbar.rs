@@ -244,7 +244,7 @@ pub fn set_playing(playing: bool) {
 
 unsafe fn add_buttons() -> windows::core::Result<()> {
     let Some(m) = STATE.get() else {
-        return Err(windows::core::Error::from_win32());
+        return Err(windows::core::Error::from_thread());
     };
     let s = m.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     s.taskbar.HrInit()?;

@@ -423,7 +423,12 @@ pub fn run() {
             // Windows：任务栏缩略图工具栏（悬停任务栏图标时的 上一首/播放暂停/下一首）
             #[cfg(windows)]
             if let Ok(hwnd) = window.hwnd() {
-                thumbbar::init(app.handle().clone(), hwnd);
+                // tauri 的 HWND 绑定其依赖的 windows 0.61，与本 crate 的 0.62 类型不同，
+                // 按内部裸指针重建（HWND 本身只是指针新类型）
+                thumbbar::init(
+                    app.handle().clone(),
+                    windows::Win32::Foundation::HWND(hwnd.0),
+                );
             }
 
             // 诊断：Rust setup 阶段耗时（不含 WebView 首帧渲染）
