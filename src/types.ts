@@ -376,4 +376,6 @@ export interface ReleaseInfo {
   assetSize: number | null
   /** SHA-256 校验文件地址；为 null 时跳过校验（Rust 侧只记 warn） */
   sha256Url: string | null
+  /** 临时目录中已下载且校验一致的安装包路径；存在时直接进「待安装」态（可能缺省） */
+  installerPath?: string | null
 }

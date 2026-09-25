@@ -53,6 +53,10 @@ pub struct ReleaseInfo {
     pub asset_size: Option<u64>,
     /// SHA-256 校验文件地址（与安装包同名的 `.sha256` 资产）
     pub sha256_url: Option<String>,
+    /// 临时目录中已下载且校验一致的安装包路径（存在时前端直接进「待安装」态，
+    /// 「下载完成后再检查更新 / 重启后再检查」不要求重下）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub installer_path: Option<String>,
 }
 
 /// 下载进度（经 `update:download-progress` 事件回传；total=0 表示未知）
@@ -492,15 +496,39 @@ fn asset_urls(version: &str) -> (String, String, String) {
     (name, exe, sha)
 }
 
-/// HEAD 探测资产可下载性：Release 未附带该资产时返回 false，
-/// 前端据此退化为「前往下载页」，而不是让用户点到 404。
-fn asset_exists(client: &reqwest::blocking::Client, url: &str) -> bool {
-    client
-        .head(url)
-        .timeout(SMALL_REQ_TIMEOUT)
-        .send()
-        .map(|r| r.status().is_success())
-        .unwrap_or(false)
+/// 临时目录若已有同名且 SHA-256 与校验资产一致的安装包，返回其路径。
+/// 「下载完成后再检查更新 / 重启后再检查」据此直接进「待安装」态，不要求重下；
+/// 无校验资产或校验不符返回 None（调用方按需重新下载）。
+fn cached_installer(
+    client: &reqwest::blocking::Client,
+    asset_name: &str,
+    sha_url: &str,
+) -> Option<PathBuf> {
+    let dest = std::env::temp_dir().join(asset_name);
+    if !dest.is_file() {
+        return None;
+    }
+    let existing = sha256_file(&dest).ok()?;
+    if fetch_sha256(client, sha_url).ok()? == existing {
+        Some(dest)
+    } else {
+        log::info!(
+            "临时目录已有同名安装包但校验不符，视为无效：{}",
+            dest.display()
+        );
+        None
+    }
+}
+
+/// HEAD 探测资产可下载性并顺带取大小：Release 未附带该资产时返回 None；
+/// 资产存在时返回 Content-Length（ATOM feed 不含资产大小，进度条的总量靠它补齐——
+/// 已知总量时前端点击下载直接从 0% 起跳，不会先闪不定进度）
+fn asset_exists(client: &reqwest::blocking::Client, url: &str) -> Option<u64> {
+    let resp = client.head(url).timeout(SMALL_REQ_TIMEOUT).send().ok()?;
+    if !resp.status().is_success() {
+        return None;
+    }
+    Some(resp.content_length().unwrap_or(0))
 }
 
 /// 查询最新 Release 并与当前版本比较（走 `releases.atom`，**免 API 限流**）。
@@ -532,10 +560,15 @@ pub fn latest_release(current_version: &str) -> Result<Option<ReleaseInfo>, Stri
     // 当作没有更新处理（宁可不提示，不误导）。副作用：真发布忘传资产时也收不到提示
     // （本来也升不了级），日志有留痕；HEAD 偶发网络错误同样落此分支，重新检查即可。
     let (name, exe_url, sha_url) = asset_urls(&version);
-    if !asset_exists(&client, &exe_url) {
+    let asset_size = asset_exists(&client, &exe_url);
+    if asset_size.is_none() {
         log::warn!("Release v{version} 未找到可下载的安装包资产：{exe_url}（视为发布未完成/草稿，不提示更新）");
         return Ok(None);
     }
+    // 临时目录已有一致安装包 → 直接进「待安装」：下载完成后再检查更新 /
+    // 重启应用后再检查，都不要求重新下载
+    let installer_path =
+        cached_installer(&client, &name, &sha_url).map(|p| p.to_string_lossy().to_string());
     // link 缺失时按 tag 约定补出页面地址（「前往下载页」按钮依赖它，不能是空串）
     let html_url = if html_url.is_empty() {
         format!("{REPO_URL}/releases/tag/v{version}")
@@ -549,9 +582,10 @@ pub fn latest_release(current_version: &str) -> Result<Option<ReleaseInfo>, Stri
         html_url,
         asset_name: Some(name),
         asset_url: Some(exe_url),
-        // feed 不含资产大小 → 前端显示不定进度
-        asset_size: None,
+        // feed 不含资产大小：来自 HEAD 的 Content-Length（0 = 未知，前端不定进度）
+        asset_size,
         sha256_url: Some(sha_url),
+        installer_path,
     }))
 }
 
@@ -594,10 +628,12 @@ fn content_range_total(value: &str) -> Option<u64> {
     value.rsplit('/').next()?.trim().parse::<u64>().ok()
 }
 
-/// 进度回传：200ms 节流。分片并发时多个下载任务共享同一份节流时钟与总量
+/// 进度回传：200ms 节流。分片并发时多个下载任务共享同一份节流时钟与总量。
+/// total 可变：probe 未取得大小时（如 Range 被拒走单流），单流首个响应的
+/// content-length 会补上——否则整个下载都只能是不定进度 + MB 标签，最后才出百分比
 struct ProgressEmit {
     app: AppHandle,
-    total: u64,
+    total: AtomicU64,
     last: Mutex<std::time::Instant>,
 }
 
@@ -610,7 +646,7 @@ impl ProgressEmit {
                     PROGRESS_EVENT,
                     DownloadProgress {
                         downloaded,
-                        total: self.total,
+                        total: self.total.load(Ordering::Relaxed),
                     },
                 );
                 *last = std::time::Instant::now();
@@ -620,10 +656,9 @@ impl ProgressEmit {
 
     /// 收尾事件：必定发送，总量未知（0）时用实际字节数补齐
     fn emit_final(&self, downloaded: u64) {
-        let total = if self.total == 0 {
-            downloaded
-        } else {
-            self.total
+        let total = match self.total.load(Ordering::Relaxed) {
+            0 => downloaded,
+            t => t,
         };
         let _ = self
             .app
@@ -813,6 +848,13 @@ async fn download_single_stream(
             }
         };
         let expected = resp.content_length();
+        // probe 未取得总量时（Range 被拒等），首个响应的 content-length 补上：
+        // 之后的事件带真实 total，前端从最初就显示百分比而非不定进度 + MB 标签
+        if let Some(len) = expected {
+            if len > 0 && emit.total.load(Ordering::Relaxed) == 0 {
+                emit.total.store(len, Ordering::Relaxed);
+            }
+        }
         let mut file = std::fs::File::create(dest).map_err(|e| format!("无法创建下载文件：{e}"))?;
         let mut downloaded = 0u64;
         loop {
@@ -886,24 +928,14 @@ pub fn download_installer(
     // 复用已下载的安装包：文件名按版本固定（temp 里同版本永远只有一个文件），
     // 已存在且 SHA-256 与校验资产一致时直接跳过整包下载——
     // 「下载完成后重新检查更新再点下载」不再浪费流量；无校验资产或校验不符则重新下载覆盖。
-    'reuse: {
-        let Some(sha_url) = sha256_url else {
-            break 'reuse;
-        };
-        if !dest.is_file() {
-            break 'reuse;
+    if let Some(sha_url) = sha256_url {
+        if let Ok(client) = http_client() {
+            if cached_installer(&client, &file_name, sha_url).is_some() {
+                log::info!("临时目录已有校验一致的安装包，跳过下载：{}", dest.display());
+                return Ok(dest);
+            }
+            log::info!("临时目录已有同名安装包但校验不符，重新下载覆盖");
         }
-        let Ok(existing) = sha256_file(&dest) else {
-            break 'reuse;
-        };
-        let Ok(client) = http_client() else {
-            break 'reuse;
-        };
-        if fetch_sha256(&client, sha_url).as_deref() == Ok(existing.as_str()) {
-            log::info!("临时目录已有校验一致的安装包，跳过下载：{}", dest.display());
-            return Ok(dest);
-        }
-        log::info!("临时目录已有同名安装包但校验不符，重新下载覆盖");
     }
 
     let client = download_client()?;
@@ -918,7 +950,7 @@ pub fn download_installer(
         let progress = Arc::new(AtomicU64::new(0));
         let emit = Arc::new(ProgressEmit {
             app: app.clone(),
-            total,
+            total: AtomicU64::new(total),
             last: Mutex::new(std::time::Instant::now()),
         });
 

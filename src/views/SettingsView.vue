@@ -2135,7 +2135,7 @@ const showWebdavLimits = computed(() => showWebdav.value || library.sources.some
                     {{ t('settings.updateFound', { version: updater.newVersion.value }) }}
                   </p>
                   <p v-if="updater.releaseNotes.value" class="mt-1 line-clamp-4 whitespace-pre-wrap text-xs leading-relaxed">{{ updater.releaseNotes.value }}</p>
-                  <!-- 下载进度条（总量未知时显示不定进度动画） -->
+                  <!-- 下载进度条（总量未知时显示不定进度动画：全宽脉冲，避免误读成卡在某个百分比） -->
                   <div v-if="updater.status.value === 'downloading'" class="mt-2 flex items-center gap-2">
                     <div class="h-1.5 flex-1 overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-800">
                       <div
@@ -2143,7 +2143,7 @@ const showWebdavLimits = computed(() => showWebdav.value || library.sources.some
                         class="h-full rounded-full bg-violet-500 transition-all"
                         :style="{ width: `${progressPct}%` }"
                       ></div>
-                      <div v-else class="h-full w-1/3 animate-pulse rounded-full bg-violet-400"></div>
+                      <div v-else class="h-full w-full animate-pulse rounded-full bg-violet-400"></div>
                     </div>
                     <span class="shrink-0 text-xs tabular-nums text-zinc-400">
                       {{ progressPct >= 0 ? `${progressPct}%` : `${updater.downloadedMb.value.toFixed(1)}MB` }}

@@ -112,9 +112,11 @@ async function checkForUpdate(silent = false): Promise<boolean> {
       assetName.value = release.assetName ?? ''
       assetSize.value = release.assetSize ?? 0
       sha256Url.value = release.sha256Url ?? ''
-      installerPath.value = ''
-      status.value = 'available'
-      progress.value = -1
+      // 后端校验过临时目录已有一致安装包 → 直接进「待安装」：
+      // 下载完成后再检查更新 / 重启后再检查，都不要求重新下载
+      installerPath.value = release.installerPath ?? ''
+      status.value = installerPath.value ? 'ready' : 'available'
+      progress.value = installerPath.value ? 1 : -1
       // 发现新版本：弹出更新弹窗（无论启动静默检查还是手动检查）
       dialogOpen.value = true
       return true
@@ -134,8 +136,10 @@ async function downloadUpdate(): Promise<void> {
   if (status.value !== 'available' || !canAutoUpdate()) return
   ensureProgressListener()
   status.value = 'downloading'
-  // 进度归零：上次失败/重试不能从旧值累加
-  progress.value = -1
+  // 进度归零：上次失败/重试不能从旧值累加。
+  // 总量已知（HEAD 探测的资产大小）时直接从 0% 起跳——否则会先闪不定进度
+  // 占位条 +「0.0MB」，看起来像进度条卡住/跳变
+  progress.value = assetSize.value > 0 ? 0 : -1
   downloadedMb.value = 0
   totalMb.value = assetSize.value > 0 ? assetSize.value / 1024 / 1024 : 0
   try {
