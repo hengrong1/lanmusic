@@ -324,6 +324,15 @@ export default {
     // 已合并名单 + 自定义合并
     artistMergedTitle: '已合并 {count} 个旧名（扫描遇到旧名仍归到主艺人名下）',
     artistMergedEmpty: '还没有合并记录：先执行上方「合并同义艺人」，或在下方自定义合并',
+    artistMergedManage: '管理',
+    artistMergedDialogTitle: '已合并的艺人（{count}）',
+    artistMergedDialogDesc: '取消合并会把旧名恢复为独立艺人，并按合并时的记录拆回曲目与专辑归属。',
+    artistMergedRestorable: '可拆回 {count} 首',
+    artistUnmergeTitle: '取消合并',
+    artistUnmergeAction: '取消合并',
+    artistUnmergeConfirm: '把「{alias}」恢复为独立艺人？将按合并记录拆回 {tracks} 首曲目的归属。',
+    artistUnmergeDone: '已取消合并：{name} 恢复为独立艺人（拆回 {tracks} 首曲目、{albums} 张专辑）',
+    artistUnmergeNoHistoryHint: '未标注「可拆回」的记录取消后，重新扫描即按文件标签归位',
     artistMergeCustom: '自定义合并',
     artistMergeHint:
       '两位名字不同的艺人实为同一人（如改名、写法不同）时，把一个并入另一个：曲目与专辑全部迁移，旧名字记为别名——之后扫描遇到旧名字仍归到保留的艺人名下',
@@ -567,6 +576,7 @@ export default {
     artist: {
       mergeSame: '不能与自身合并',
       notFound: '艺人不存在，可能刚被删除或合并，请刷新后重试',
+      aliasNotFound: '合并记录不存在，可能已取消或被后续合并覆盖',
     },
     file: {
       missing: '文件不存在',

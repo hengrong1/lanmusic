@@ -622,6 +622,15 @@ pub fn query_albums(
     page_size: Option<u32>,
 ) -> Result<Page<AlbumItem>, String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
+    query_albums_conn(&conn, search, page, page_size)
+}
+
+fn query_albums_conn(
+    conn: &rusqlite::Connection,
+    search: Option<String>,
+    page: Option<u32>,
+    page_size: Option<u32>,
+) -> Result<Page<AlbumItem>, String> {
     let page = page.unwrap_or(0) as i64;
     let page_size = page_size.unwrap_or(200).clamp(1, 500) as i64;
     let offset = page * page_size;
@@ -631,8 +640,10 @@ pub fn query_albums(
         .map(str::trim)
         .filter(|s| !s.is_empty())
         .map(|s| format!("%{s}%"));
+    // 合并记忆：搜旧艺人的别名也能命中其名下专辑
     let where_sql = if like.is_some() {
-        "WHERE al.title LIKE ?1 OR IFNULL(a.name,'') LIKE ?1"
+        "WHERE al.title LIKE ?1 OR IFNULL(a.name,'') LIKE ?1 \
+         OR EXISTS (SELECT 1 FROM artist_aliases aa WHERE aa.artist_id = al.artist_id AND aa.alias LIKE ?1)"
     } else {
         ""
     };
@@ -680,6 +691,15 @@ pub fn query_artists(
     page_size: Option<u32>,
 ) -> Result<Page<ArtistItem>, String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
+    query_artists_conn(&conn, search, page, page_size)
+}
+
+fn query_artists_conn(
+    conn: &rusqlite::Connection,
+    search: Option<String>,
+    page: Option<u32>,
+    page_size: Option<u32>,
+) -> Result<Page<ArtistItem>, String> {
     let page = page.unwrap_or(0) as i64;
     let page_size = page_size.unwrap_or(300).clamp(1, 1000) as i64;
     let offset = page * page_size;
@@ -692,8 +712,12 @@ pub fn query_artists(
     // 只展示有曲目的艺人（主艺人或合作艺人）：albums.artist_id 现在可指向纯合辑/专辑归属艺人（无直接曲目），不进列表
     let base_where =
         "ar.id IN (SELECT artist_id FROM tracks UNION SELECT artist_id FROM track_artists)";
+    // 合并记忆：搜旧艺人的别名也能命中合并后的主艺人（悬空别名的 artist_id 无对应行，不会误中）
     let where_sql = if like.is_some() {
-        format!("WHERE {base_where} AND ar.name LIKE ?1")
+        format!(
+            "WHERE {base_where} AND (ar.name LIKE ?1 \
+             OR EXISTS (SELECT 1 FROM artist_aliases aa WHERE aa.artist_id = ar.id AND aa.alias LIKE ?1))"
+        )
     } else {
         format!("WHERE {base_where}")
     };
@@ -2724,7 +2748,9 @@ pub fn normalize_artist_names(
 }
 
 /// 把 `source` 艺人并入 `target`（视为同一位艺人）：
-/// - 曲目关联重挂到 target（同曲目已关联 target 的先拆掉，避免主键冲突）
+/// - 快照合并历史（旧名 → 当时的曲目关联 / 主艺人归属 / 专辑归属），供「取消合并」拆回
+/// - 曲目关联重挂到 target（同曲目已关联 target 的先拆掉，避免主键冲突）；
+///   曲目主艺人冗余列 tracks.artist_id 同样外键引用 artists，一并改挂
 /// - 专辑迁移；target 名下存在同名（不区分大小写）同年专辑时合并——
 ///   albums.key 唯一约束下直接 UPDATE 会失败，改为曲目并入目标专辑后删除旧专辑
 /// - 迁移后 source 不再被任何引用则删除；其名下已有别名一并改指 target
@@ -2734,6 +2760,43 @@ fn merge_artist_into(
     source: i64,
     target: i64,
 ) -> Result<(i64, Vec<i64>), String> {
+    // 历史快照必须在任何改写之前：否则拆不回改写前的状态。
+    // 同一旧名重复合并以最近一次为准（INSERT OR REPLACE）。
+    let now: i64 = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    let source_name: String = tx
+        .query_row(
+            "SELECT name FROM artists WHERE id = ?1",
+            params![source],
+            |r| r.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+    // 曲目关联快照：track_artists 行（ord 保留）+ 是否为该曲目的主艺人
+    tx.execute(
+        "INSERT OR REPLACE INTO artist_merge_history (alias, track_id, was_primary, ord, merged_at) \
+         SELECT ?1, ta.track_id, (t.artist_id = ?2), ta.ord, ?3 \
+         FROM track_artists ta JOIN tracks t ON t.id = ta.track_id WHERE ta.artist_id = ?2",
+        params![source_name, source, now],
+    )
+    .map_err(|e| e.to_string())?;
+    // 仅有主艺人列指向（无 track_artists 行）的曲目也纳入快照
+    tx.execute(
+        "INSERT OR REPLACE INTO artist_merge_history (alias, track_id, was_primary, ord, merged_at) \
+         SELECT ?1, id, 1, 0, ?3 FROM tracks WHERE artist_id = ?2 \
+         AND id NOT IN (SELECT track_id FROM track_artists WHERE artist_id = ?2)",
+        params![source_name, source, now],
+    )
+    .map_err(|e| e.to_string())?;
+    // 专辑归属快照（取消合并时只恢复仍存在且仍在 target 名下的专辑）
+    tx.execute(
+        "INSERT OR REPLACE INTO artist_merge_albums (alias, album_id, merged_at) \
+         SELECT ?1, id, ?3 FROM albums WHERE artist_id = ?2",
+        params![source_name, source, now],
+    )
+    .map_err(|e| e.to_string())?;
+
     tx.execute(
         "DELETE FROM track_artists WHERE artist_id = ?1 \
          AND track_id IN (SELECT track_id FROM track_artists WHERE artist_id = ?2)",
@@ -2749,6 +2812,11 @@ fn merge_artist_into(
         .map_err(|e| e.to_string())?;
     tx.execute(
         "UPDATE track_artists SET artist_id = ?1 WHERE artist_id = ?2",
+        params![target, source],
+    )
+    .map_err(|e| e.to_string())?;
+    tx.execute(
+        "UPDATE tracks SET artist_id = ?1 WHERE artist_id = ?2",
         params![target, source],
     )
     .map_err(|e| e.to_string())?;
@@ -2812,10 +2880,11 @@ fn merge_artist_into(
         params![target, source],
     )
     .map_err(|e| e.to_string())?;
-    // 源艺人已无任何引用：删除
+    // 源艺人已无任何引用：删除（tracks/track_artists/albums 三处外键全部改挂后才满足）
     tx.execute(
         "DELETE FROM artists WHERE id = ?1 \
          AND NOT EXISTS (SELECT 1 FROM track_artists WHERE artist_id = ?1) \
+         AND NOT EXISTS (SELECT 1 FROM tracks WHERE artist_id = ?1) \
          AND NOT EXISTS (SELECT 1 FROM albums WHERE artist_id = ?1)",
         [source],
     )
@@ -2830,6 +2899,8 @@ pub struct ArtistAlias {
     pub alias: String,
     pub artist_id: i64,
     pub artist_name: String,
+    /// 合并历史里仍可拆回的曲目数（历史记录引入前的旧合并为 0）
+    pub restorable_tracks: i64,
 }
 
 /// 列出全部合并记录（含历次规整与自定义合并），按主艺人名分组展示由前端处理
@@ -2838,7 +2909,9 @@ pub fn list_artist_aliases(state: State<'_, AppState>) -> Result<Vec<ArtistAlias
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     let mut stmt = conn
         .prepare(
-            "SELECT aa.alias, a.id, a.name FROM artist_aliases aa \
+            "SELECT aa.alias, a.id, a.name, \
+             (SELECT COUNT(*) FROM artist_merge_history h WHERE h.alias = aa.alias) \
+             FROM artist_aliases aa \
              JOIN artists a ON a.id = aa.artist_id \
              ORDER BY a.name COLLATE PINYIN, aa.alias COLLATE PINYIN",
         )
@@ -2849,6 +2922,7 @@ pub fn list_artist_aliases(state: State<'_, AppState>) -> Result<Vec<ArtistAlias
                 alias: r.get(0)?,
                 artist_id: r.get(1)?,
                 artist_name: r.get(2)?,
+                restorable_tracks: r.get(3)?,
             })
         })
         .map_err(|e| e.to_string())?
@@ -2908,6 +2982,138 @@ pub fn merge_artist(
         old_name: source_name,
         new_name: target_name,
         track_count: count,
+    })
+}
+
+/// 取消合并结果
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ArtistUnmergeResult {
+    pub artist_id: i64,
+    pub artist_name: String,
+    /// 拆回关联的曲目数（含合作艺人关联）
+    pub restored_tracks: i64,
+    /// 从 target 名下拆回的专辑数
+    pub restored_albums: i64,
+}
+
+/// 取消合并：把旧名 `alias` 恢复为独立艺人。
+/// - 重建（或复用同名）艺人，按合并历史快照拆回曲目关联与主艺人归属；
+///   仍存在且仍在 target 名下的专辑一并拆回
+/// - 删除该别名（合并记忆）与对应历史；target 若因此不再被任何引用则删除
+/// - 历史记录引入前的旧合并没有快照：只恢复艺人本身与合并记忆，已有曲目
+///   重新扫描后按标签归位
+#[tauri::command]
+pub fn unmerge_artist(
+    state: State<'_, AppState>,
+    alias: String,
+) -> Result<ArtistUnmergeResult, String> {
+    let mut conn = state.db.lock().map_err(|e| e.to_string())?;
+    unmerge_artist_conn(&mut conn, &alias)
+}
+
+fn unmerge_artist_conn(
+    conn: &mut rusqlite::Connection,
+    alias: &str,
+) -> Result<ArtistUnmergeResult, String> {
+    let alias = alias.trim().to_string();
+    if alias.is_empty() {
+        return Err(err(codes::ARTIST_ALIAS_NOT_FOUND));
+    }
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+
+    let target: Option<i64> = tx
+        .query_row(
+            "SELECT artist_id FROM artist_aliases WHERE alias = ?1",
+            params![alias],
+            |r| r.get(0),
+        )
+        .optional()
+        .map_err(|e| e.to_string())?;
+    if target.is_none() {
+        return Err(err(codes::ARTIST_ALIAS_NOT_FOUND));
+    }
+
+    // 重建旧名艺人（同名艺人已存在则复用）
+    tx.execute(
+        "INSERT OR IGNORE INTO artists (name) VALUES (?1)",
+        params![alias],
+    )
+    .map_err(|e| e.to_string())?;
+    let new_id: i64 = tx
+        .query_row(
+            "SELECT id FROM artists WHERE name = ?1 COLLATE NOCASE",
+            params![alias],
+            |r| r.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+
+    // 按快照拆回：曲目关联（含 ord）；主艺人列；仍在 target 名下的专辑。
+    // 曲目/专辑被移除时历史行已随外键级联清理，这里只处理仍存在的。
+    tx.execute(
+        "INSERT OR IGNORE INTO track_artists (track_id, artist_id, ord) \
+         SELECT track_id, ?2, ord FROM artist_merge_history WHERE alias = ?1",
+        params![alias, new_id],
+    )
+    .map_err(|e| e.to_string())?;
+    tx.execute(
+        "UPDATE tracks SET artist_id = ?2 \
+         WHERE id IN (SELECT track_id FROM artist_merge_history WHERE alias = ?1 AND was_primary = 1)",
+        params![alias, new_id],
+    )
+    .map_err(|e| e.to_string())?;
+    // 拆回关联的曲目数 = 历史里仍指向现存曲目的行（曲目被移除时已级联清理）
+    let restored_tracks: i64 = tx
+        .query_row(
+            "SELECT COUNT(*) FROM artist_merge_history WHERE alias = ?1",
+            params![alias],
+            |r| r.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+    let restored_albums: i64 = match target {
+        Some(t) => tx
+            .execute(
+                "UPDATE albums SET artist_id = ?2 \
+                 WHERE artist_id = ?3 AND id IN (SELECT album_id FROM artist_merge_albums WHERE alias = ?1)",
+                params![alias, new_id, t],
+            )
+            .map_err(|e| e.to_string())? as i64,
+        None => 0,
+    };
+
+    // 清理合并记忆与历史；target 若因此不再被引用则删除
+    tx.execute(
+        "DELETE FROM artist_aliases WHERE alias = ?1",
+        params![alias],
+    )
+    .map_err(|e| e.to_string())?;
+    tx.execute(
+        "DELETE FROM artist_merge_history WHERE alias = ?1",
+        params![alias],
+    )
+    .map_err(|e| e.to_string())?;
+    tx.execute(
+        "DELETE FROM artist_merge_albums WHERE alias = ?1",
+        params![alias],
+    )
+    .map_err(|e| e.to_string())?;
+    if let Some(t) = target {
+        tx.execute(
+            "DELETE FROM artists WHERE id = ?1 \
+             AND NOT EXISTS (SELECT 1 FROM track_artists WHERE artist_id = ?1) \
+             AND NOT EXISTS (SELECT 1 FROM tracks WHERE artist_id = ?1) \
+             AND NOT EXISTS (SELECT 1 FROM albums WHERE artist_id = ?1)",
+            [t],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+    tx.commit().map_err(|e| e.to_string())?;
+
+    Ok(ArtistUnmergeResult {
+        artist_id: new_id,
+        artist_name: alias,
+        restored_tracks,
+        restored_albums,
     })
 }
 
@@ -3335,6 +3541,383 @@ pub fn get_mv_url(
     } else {
         format!("video://mv/{track_id}")
     }))
+}
+
+#[cfg(test)]
+mod merge_artist_tests {
+    use super::merge_artist_into;
+    use rusqlite::Connection;
+
+    fn conn() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.pragma_update(None, "foreign_keys", "ON").unwrap();
+        conn.execute_batch(crate::db::SCHEMA).unwrap();
+        conn
+    }
+
+    #[test]
+    fn merge_repoints_tracks_and_albums_then_deletes_source() {
+        let mut conn = conn();
+        // source(1)「旧艺人」与 target(2)「新艺人」各一张同名同年专辑；
+        // T1 主艺人是旧艺人（tracks.artist_id = 1，缺失改挂时删艺人触发外键失败），
+        // T3 同时关联两位（合并时旧艺人的关联先拆掉）；旧艺人另有一条既有别名。
+        conn.execute_batch(
+            "INSERT INTO sources (id, name) VALUES (1, 's');
+             INSERT INTO artists (id, name) VALUES (1, '旧艺人'), (2, '新艺人');
+             INSERT INTO albums (id, title, artist_id, year, key) VALUES
+               (1, '专辑', 1, 2020, 'k1'), (2, '专辑', 2, 2020, 'k2');
+             INSERT INTO tracks (id, source_id, path, title, artist_id, album_id) VALUES
+               (1, 1, 'p1', 'T1', 1, 1),
+               (2, 1, 'p2', 'T2', 2, 2),
+               (3, 1, 'p3', 'T3', 2, 2);
+             INSERT INTO track_artists (track_id, artist_id, ord) VALUES
+               (1, 1, 0), (2, 2, 0), (3, 2, 0), (3, 1, 1);
+             INSERT INTO artist_aliases (alias, artist_id) VALUES ('旧名2', 1);",
+        )
+        .unwrap();
+
+        let (count, merged) = {
+            let tx = conn.transaction().unwrap();
+            let r = merge_artist_into(&tx, 1, 2).unwrap();
+            tx.commit().unwrap();
+            r
+        };
+        // 预拆后仅剩 T1 一条关联重挂
+        assert_eq!(count, 1);
+        // 同名同年专辑并入目标专辑后删除
+        assert_eq!(merged, vec![1]);
+
+        // 源艺人已删除（修复点：tracks.artist_id 未改挂时这里报 FOREIGN KEY constraint failed）
+        let n: i64 = conn
+            .query_row("SELECT COUNT(*) FROM artists WHERE id = 1", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        assert_eq!(n, 0);
+        // 曲目主艺人列全部改挂 target
+        let n: i64 = conn
+            .query_row("SELECT COUNT(*) FROM tracks WHERE artist_id = 1", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        assert_eq!(n, 0);
+        // T1 并入目标专辑；T3 只剩 target 一条关联
+        let (aid, alid): (i64, i64) = conn
+            .query_row(
+                "SELECT artist_id, album_id FROM tracks WHERE id = 1",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!((aid, alid), (2, 2));
+        let n: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM track_artists WHERE track_id = 3 AND artist_id = 1",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(n, 0);
+        // 专辑只剩 target 一张；既有别名改指 target
+        let (n, artist): (i64, i64) = conn
+            .query_row(
+                "SELECT COUNT(*), IFNULL((SELECT artist_id FROM albums WHERE id = 2), 0) FROM albums",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!((n, artist), (1, 2));
+        let artist: i64 = conn
+            .query_row(
+                "SELECT artist_id FROM artist_aliases WHERE alias = '旧名2'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(artist, 2);
+    }
+
+    #[test]
+    fn merge_moves_unique_album_and_deletes_source() {
+        let mut conn = conn();
+        // source 名下专辑与 target 不重名 → 整张专辑改挂 target，不发生专辑合并
+        conn.execute_batch(
+            "INSERT INTO sources (id, name) VALUES (1, 's');
+             INSERT INTO artists (id, name) VALUES (1, '旧艺人'), (2, '新艺人');
+             INSERT INTO albums (id, title, artist_id, year, key) VALUES (1, '独特专辑', 1, 2021, 'k1');
+             INSERT INTO tracks (id, source_id, path, title, artist_id, album_id) VALUES
+               (1, 1, 'p1', 'T1', 1, 1);
+             INSERT INTO track_artists (track_id, artist_id, ord) VALUES (1, 1, 0);",
+        )
+        .unwrap();
+
+        let (count, merged) = {
+            let tx = conn.transaction().unwrap();
+            let r = merge_artist_into(&tx, 1, 2).unwrap();
+            tx.commit().unwrap();
+            r
+        };
+        assert_eq!(count, 1);
+        assert!(merged.is_empty());
+        let n: i64 = conn
+            .query_row("SELECT COUNT(*) FROM artists WHERE id = 1", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        assert_eq!(n, 0);
+        let (aid, alid): (i64, i64) = conn
+            .query_row(
+                "SELECT artist_id, album_id FROM tracks WHERE id = 1",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!((aid, alid), (2, 1));
+        let artist: i64 = conn
+            .query_row("SELECT artist_id FROM albums WHERE id = 1", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        assert_eq!(artist, 2);
+    }
+}
+
+#[cfg(test)]
+mod alias_search_tests {
+    use super::*;
+
+    fn conn() -> rusqlite::Connection {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.pragma_update(None, "foreign_keys", "ON").unwrap();
+        crate::db::register_collations(&conn).unwrap();
+        conn.execute_batch(crate::db::SCHEMA).unwrap();
+        crate::db::migrate(&conn).unwrap();
+        conn
+    }
+
+    /// 合并后的状态：旧艺人已删、曲目/专辑归「新艺人」、旧名记为别名
+    fn seed(conn: &rusqlite::Connection) {
+        conn.execute_batch(
+            "INSERT INTO sources (id, name) VALUES (1, 's');
+             INSERT INTO artists (id, name) VALUES (2, '新艺人');
+             INSERT INTO albums (id, title, artist_id, year, key) VALUES
+               (1, '专辑', 2, 2020, 'k1');
+             INSERT INTO tracks (id, source_id, path, title, artist_id, album_id) VALUES
+               (1, 1, 'p1', 'T1', 2, 1);
+             INSERT INTO track_artists (track_id, artist_id, ord) VALUES (1, 2, 0);
+             INSERT INTO artist_aliases (alias, artist_id) VALUES ('旧艺人', 2);",
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn query_artists_matches_merged_alias() {
+        let conn = conn();
+        seed(&conn);
+        // 搜旧名命中合并后的主艺人
+        let page = query_artists_conn(&conn, Some("旧艺人".into()), None, None).unwrap();
+        assert_eq!(page.total, 1);
+        assert_eq!(page.items[0].name, "新艺人");
+        // 搜本名同样命中；无搜索词的列表不受别名影响（不产生重复项）
+        let page = query_artists_conn(&conn, Some("新艺人".into()), None, None).unwrap();
+        assert_eq!(page.total, 1);
+        let page = query_artists_conn(&conn, None, None, None).unwrap();
+        assert_eq!(page.total, 1);
+        // 悬空别名（主艺人已删）不命中任何艺人
+        conn.execute(
+            "INSERT INTO artist_aliases (alias, artist_id) VALUES ('已删艺人', 999)",
+            [],
+        )
+        .unwrap();
+        let page = query_artists_conn(&conn, Some("已删艺人".into()), None, None).unwrap();
+        assert_eq!(page.total, 0);
+    }
+
+    #[test]
+    fn query_albums_matches_merged_alias() {
+        let conn = conn();
+        seed(&conn);
+        // 搜旧名命中其名下专辑
+        let page = query_albums_conn(&conn, Some("旧艺人".into()), None, None).unwrap();
+        assert_eq!(page.total, 1);
+        assert_eq!(page.items[0].title, "专辑");
+        // 按专辑标题搜索不受影响
+        let page = query_albums_conn(&conn, Some("专辑".into()), None, None).unwrap();
+        assert_eq!(page.total, 1);
+        let page = query_albums_conn(&conn, None, None, None).unwrap();
+        assert_eq!(page.total, 1);
+    }
+}
+
+#[cfg(test)]
+mod unmerge_tests {
+    use super::*;
+
+    fn conn() -> rusqlite::Connection {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.pragma_update(None, "foreign_keys", "ON").unwrap();
+        crate::db::register_collations(&conn).unwrap();
+        conn.execute_batch(crate::db::SCHEMA).unwrap();
+        crate::db::migrate(&conn).unwrap();
+        conn
+    }
+
+    #[test]
+    fn merge_then_unmerge_round_trip() {
+        let mut conn = conn();
+        // 旧艺人：T1（主艺人）+ T3（合作艺人，ord 1）+ 独立专辑；新艺人：T2 + 自己的专辑
+        conn.execute_batch(
+            "INSERT INTO sources (id, name) VALUES (1, 's');
+             INSERT INTO artists (id, name) VALUES (1, '旧艺人'), (2, '新艺人');
+             INSERT INTO albums (id, title, artist_id, year, key) VALUES
+               (1, '旧专辑', 1, 2020, 'k1'), (2, '新专辑', 2, 2021, 'k2');
+             INSERT INTO tracks (id, source_id, path, title, artist_id, album_id) VALUES
+               (1, 1, 'p1', 'T1', 1, 1),
+               (2, 1, 'p2', 'T2', 2, 2),
+               (3, 1, 'p3', 'T3', 2, 2);
+             INSERT INTO track_artists (track_id, artist_id, ord) VALUES
+               (1, 1, 0), (2, 2, 0), (3, 2, 0), (3, 1, 1);",
+        )
+        .unwrap();
+
+        // 合并：记录历史（调用方在合并后写入别名行，这里保持一致）
+        {
+            let tx = conn.transaction().unwrap();
+            merge_artist_into(&tx, 1, 2).unwrap();
+            tx.commit().unwrap();
+        }
+        conn.execute(
+            "INSERT INTO artist_aliases (alias, artist_id) VALUES ('旧艺人', 2)",
+            [],
+        )
+        .unwrap();
+        let n: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM artist_merge_history WHERE alias = '旧艺人'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(n, 2);
+
+        // 取消合并
+        let r = unmerge_artist_conn(&mut conn, "旧艺人").unwrap();
+        assert_eq!(r.restored_tracks, 2);
+        assert_eq!(r.restored_albums, 1);
+
+        // 旧艺人恢复为独立艺人；别名与历史清除
+        let new_id: i64 = conn
+            .query_row(
+                "SELECT id FROM artists WHERE name = '旧艺人' COLLATE NOCASE",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        let n: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM artist_aliases WHERE alias = '旧艺人'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(n, 0);
+        let n: i64 = conn
+            .query_row("SELECT COUNT(*) FROM artist_merge_history", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        assert_eq!(n, 0);
+
+        // T1 主艺人归位；T3 恢复合作关联（ord 不变），主艺人仍是新艺人
+        let aid: i64 = conn
+            .query_row("SELECT artist_id FROM tracks WHERE id = 1", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        assert_eq!(aid, new_id);
+        let rows: Vec<(i64, i64, i64)> = conn
+            .prepare("SELECT track_id, artist_id, ord FROM track_artists WHERE track_id = 3 ORDER BY ord")
+            .unwrap()
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        assert_eq!(rows, vec![(3, 2, 0), (3, new_id, 1)]);
+        // 独立专辑拆回
+        let aid: i64 = conn
+            .query_row("SELECT artist_id FROM albums WHERE id = 1", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        assert_eq!(aid, new_id);
+        // 新艺人自己的曲目与专辑不受影响
+        let aid: i64 = conn
+            .query_row("SELECT artist_id FROM tracks WHERE id = 2", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        assert_eq!(aid, 2);
+        let aid: i64 = conn
+            .query_row("SELECT artist_id FROM albums WHERE id = 2", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        assert_eq!(aid, 2);
+    }
+
+    #[test]
+    fn unmerge_after_same_title_album_merge_keeps_tracks_in_target_album() {
+        let mut conn = conn();
+        // 两张同名同年专辑：合并时旧专辑被删除（曲目并入目标专辑）
+        conn.execute_batch(
+            "INSERT INTO sources (id, name) VALUES (1, 's');
+             INSERT INTO artists (id, name) VALUES (1, '旧艺人'), (2, '新艺人');
+             INSERT INTO albums (id, title, artist_id, year, key) VALUES
+               (1, '同名', 1, 2020, 'k1'), (2, '同名', 2, 2020, 'k2');
+             INSERT INTO tracks (id, source_id, path, title, artist_id, album_id) VALUES
+               (1, 1, 'p1', 'T1', 1, 1);
+             INSERT INTO track_artists (track_id, artist_id, ord) VALUES (1, 1, 0);",
+        )
+        .unwrap();
+        {
+            let tx = conn.transaction().unwrap();
+            let (_, merged) = merge_artist_into(&tx, 1, 2).unwrap();
+            tx.commit().unwrap();
+            assert_eq!(merged, vec![1]);
+        }
+        conn.execute(
+            "INSERT INTO artist_aliases (alias, artist_id) VALUES ('旧艺人', 2)",
+            [],
+        )
+        .unwrap();
+
+        let r = unmerge_artist_conn(&mut conn, "旧艺人").unwrap();
+        // 专辑已随合并删除，只拆回曲目归属
+        assert_eq!(r.restored_tracks, 1);
+        assert_eq!(r.restored_albums, 0);
+        let new_id: i64 = conn
+            .query_row(
+                "SELECT id FROM artists WHERE name = '旧艺人' COLLATE NOCASE",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        let (aid, alid): (i64, i64) = conn
+            .query_row(
+                "SELECT artist_id, album_id FROM tracks WHERE id = 1",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!((aid, alid), (new_id, 2));
+    }
+
+    #[test]
+    fn unmerge_unknown_alias_fails() {
+        let mut conn = conn();
+        assert!(unmerge_artist_conn(&mut conn, "不存在的别名").is_err());
+        assert!(unmerge_artist_conn(&mut conn, "   ").is_err());
+    }
 }
 
 #[cfg(test)]

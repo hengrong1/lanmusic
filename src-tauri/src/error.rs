@@ -63,6 +63,8 @@ pub mod codes {
     pub const ARTIST_MERGE_SAME: &str = "artist.mergeSame";
     /// 艺人不存在（自定义合并时选中的艺人已被删除等）
     pub const ARTIST_NOT_FOUND: &str = "artist.notFound";
+    /// 合并记录不存在（取消合并时该旧名已不是别名）
+    pub const ARTIST_ALIAS_NOT_FOUND: &str = "artist.aliasNotFound";
 
     // ---- 系统钥匙串 ----
     /// 系统钥匙串不可用：{error}

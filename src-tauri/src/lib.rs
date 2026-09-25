@@ -496,6 +496,7 @@ pub fn run() {
             commands::set_artist_separators,
             commands::normalize_artist_names,
             commands::merge_artist,
+            commands::unmerge_artist,
             commands::list_artist_aliases,
             commands::set_thumbbar_playing,
             commands::set_thumbbar_album,

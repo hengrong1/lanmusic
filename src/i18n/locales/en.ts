@@ -332,6 +332,15 @@ export default {
     // Merged names + custom merge
     artistMergedTitle: '{count} old names merged — scans still resolve them to the kept artist',
     artistMergedEmpty: 'No merge history yet — run the normalize above, or merge manually below',
+    artistMergedManage: 'Manage',
+    artistMergedDialogTitle: 'Merged artists ({count})',
+    artistMergedDialogDesc: 'Unmerging restores the old name as a standalone artist and moves tracks / albums back per the merge-time record.',
+    artistMergedRestorable: '{count} restorable',
+    artistUnmergeTitle: 'Unmerge',
+    artistUnmergeAction: 'Unmerge',
+    artistUnmergeConfirm: 'Restore "{alias}" as a standalone artist? Track ownership of {tracks} tracks will be moved back per the merge record.',
+    artistUnmergeDone: 'Unmerged: {name} is a standalone artist again ({tracks} tracks, {albums} albums moved back)',
+    artistUnmergeNoHistoryHint: 'Records without a restorable count can still be unmerged — tracks re-attribute on the next scan by file tags',
     artistMergeCustom: 'Custom Merge',
     artistMergeHint:
       'When two differently-named artists are actually the same person (renamed / different spellings), merge one into the other: tracks and albums move over, and the old name is kept as an alias — future scans still resolve it to the kept artist',
@@ -575,6 +584,7 @@ export default {
     artist: {
       mergeSame: 'Cannot merge an artist into itself',
       notFound: 'Artist not found — it may have just been deleted or merged; refresh and try again',
+      aliasNotFound: 'Merge record not found — it may have been undone or overwritten by a later merge',
     },
     file: {
       missing: 'File not found',

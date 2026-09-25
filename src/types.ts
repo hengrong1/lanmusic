@@ -66,6 +66,18 @@ export interface ArtistAlias {
   alias: string
   artistId: number
   artistName: string
+  /** 合并历史里仍可拆回的曲目数（历史记录引入前的旧合并为 0） */
+  restorableTracks: number
+}
+
+/** 取消合并结果 */
+export interface ArtistUnmergeResult {
+  artistId: number
+  artistName: string
+  /** 拆回关联的曲目数（含合作艺人关联） */
+  restoredTracks: number
+  /** 从主艺人名下拆回的专辑数 */
+  restoredAlbums: number
 }
 
 /** 已移除歌曲记录 */

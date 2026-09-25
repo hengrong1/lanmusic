@@ -41,6 +41,7 @@ import { useUpdater } from '@/composables/useUpdater'
 import { useStatsEntry } from '@/composables/useStatsEntry'
 import { useNav } from '@/composables/useNav'
 import AudioEffectsPanel from '@/components/AudioEffectsPanel.vue'
+import MergedArtistsDialog from '@/components/MergedArtistsDialog.vue'
 import {
   SHORTCUT_DEFS,
   GLOBAL_DEFS,
@@ -476,6 +477,7 @@ async function onNormalizeArtists() {
 
 // ---- 已合并名单 + 自定义合并（a 与 b 实为同一人时手动归并）----
 const artistAliases = ref<ArtistAlias[]>([])
+const mergedDialogOpen = ref(false)
 
 async function loadArtistAliases() {
   try {
@@ -485,6 +487,11 @@ async function loadArtistAliases() {
   }
 }
 void loadArtistAliases()
+
+/** 取消合并后：合并记录、艺人下拉、曲库统计都变了，统一刷新 */
+async function onUnmerged() {
+  await Promise.all([loadArtistAliases(), loadArtistOptions(), library.loadStats()])
+}
 
 /** 艺人下拉选项（按名称排序，最多前 1000 位——与艺人页同一上限口径） */
 const artistOptions = ref<SelectOption[]>([])
@@ -1425,11 +1432,22 @@ const showWebdavLimits = computed(() => showWebdav.value || library.sources.some
                   </div>
                 </template>
 
-                <!-- 已合并名单：历次规整与自定义合并的记录（扫描遇到旧名仍归到主艺人名下） -->
+                <!-- 已合并名单：历次规整与自定义合并的记录（扫描遇到旧名仍归到主艺人名下）。
+                     点「管理」打开弹窗，可逐条取消合并（按合并历史拆回曲目/专辑归属）。 -->
                 <div class="mt-3 border-t border-zinc-100 pt-3 dark:border-zinc-800">
-                  <p class="text-xs font-medium text-zinc-500">
-                    {{ t('settings.artistMergedTitle', { count: artistAliases.length }) }}
-                  </p>
+                  <div class="flex items-center justify-between gap-2">
+                    <p class="text-xs font-medium text-zinc-500">
+                      {{ t('settings.artistMergedTitle', { count: artistAliases.length }) }}
+                    </p>
+                    <BaseButton
+                      v-if="artistAliases.length"
+                      variant="ghost"
+                      size="xs"
+                      @click="mergedDialogOpen = true"
+                    >
+                      {{ t('settings.artistMergedManage') }}
+                    </BaseButton>
+                  </div>
                   <p v-if="!artistAliases.length" class="mt-1.5 text-xs text-zinc-400">
                     {{ t('settings.artistMergedEmpty') }}
                   </p>
@@ -2140,5 +2158,13 @@ const showWebdavLimits = computed(() => showWebdav.value || library.sources.some
         </section>
       </div>
     </div>
+
+    <!-- 已合并艺人弹窗：查看全部合并记录，逐条取消合并 -->
+    <MergedArtistsDialog
+      v-if="mergedDialogOpen"
+      :aliases="artistAliases"
+      @close="mergedDialogOpen = false"
+      @unmerged="onUnmerged"
+    />
   </div>
 </template>

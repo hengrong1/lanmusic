@@ -54,7 +54,7 @@ fn flush_digit_segment(out: &mut String, digits: &mut String, width: usize) {
     digits.clear();
 }
 
-const SCHEMA: &str = r#"
+pub(crate) const SCHEMA: &str = r#"
 CREATE TABLE IF NOT EXISTS sources (
   id INTEGER PRIMARY KEY,
   kind TEXT NOT NULL DEFAULT 'local',
@@ -79,6 +79,25 @@ CREATE TABLE IF NOT EXISTS artist_aliases (
   artist_id INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_artist_aliases_artist ON artist_aliases(artist_id);
+
+-- 合并历史：合并时对旧名名下的曲目/专辑归属做快照，供「取消合并」按此拆回。
+-- 曲目/专辑被移除时外键级联清理对应行，取消合并只拆仍存在的。
+CREATE TABLE IF NOT EXISTS artist_merge_history (
+  alias TEXT NOT NULL,
+  track_id INTEGER NOT NULL REFERENCES tracks(id) ON DELETE CASCADE,
+  was_primary INTEGER NOT NULL DEFAULT 0,
+  ord INTEGER NOT NULL DEFAULT 0,
+  merged_at INTEGER NOT NULL,
+  PRIMARY KEY (alias, track_id)
+);
+CREATE INDEX IF NOT EXISTS idx_artist_merge_history_alias ON artist_merge_history(alias);
+
+CREATE TABLE IF NOT EXISTS artist_merge_albums (
+  alias TEXT NOT NULL,
+  album_id INTEGER NOT NULL REFERENCES albums(id) ON DELETE CASCADE,
+  merged_at INTEGER NOT NULL,
+  PRIMARY KEY (alias, album_id)
+);
 
 CREATE TABLE IF NOT EXISTS albums (
   id INTEGER PRIMARY KEY,
@@ -221,13 +240,7 @@ pub fn open_conn(path: &Path, init: bool) -> rusqlite::Result<Connection> {
     conn.busy_timeout(std::time::Duration::from_secs(5))?;
     conn.pragma_update(None, "journal_mode", "WAL")?;
     conn.pragma_update(None, "foreign_keys", "ON")?;
-    // 中文按拼音排序：SQLite 内建 NOCASE 只对 ASCII 生效，中文按码点（部首笔画序）排
-    // 不符合直觉，注册自定义 collation 供「按标题/专辑/艺人」等 ORDER BY 使用。
-    // 比较时即时转换（无缓存）：万首规模单次排序在几十 ms 内，够用；
-    // 库规模显著增长后再考虑入库时预计算拼音辅助列。
-    conn.create_collation("PINYIN", |a: &str, b: &str| {
-        pinyin_key(a).cmp(&pinyin_key(b))
-    })?;
+    register_collations(&conn)?;
     if init {
         conn.execute_batch(SCHEMA)?;
         migrate(&conn)?;
@@ -235,10 +248,20 @@ pub fn open_conn(path: &Path, init: bool) -> rusqlite::Result<Connection> {
     Ok(conn)
 }
 
+/// 中文按拼音排序：SQLite 内建 NOCASE 只对 ASCII 生效，中文按码点（部首笔画序）排
+/// 不符合直觉，注册自定义 collation 供「按标题/专辑/艺人」等 ORDER BY 使用。
+/// 比较时即时转换（无缓存）：万首规模单次排序在几十 ms 内，够用；
+/// 库规模显著增长后再考虑入库时预计算拼音辅助列。
+pub(crate) fn register_collations(conn: &Connection) -> rusqlite::Result<()> {
+    conn.create_collation("PINYIN", |a: &str, b: &str| {
+        pinyin_key(a).cmp(&pinyin_key(b))
+    })
+}
+
 /// 启动迁移：补列 + 一次性数据修复（幂等，重复执行无副作用）。
 /// 仅 UI 主连接（`open`/`open_conn(init=true)`，即启动时）执行；
 /// 扫描线程开独立连接走 `open_conn(init=false)`，不经过这里。
-fn migrate(conn: &Connection) -> rusqlite::Result<()> {
+pub(crate) fn migrate(conn: &Connection) -> rusqlite::Result<()> {
     // has_mv: 是否存在同名视频文件（MV）
     ensure_column(conn, "tracks", "has_mv", "INTEGER NOT NULL DEFAULT 0")?;
     // meta_state: 0=快速导入（仅文件名入库），1=完整解析过标签

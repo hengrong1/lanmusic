@@ -4,6 +4,7 @@ import type {
   AlbumItem,
   ArtistAlias,
   ArtistItem,
+  ArtistUnmergeResult,
   ArtistNormalizeChange,
   ArtistSplitChange,
   LibraryHealth,
@@ -176,6 +177,8 @@ export const api = {
   // 自定义合并：把 source 艺人并入 target（视为同一人），source 名字记为 target 的别名
   mergeArtist: (sourceId: number, targetId: number) =>
     invoke<ArtistNormalizeChange>('merge_artist', { sourceId, targetId }),
+  // 取消合并：把旧名恢复为独立艺人，按合并历史拆回曲目/专辑归属
+  unmergeArtist: (alias: string) => invoke<ArtistUnmergeResult>('unmerge_artist', { alias }),
 
   // 曲库移除与记录
   /** 从曲库移除曲目（不删磁盘文件），返回实际移除数量 */

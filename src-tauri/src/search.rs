@@ -187,6 +187,23 @@ pub fn search_tracks(conn: &Connection, q: &TrackQuery) -> Result<Page<Track>, S
     let q_compact: String = raw.chars().filter(|c| !c.is_whitespace()).collect();
     let (q_full, q_init) = pinyin_forms(&q_compact);
 
+    // 合并记忆（旧名别名 → 主艺人）：搜旧名等同于搜到合并后的主艺人。
+    // 悬空别名（主艺人已删）的 id 不会出现在任何曲目的艺人列表里，天然不会误中。
+    let alias_by_artist: HashMap<i64, Vec<String>> = {
+        let mut stmt = conn
+            .prepare("SELECT artist_id, alias FROM artist_aliases")
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?)))
+            .map_err(|e| e.to_string())?;
+        let mut m: HashMap<i64, Vec<String>> = HashMap::new();
+        for row in rows {
+            let (aid, alias) = row.map_err(|e| e.to_string())?;
+            m.entry(aid).or_default().push(alias);
+        }
+        m
+    };
+
     // ---- SQL 候选集：视图过滤 + 可预筛字段 LIKE ----
     let (view_where, view_args) = commands::view_filter(q);
     let mut wheres: Vec<String> = Vec::new();
@@ -216,8 +233,13 @@ pub fn search_tracks(conn: &Connection, q: &TrackQuery) -> Result<Page<Track>, S
                     args.push(Box::new(like.clone()));
                 }
                 F_ARTIST => {
-                    // 主艺人 + track_artists 合作艺人都命中
-                    ors.push("(IFNULL(a.name,'') LIKE ? ESCAPE '\\' OR EXISTS (SELECT 1 FROM track_artists ta JOIN artists a2 ON a2.id = ta.artist_id WHERE ta.track_id = t.id AND a2.name LIKE ? ESCAPE '\\'))".into());
+                    // 主艺人 + track_artists 合作艺人都命中；合并记忆的旧名别名同样算命中
+                    ors.push("(IFNULL(a.name,'') LIKE ? ESCAPE '\\' \
+                              OR EXISTS (SELECT 1 FROM track_artists ta JOIN artists a2 ON a2.id = ta.artist_id WHERE ta.track_id = t.id AND a2.name LIKE ? ESCAPE '\\') \
+                              OR EXISTS (SELECT 1 FROM track_artists ta2 JOIN artist_aliases aa ON aa.artist_id = ta2.artist_id WHERE ta2.track_id = t.id AND aa.alias LIKE ? ESCAPE '\\') \
+                              OR EXISTS (SELECT 1 FROM artist_aliases aa2 WHERE aa2.artist_id = t.artist_id AND aa2.alias LIKE ? ESCAPE '\\'))".into());
+                    args.push(Box::new(like.clone()));
+                    args.push(Box::new(like.clone()));
                     args.push(Box::new(like.clone()));
                     args.push(Box::new(like.clone()));
                 }
@@ -268,7 +290,7 @@ pub fn search_tracks(conn: &Connection, q: &TrackQuery) -> Result<Page<Track>, S
             let texts: Vec<&str> = match f.as_str() {
                 F_TITLE => vec![h.track.title.as_str()],
                 F_ARTIST => {
-                    if !h.track.artists.is_empty() {
+                    let mut names: Vec<&str> = if !h.track.artists.is_empty() {
                         h.track.artists.iter().map(|a| a.name.as_str()).collect()
                     } else {
                         h.track
@@ -276,7 +298,20 @@ pub fn search_tracks(conn: &Connection, q: &TrackQuery) -> Result<Page<Track>, S
                             .as_deref()
                             .map(|s| vec![s])
                             .unwrap_or_default()
+                    };
+                    // 合并记忆：别名（旧名）指向的正是这些艺人，命中等同命中本名
+                    let alias_ids = h
+                        .track
+                        .artists
+                        .iter()
+                        .map(|a| a.id)
+                        .chain(h.track.artist_id);
+                    for id in alias_ids {
+                        if let Some(list) = alias_by_artist.get(&id) {
+                            names.extend(list.iter().map(|s| s.as_str()));
+                        }
                     }
+                    names
                 }
                 F_ALBUM => h
                     .track
@@ -410,6 +445,7 @@ pub fn backfill_lyrics_index(app: &tauri::AppHandle) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::commands::TrackQuery;
 
     #[test]
     fn escapes_like_wildcards() {
@@ -443,5 +479,63 @@ mod tests {
         // 不相关不命中
         let s = match_field("title", "蓝天", "晴天", "qingtian", "qt", true, &mut cache);
         assert_eq!(s, 0);
+    }
+
+    /// 合并后的状态：旧艺人已删、曲目归「新艺人」、旧名记为别名。
+    /// 搜旧名应命中主艺人和合作艺人的曲目（SQL 预筛 + 评分两条路径都走别名）。
+    #[test]
+    fn search_hits_merged_artist_by_alias() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.pragma_update(None, "foreign_keys", "ON").unwrap();
+        crate::db::register_collations(&conn).unwrap();
+        conn.execute_batch(crate::db::SCHEMA).unwrap();
+        crate::db::migrate(&conn).unwrap();
+        conn.execute_batch(
+            "INSERT INTO sources (id, name) VALUES (1, 's');
+             INSERT INTO artists (id, name) VALUES (2, '新艺人'), (3, '其他人');
+             INSERT INTO tracks (id, source_id, path, title, artist_id, added_at) VALUES
+               (1, 1, 'p1', 'T1', 2, 100),
+               (2, 1, 'p2', 'T2', 3, 100);
+             INSERT INTO track_artists (track_id, artist_id, ord) VALUES
+               (1, 2, 0),
+               (2, 3, 0), (2, 2, 1);
+             INSERT INTO artist_aliases (alias, artist_id) VALUES ('旧艺人', 2);",
+        )
+        .unwrap();
+
+        let q = TrackQuery {
+            search: Some("旧艺人".into()),
+            fields: Some(vec!["artist".into()]),
+            pinyin: Some(false),
+            ..no_view()
+        };
+        let page = search_tracks(&conn, &q).unwrap();
+        assert_eq!(page.total, 2);
+        let ids: Vec<i64> = page.items.iter().map(|t| t.id).collect();
+        assert_eq!(ids, vec![1, 2]);
+        assert!(page.items[0].matched_fields.contains(&"artist".to_string()));
+
+        // 不相关关键词不命中
+        let q = TrackQuery {
+            search: Some("不存在的艺人".into()),
+            fields: Some(vec!["artist".into()]),
+            pinyin: Some(false),
+            ..no_view()
+        };
+        let page = search_tracks(&conn, &q).unwrap();
+        assert_eq!(page.total, 0);
+    }
+
+    fn no_view() -> TrackQuery {
+        TrackQuery {
+            view: None,
+            ref_id: None,
+            search: None,
+            sort: None,
+            page: None,
+            page_size: None,
+            fields: None,
+            pinyin: None,
+        }
     }
 }
