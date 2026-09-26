@@ -2,7 +2,7 @@ import { test, expect } from './fixtures'
 
 /** 播放器：播放/暂停/切歌/喜欢/队列（真实音频播放，用例内即时暂停降噪） */
 test.describe('播放器', () => {
-  test.fixme('VIEW-GUARD: 过渡卡 opacity 0: ', '双击播放 → 暂停/继续 → 下一首/上一首 → 喜欢 → 队列', async ({ page }) => {
+  test('双击播放 → 暂停/继续 → 下一首/上一首 → 喜欢 → 队列', async ({ page }) => {
     await page.locator('[data-testid="nav-tracks"]').click()
     const rows = page.locator('[data-testid="track-row"]')
     await expect(rows.first()).toBeVisible({ timeout: 15_000 })
@@ -42,7 +42,7 @@ test.describe('播放器', () => {
     await expect(toggle).toHaveAttribute('data-playing', 'false')
   })
 
-  test.fixme('VIEW-GUARD: 过渡卡 opacity 0: ', '播放队列面板开关', async ({ page }) => {
+  test('播放队列面板开关', async ({ page }) => {
     await page.locator('[data-testid="nav-tracks"]').click()
     const rows = page.locator('[data-testid="track-row"]')
     await expect(rows.first()).toBeVisible({ timeout: 15_000 })

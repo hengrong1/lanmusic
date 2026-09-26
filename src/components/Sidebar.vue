@@ -307,6 +307,7 @@ function openPlaylistMenu(e: MouseEvent, p: { id: number; name: string }) {
         <button
           class="transition-colors duration-150 sidebar-fade flex h-5 w-5 cursor-pointer items-center justify-center rounded-lg text-zinc-400 hover:bg-zinc-200 hover:text-zinc-600 disabled:cursor-default dark:hover:bg-zinc-700 dark:hover:text-zinc-300"
           v-tooltip="$t('playlist.createNew')"
+          data-testid="playlist-create"
           :disabled="collapsed"
           @click="createOpen = true"
         >

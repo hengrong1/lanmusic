@@ -6,7 +6,7 @@ test.describe('设置', () => {
     await page.locator('[data-testid="nav-settings"]').click()
   })
 
-  test.fixme('VIEW-GUARD: 过渡卡 opacity 0: ', '主题切换：深色/浅色类切换', async ({ page }) => {
+  test('主题切换：深色/浅色类切换', async ({ page }) => {
     const html = page.locator('html')
     const darkBtn = page.locator('[data-testid="theme-group"]').getByText('深色')
     const lightBtn = page.locator('[data-testid="theme-group"]').getByText('浅色')
@@ -18,7 +18,7 @@ test.describe('设置', () => {
     await page.locator('[data-testid="theme-group"]').getByText('跟随系统').click()
   })
 
-  test.fixme('VIEW-GUARD: 过渡卡 opacity 0: ', '语言切换 zh → en → zh', async ({ page }) => {
+  test('语言切换 zh → en → zh', async ({ page }) => {
     await page.locator('[data-testid="language-select"]').scrollIntoViewIfNeeded()
     await page.waitForTimeout(800) // 等平滑滚动结束，避免面板被 outside-scroll 关闭
     const langSel = page.locator('[data-testid="language-select"] button')
@@ -33,7 +33,7 @@ test.describe('设置', () => {
     await expect(page.getByText('已合并').first()).toBeVisible({ timeout: 10_000 })
   })
 
-  test.fixme('VIEW-GUARD: 过渡卡 opacity 0: ', '桌面歌词开关：出现独立歌词窗口（新 CDP 页面）', async ({ page }) => {
+  test('桌面歌词开关：出现独立歌词窗口（新 CDP 页面）', async ({ page }) => {
     const pages = () => page.context().pages().length
     const before = pages()
     await page.locator('[data-testid="dl-switch"]').click()
@@ -45,7 +45,7 @@ test.describe('设置', () => {
     await expect.poll(() => pages(), { timeout: 15_000 }).toBe(before)
   })
 
-  test.fixme('VIEW-GUARD: 过渡卡 opacity 0: ', '听歌统计入口开启后侧栏出现统计项，诊断页有采样数据', async ({ page }) => {
+  test('听歌统计入口开启后侧栏出现统计项，诊断页有采样数据', async ({ page }) => {
     const navStats = page.locator('[data-testid="nav-stats"]')
     const enabled = (await navStats.count()) > 0
     if (!enabled) {

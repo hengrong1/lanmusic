@@ -175,6 +175,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
           <label class="mb-1 block text-xs font-medium text-zinc-500 dark:text-zinc-400">{{ $t('playlist.namePlaceholder') }}</label>
           <BaseInput
             ref="nameInput"
+            data-testid="playlist-name"
             v-model="nameDraft"
             :placeholder="$t('playlist.namePlaceholder')"
             :maxlength="25"
@@ -203,7 +204,14 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
       <!-- 底部操作 -->
       <div class="flex shrink-0 items-center justify-end gap-2 border-t border-zinc-200 px-5 py-3 dark:border-zinc-800">
         <BaseButton variant="ghost" size="sm" @click="emit('close')">{{ $t('common.cancel') }}</BaseButton>
-        <BaseButton variant="primary" size="sm" :loading="saving" :disabled="!nameDraft.trim()" @click="save">
+        <BaseButton
+          data-testid="playlist-save"
+          variant="primary"
+          size="sm"
+          :loading="saving"
+          :disabled="!nameDraft.trim()"
+          @click="save"
+        >
           {{ isCreate ? $t('playlist.create') : $t('common.save') }}
         </BaseButton>
       </div>
