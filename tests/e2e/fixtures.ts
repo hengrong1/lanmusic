@@ -15,12 +15,23 @@ const CONNECT_TIMEOUT_MS = 120_000
 async function connectMainPage(): Promise<Page> {
   const browser = await chromium.connectOverCDP(CDP)
   const ctx = browser.contexts()[0]
-  const page =
-    // dev 模式页面 URL 是 http://localhost:1420；打包版是 tauri://localhost 或 http://tauri.localhost
-    ctx?.pages().find((p) => !p.isClosed() && /localhost|tauri/.test(p.url())) ??
-    ctx?.pages()[0]
-  if (!page) throw new Error('CDP 已连上但未找到 LanMusic 页面')
-  return page
+  if (!ctx) throw new Error('CDP 已连上但没有浏览器上下文')
+  // 主窗口不能用 URL 区分（桌面歌词小窗与主窗口同源）——用主界面特征元素识别
+  const deadline = Date.now() + 10_000
+  for (;;) {
+    for (const p of ctx.pages()) {
+      if (p.isClosed()) continue
+      try {
+        if ((await p.locator('#search-input').count()) > 0) return p
+      } catch {
+        // 页面可能正在跳转，忽略后重试
+      }
+    }
+    if (Date.now() > deadline) {
+      throw new Error(`CDP 已连上但未找到主窗口（共 ${ctx.pages().length} 个页面）`)
+    }
+    await new Promise((r) => setTimeout(r, 500))
+  }
 }
 
 export const test = base.extend<{ page: Page }>({

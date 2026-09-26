@@ -37,7 +37,6 @@ try {
     if ($LASTEXITCODE -ne 0) { throw "E2E 用例失败（exit $LASTEXITCODE）" }
 } finally {
     # 收尾：整个 dev 进程树（cmd → cargo → lanmusic）连带关掉
-    Stop-Process -Id $dev.Id -Force -ErrorAction SilentlyContinue
-    taskkill /PID $($dev.Id) /T /F 2>$null | Out-Null
+    try { taskkill /PID $($dev.Id) /T /F 2>$null | Out-Null } catch {}
     Get-Process lanmusic -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 }
