@@ -610,6 +610,7 @@ const theme = computed(() =>
             class="min-w-0 truncate font-medium transition-colors duration-500"
             :class="theme.title"
             v-tooltip="player.current.title"
+            data-testid="player-title"
           >{{ player.current.title }}</span>
           <span v-else class="truncate font-medium" :class="theme.title">{{ $t('player.notPlaying') }}</span>
           <span v-if="player.current" class="shrink-0 opacity-40">–</span>
@@ -669,6 +670,7 @@ const theme = computed(() =>
         <button
           class="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full transition-colors duration-500 hover:duration-200"
           :class="theme.plainBtn"
+          data-testid="player-prev"
           v-tooltip="$t('player.prev') + ' (P)'"
           @click="player.prev()"
         >
@@ -678,6 +680,8 @@ const theme = computed(() =>
           class="relative flex h-10 w-10 cursor-pointer items-center justify-center rounded-full shadow-lg shadow-violet-500/30 transition duration-200 hover:scale-110 active:scale-90"
           :class="theme.playBtn"
           :style="playBtnStyle"
+          data-testid="player-toggle"
+          :data-playing="player.playing"
           v-tooltip="player.buffering ? $t('player.buffering') : $t('player.playPauseHint')"
           @click="player.toggle()"
         >
@@ -714,6 +718,7 @@ const theme = computed(() =>
         <button
           class="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full transition-colors duration-500 hover:duration-200"
           :class="theme.plainBtn"
+          data-testid="player-next"
           v-tooltip="$t('player.next') + ' (N)'"
           @click="player.next()"
         >
@@ -723,6 +728,7 @@ const theme = computed(() =>
           class="relative flex h-9 w-9 cursor-pointer items-center justify-center rounded-full transition-colors duration-500 hover:duration-200 disabled:cursor-not-allowed"
           :class="player.current?.fav ? 'text-red-500 hover:bg-red-500/10' : theme.favBtn"
           v-tooltip="player.current?.fav ? $t('library.unlike') : $t('library.like')"
+          data-testid="player-fav"
           :disabled="!player.current"
           @click="player.toggleFav()"
         >
@@ -733,7 +739,7 @@ const theme = computed(() =>
         </button>
       </div>
       <div class="flex w-full max-w-xl items-center gap-2">
-        <span class="w-10 text-right font-mono text-[11px] tabular-nums transition-colors duration-500" :class="theme.time">{{ fmt(player.position) }}</span>
+        <span data-testid="player-pos" class="w-10 text-right font-mono text-[11px] tabular-nums transition-colors duration-500" :class="theme.time">{{ fmt(player.position) }}</span>
         <div class="relative flex min-w-0 flex-1 items-center">
           <!-- 进度条悬停气泡：时间 + 对应歌词，随鼠标平移 -->
           <div

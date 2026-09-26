@@ -437,6 +437,7 @@ function onDragEnd() {
       >
         <template #default="{ item: t, index }">
           <div
+            data-testid="track-row"
             class="group mx-2 grid h-full items-center gap-3 rounded-lg px-4 text-sm select-none"
             :class="[
               rowClass(t, index),

@@ -13,6 +13,7 @@ defineEmits<{ open: [album: AlbumItem]; play: [album: AlbumItem] }>()
       v-for="album in albums"
       :key="album.id"
       class="group cursor-pointer"
+      data-testid="album-card"
       @dblclick="$emit('play', album)"
       @click="$emit('open', album)"
     >

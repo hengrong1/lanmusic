@@ -105,6 +105,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
                   </span>
                 </div>
                 <BaseButton
+                  data-testid="unmerge-btn"
                   variant="ghost"
                   size="xs"
                   :icon="Refresh"

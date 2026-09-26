@@ -220,6 +220,7 @@ defineExpose({ focusSearch })
       class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-zinc-500 transition hover:bg-zinc-200/70 hover:text-violet-500 disabled:cursor-not-allowed disabled:opacity-30 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-violet-400"
       :disabled="!canBack"
       v-tooltip="$t('common.back')"
+      data-testid="view-back"
       @click="back()"
     >
       <ArrowLeft class="h-4 w-4" />

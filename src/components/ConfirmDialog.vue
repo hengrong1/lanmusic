@@ -66,6 +66,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
                 {{ state.cancelText }}
               </BaseButton>
               <BaseButton
+                data-testid="confirm-accept"
                 size="sm"
                 variant="primary"
                 :tone="state.danger ? 'danger' : 'default'"

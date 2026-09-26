@@ -1475,6 +1475,7 @@ const showWebdavLimits = computed(() => showWebdav.value || library.sources.some
                   <div class="mt-2.5 grid items-center gap-2 sm:grid-cols-[1fr_1fr_auto]">
                     <BaseSelect
                       v-model="mergeKeep"
+                      data-testid="merge-keep"
                       :options="artistOptions"
                       :placeholder="t('settings.artistMergeKeep')"
                       size="sm"
@@ -1482,6 +1483,7 @@ const showWebdavLimits = computed(() => showWebdav.value || library.sources.some
                     />
                     <BaseSelect
                       v-model="mergeAbsorb"
+                      data-testid="merge-absorb"
                       :options="artistOptions"
                       :placeholder="t('settings.artistMergeAbsorb')"
                       size="sm"
@@ -1491,6 +1493,7 @@ const showWebdavLimits = computed(() => showWebdav.value || library.sources.some
                       size="sm"
                       variant="secondary"
                       :loading="merging"
+                      data-testid="merge-apply"
                       :disabled="merging || artistOptionsLoading || mergeKeep === '' || mergeAbsorb === '' || mergeKeep === mergeAbsorb"
                       @click="onMergeArtist"
                     >
@@ -1520,7 +1523,8 @@ const showWebdavLimits = computed(() => showWebdav.value || library.sources.some
               <div class="space-y-4 rounded-2xl hover-accent-border border border-zinc-200 bg-white p-4 text-sm dark:border-zinc-800 dark:bg-zinc-900">
                 <div class="flex items-center justify-between gap-3">
                   <span class="text-zinc-700 dark:text-zinc-200">{{ t('settings.theme') }}</span>
-                  <BaseButtonGroup :model-value="mode" :items="themeItems" size="sm" @update:model-value="onThemeChange" />
+                  <BaseButtonGroup :model-value="mode"
+                  data-testid="theme-group" :items="themeItems" size="sm" @update:model-value="onThemeChange" />
                 </div>
                 <!-- 主题色：Ant Design 色板预设，覆盖 --color-violet-* 变量全局换肤（见 useThemeColor.ts） -->
                 <div class="flex items-center justify-between gap-3">
@@ -1837,6 +1841,7 @@ const showWebdavLimits = computed(() => showWebdav.value || library.sources.some
                     <span class="text-zinc-700 dark:text-zinc-200">{{ t('settings.dlShow') }}</span>
                     <BaseSwitch
                       :model-value="dlEnabled"
+                      data-testid="dl-switch"
                       size="sm"
                       :label="dlEnabled ? t('desktopLyrics.enabled') : t('desktopLyrics.disabled')"
                       @update:model-value="() => dlToggle()"
@@ -1976,7 +1981,8 @@ const showWebdavLimits = computed(() => showWebdav.value || library.sources.some
                 <div class="flex flex-wrap items-center justify-between gap-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-800/60">
                   <span class="text-zinc-700 dark:text-zinc-200">{{ t('settings.languageSelect') }}</span>
                   <div class="w-40 shrink-0">
-                    <BaseSelect :model-value="locale" :options="languageOptions" size="sm" @update:model-value="onLocaleChange" />
+                    <BaseSelect :model-value="locale"
+                  data-testid="language-select" :options="languageOptions" size="sm" @update:model-value="onLocaleChange" />
                   </div>
                 </div>
                 <div class="mt-0.5 flex flex-wrap items-center justify-between gap-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-800/60">
@@ -1993,7 +1999,8 @@ const showWebdavLimits = computed(() => showWebdav.value || library.sources.some
                     <p class="text-zinc-700 dark:text-zinc-200">{{ t('settings.statsEntry') }}</p>
                     <p class="mt-0.5 text-xs text-zinc-400">{{ t('settings.statsEntryHint') }}</p>
                   </div>
-                  <BaseSwitch :model-value="statsEnabled" size="sm" @update:model-value="setStatsEntry" />
+                  <BaseSwitch :model-value="statsEnabled"
+                      data-testid="stats-switch" size="sm" @update:model-value="setStatsEntry" />
                 </div>
               </div>
             </section>
@@ -2115,6 +2122,7 @@ const showWebdavLimits = computed(() => showWebdav.value || library.sources.some
                       size="sm"
                       variant="outline"
                       :loading="updater.status.value === 'checking'"
+                      data-testid="check-update"
                       :disabled="updater.status.value === 'checking' || updater.status.value === 'downloading'"
                       :icon="updater.status.value === 'checking' ? undefined : RefreshCw"
                       @click="updater.checkForUpdate(false)"

@@ -140,6 +140,8 @@ onMounted(() => {
 
 interface NavEntry {
   route: NavRoute
+  /** E2E 稳定标识：同 view 的入口有多个（如全部歌曲/我的喜欢/最近播放） */
+  tid: string
   label: string
   icon: typeof Music
   /** 选中态使用的 bold 图标（与 icon 同形不同粗细） */
@@ -152,14 +154,14 @@ interface NavEntry {
 const { statsEnabled } = useStatsEntry()
 
 const entries = computed<NavEntry[]>(() => [
-  { route: { view: 'tracks' }, label: t('library.allTracks'), icon: Music, iconActive: MusicBold, count: () => library.stats.tracks },
-  { route: { view: 'tracks', favorites: true }, label: t('library.myFavorites'), icon: Heart, iconActive: HeartBold, count: () => library.stats.favorites, heart: true },
-  { route: { view: 'albums' }, label: t('library.albums'), icon: Disc3, iconActive: Disc3Bold, count: () => library.stats.albums },
-  { route: { view: 'artists' }, label: t('library.artists'), icon: Mic, iconActive: MicBold, count: () => library.stats.artists },
-  { route: { view: 'tracks', recent: true }, label: t('nav.recent'), icon: History, iconActive: HistoryBold },
-  { route: { view: 'folder' }, label: t('nav.folder'), icon: Folder2, iconActive: Folder2Bold },
+  { route: { view: 'tracks' }, tid: 'tracks', label: t('library.allTracks'), icon: Music, iconActive: MusicBold, count: () => library.stats.tracks },
+  { route: { view: 'tracks', favorites: true }, tid: 'favorites', label: t('library.myFavorites'), icon: Heart, iconActive: HeartBold, count: () => library.stats.favorites, heart: true },
+  { route: { view: 'albums' }, tid: 'albums', label: t('library.albums'), icon: Disc3, iconActive: Disc3Bold, count: () => library.stats.albums },
+  { route: { view: 'artists' }, tid: 'artists', label: t('library.artists'), icon: Mic, iconActive: MicBold, count: () => library.stats.artists },
+  { route: { view: 'tracks', recent: true }, tid: 'recent', label: t('nav.recent'), icon: History, iconActive: HistoryBold },
+  { route: { view: 'folder' }, tid: 'folder', label: t('nav.folder'), icon: Folder2, iconActive: Folder2Bold },
   // 听歌统计入口默认隐藏（设置 → 通用可开启）；统计流水始终在记录，开关只控制入口显示
-  ...(statsEnabled.value ? [{ route: { view: 'stats' as const }, label: t('nav.stats'), icon: GraphUp, iconActive: GraphUpBold }] : []),
+  ...(statsEnabled.value ? [{ route: { view: 'stats' as const }, tid: 'stats', label: t('nav.stats'), icon: GraphUp, iconActive: GraphUpBold }] : []),
 ])
 
 /** 导航图标配色：默认跟随主题色（violet），喜欢入口固定红色系（悬停/选中红，未选中中性灰） */
@@ -277,7 +279,7 @@ function openPlaylistMenu(e: MouseEvent, p: { id: number; name: string }) {
       <button
         v-for="e in entries"
         :key="e.label"
-        :data-testid="`nav-${e.route.view}`"
+        :data-testid="`nav-${e.tid}`"
         v-tooltip:right="collapsed ? e.label : ''"
         class="group mb-0.5 flex h-9 w-full shrink-0 cursor-pointer items-center rounded-lg text-sm transition"
         :class="[
