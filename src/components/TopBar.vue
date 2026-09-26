@@ -381,6 +381,7 @@ defineExpose({ focusSearch })
     </button>
 
     <button
+      data-testid="nav-settings"
       class="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg transition"
       :class="
         current.view === 'settings'

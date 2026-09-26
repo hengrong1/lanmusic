@@ -1,4 +1,4 @@
-# LanMusic E2E 一键运行：带 CDP 调试端口启动 dev 应用 → 等 CDP 就绪 → 跑 Playwright → 关闭应用
+﻿# LanMusic E2E 一键运行：带 CDP 调试端口启动 dev 应用 → 等 CDP 就绪 → 跑 Playwright → 关闭应用
 # 用法：
 #   powershell -ExecutionPolicy Bypass -File scripts\e2e.ps1                # 全部用例
 #   powershell -ExecutionPolicy Bypass -File scripts\e2e.ps1 -- --grep 搜索  # 透传给 playwright
@@ -38,6 +38,6 @@ try {
 } finally {
     # 收尾：整个 dev 进程树（cmd → cargo → lanmusic）连带关掉
     Stop-Process -Id $dev.Id -Force -ErrorAction SilentlyContinue
-    cmd /c "taskkill /PID $($dev.Id) /T /F" 2>$null | Out-Null
+    taskkill /PID $($dev.Id) /T /F 2>$null | Out-Null
     Get-Process lanmusic -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 }
