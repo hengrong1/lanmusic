@@ -66,6 +66,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
         <div
           v-focus-trap
           data-dialog-panel
+          data-testid="merged-dialog"
           class="app-surface-blur flex w-full max-w-md flex-col overflow-hidden rounded-xl border border-white/15 bg-(--app-surface) shadow-2xl"
         >
           <!-- 标题栏（可拖动） -->
@@ -120,7 +121,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
           <!-- 底部操作 -->
           <div class="flex shrink-0 items-center justify-between gap-2 border-t border-zinc-200 px-5 py-3 dark:border-zinc-800">
             <p class="min-w-0 truncate text-[10px] text-zinc-400">{{ $t('settings.artistUnmergeNoHistoryHint') }}</p>
-            <BaseButton variant="ghost" size="sm" @click="emit('close')">{{ $t('common.close') }}</BaseButton>
+            <BaseButton variant="ghost" size="sm" data-testid="merged-dialog-close" @click="emit('close')">{{ $t('common.close') }}</BaseButton>
           </div>
         </div>
       </Transition>

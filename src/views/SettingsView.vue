@@ -1443,6 +1443,7 @@ const showWebdavLimits = computed(() => showWebdav.value || library.sources.some
                       v-if="artistAliases.length"
                       variant="ghost"
                       size="xs"
+                      data-testid="merged-manage"
                       @click="mergedDialogOpen = true"
                     >
                       {{ t('settings.artistMergedManage') }}

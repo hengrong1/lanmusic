@@ -277,6 +277,7 @@ function openPlaylistMenu(e: MouseEvent, p: { id: number; name: string }) {
       <button
         v-for="e in entries"
         :key="e.label"
+        :data-testid="`nav-${e.route.view}`"
         v-tooltip:right="collapsed ? e.label : ''"
         class="group mb-0.5 flex h-9 w-full shrink-0 cursor-pointer items-center rounded-lg text-sm transition"
         :class="[

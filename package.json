@@ -13,6 +13,7 @@
     "tauri": "tauri",
     "typecheck": "vue-tsc --noEmit",
     "test": "cargo test --manifest-path src-tauri/Cargo.toml",
+    "test:e2e": "playwright test -c tests/e2e/playwright.config.ts",
     "clippy": "cargo clippy --manifest-path src-tauri/Cargo.toml",
     "fmt": "cargo fmt --manifest-path src-tauri/Cargo.toml",
     "fmt:check": "cargo fmt --manifest-path src-tauri/Cargo.toml -- --check",
@@ -35,6 +36,7 @@
     "vue-i18n": "^11.4.12"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "@tauri-apps/cli": "^2.11.5",
     "@vitejs/plugin-vue": "^6.0.9",
     "typescript": "^5.9.3",
