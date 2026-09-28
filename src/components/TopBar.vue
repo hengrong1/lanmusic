@@ -16,6 +16,8 @@ import { useNav } from '@/composables/useNav'
 import { useSidebar } from '@/composables/useSidebar'
 import { useTheme } from '@/composables/useTheme'
 import { getSearchSettings } from '@/composables/useSearchSettings'
+import { useLibraryStore } from '@/stores/library'
+import { usePlayerStore } from '@/stores/player'
 import { api } from '@/api/commands'
 import type { Track } from '@/types'
 import { CUSTOM_WINDOW_CONTROLS } from '@/utils/platform'
@@ -29,6 +31,8 @@ function toggleSidebar() {
 
 const { current, back, replaceSearch, canBack, go } = useNav()
 const { mode, resolved, setTheme } = useTheme()
+const player = usePlayerStore()
+const library = useLibraryStore()
 
 const input = ref(current.value.search ?? '')
 watch(
@@ -148,14 +152,35 @@ function onEnter() {
   }
   closeDropdown()
 }
-/** 点击弹出层中的一条搜索结果：进入完整搜索结果页（与 Enter 行为一致） */
-function playResult(_t: Track) {
+/** 点击弹出层中的一条搜索结果：直接播放这首歌，队列 = **全部歌曲列表**
+ * （与「全部歌曲」页同源同排序，用曲库当前排序偏好；搜索词只是找到这首歌
+ * 的入口，播放语境回归整个曲库，而不是搜索结果子集），从点击那首开始播。
+ * 不改当前页面；想看这首歌的封面/歌词等详情，点底部播放条进播放页即可 */
+let playSeq = 0
+let lastPlayed: { id: number; at: number } | null = null
+async function playResult(t: Track) {
   const v = input.value.trim()
-  if (v) {
-    replaceSearch(v)
-    recordSearch(v)
-  }
+  if (v) recordSearch(v)
   closeDropdown()
+  // 快速重复点击同一条（双击习惯）只播一次：第二次 playList 会命中
+  // 「同队列 + 当前歌 → toggle()」分支，把刚开始的播放暂停，看起来像点了没反应
+  const now = Date.now()
+  if (lastPlayed && lastPlayed.id === t.id && now - lastPlayed.at < 500) return
+  lastPlayed = { id: t.id, at: now }
+  const my = ++playSeq
+  // 全量拉取失败、或曲目不在结果里（曲库超过 pageSize 上限时）回退单首播放
+  try {
+    const page = await api.queryTracks({ view: 'all', sort: library.query.sort, page: 0, pageSize: 5000 })
+    if (my !== playSeq) return // 期间又点了别的结果，旧回包丢弃（防竞态）
+    const i = page.items.findIndex((x) => x.id === t.id)
+    if (i >= 0) {
+      player.playList(page.items, i)
+      return
+    }
+  } catch {
+    /* 回退单首 */
+  }
+  if (my === playSeq) player.playList([t], 0)
 }
 /** 查看全部结果 */
 function viewAll() {
