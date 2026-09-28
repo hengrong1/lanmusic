@@ -179,34 +179,35 @@ const controlsStyle = computed(() => ({
 /** 渲染条目：歌词行或翻译行（翻译行无逐字数据，样式由 style 全量携带）；
  * 值允许 undefined（strokeOutline 未命中分支的透传，Vue 行内样式忽略 undefined） */
 type DeskRow = { text: string; words?: QrcWord[]; style: Record<string, string | number | undefined> }
-/** 渲染行：开启翻译时只显示当前句——第一行歌词、第二行该句的翻译（两行固定，
- * 不随 active 交替换位，也不再显示下一句预告）；关闭翻译时恢复原逻辑：
- * 单行只有播放行，双行两行位置固定（对齐固定）只交换文字与高亮。
+/** 渲染行：勾「译」且当前句带译文时固定「第一行歌词、第二行该句翻译」——译文必须
+ * 紧跟原文，不随 active 交替换位；当前句无译文时不走此分支，落到下方双行交替
+ * 逻辑（lines 已由主窗口按 active 交换位置）：单语歌词勾「译」若仍把当前句钉在
+ * 第一行，会失去交替滚动的节奏（每次都是上面播放行）也看不到下一句预告。
  * 逐字行（words 非空）额外携带词级时间轴与描边覆盖，模板里按字渲染渐变 */
 const rows = computed<DeskRow[]>(() => {
   const wordsFor = (row: 0 | 1) => (active.value === row && words.value.length > 1 ? words.value : undefined)
-  // 翻译模式：当前句永远渲染在第一行（歌词）+ 第二行（翻译），不能复用 rowStyle 的
-  // active 换色逻辑（active 交替会让固定行位置的颜色抖动），颜色手动指定
-  if (config.value.showTranslation) {
+  // 翻译模式：仅当前句带译文时接管渲染——固定「歌词(播放) + 译文」，颜色手动指定，
+  // 不能复用 rowStyle 的 active 换色逻辑（active 交替会让固定行位置的颜色抖动）；
+  // 该句无译文时不 return，落到下方双行交替逻辑（与关闭翻译同一条路径）：
+  // 播放行按奇偶在两行间交替，另一行显示下一句预告，保住滚动节奏与信息量
+  if (config.value.showTranslation && translations.value[active.value]) {
     const w = words.value.length > 1 ? words.value : undefined
     const alignOf = (row: 0 | 1) =>
       config.value.align === 'split' ? (row === 0 ? 'left' : 'right') : config.value.align
-    // 歌词行基础样式；逐字行用描边覆盖替代阴影（与 rowStyle 路径一致），二选一避免重复声明
-    const mainBase = {
-      color: config.value.color,
-      fontSize: `${config.value.fontSize}px`,
-      fontWeight: config.value.bold ? 700 : 500,
-      textAlign: alignOf(0),
-    }
     return [
       {
         text: lines.value[active.value] || EMPTY_LYRIC,
         words: w,
-        style: { ...mainBase, ...(w ? strokeOutline.value : { textShadow: textShadow.value }) },
+        style: {
+          color: config.value.color,
+          fontSize: `${config.value.fontSize}px`,
+          fontWeight: config.value.bold ? 700 : 500,
+          textAlign: alignOf(0),
+          ...(w ? strokeOutline.value : { textShadow: textShadow.value }),
+        },
       },
       {
-        // 该句无翻译时以空行占位，保持两行结构稳定（避免逐句跳动）
-        text: translations.value[active.value] || '\u00A0',
+        text: translations.value[active.value],
         style: {
           color: config.value.color,
           opacity: 0.72,
