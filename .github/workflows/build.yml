@@ -170,9 +170,15 @@ jobs:
             exit 1
           }
 
+      # 用 gh release edit 而非 softprops/action-gh-release：后者遇到「tag 已有
+      # 其他来源建的 draft」（tauri-action 建草稿传资产）时会走 duplicate-draft
+      # 路径——保留对方草稿、删掉自己建的，但 body 更新在这条路径上会静默丢失
+      # （v0.5.25 实录：步骤 success 而正文仍是 tauri-action 的占位）。
+      # gh 直接按 tag 定位草稿 PATCH body，行为明确
       - name: Apply release notes
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ github.ref_name }}
-          draft: true
-          body_path: release-notes/${{ github.ref_name }}.md
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release edit "${{ github.ref_name }}" \
+            --draft \
+            --notes-file "release-notes/${{ github.ref_name }}.md"
