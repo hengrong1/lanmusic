@@ -8,7 +8,9 @@ import { PlayIcon as Play } from '@solar-icons/vue/bold/play'
 import { Rewind5SecondsBackIcon as RewindBack } from '@solar-icons/vue/linear/rewind-5-seconds-back'
 import { Rewind5SecondsForwardIcon as RewindForward } from '@solar-icons/vue/linear/rewind-5-seconds-forward'
 import { RestartIcon as RotateCcw } from '@solar-icons/vue/linear/restart'
+import { HomeAngle2Icon as Home } from '@solar-icons/vue/linear/home-angle-2'
 import { CloseIcon as X } from '@solar-icons/vue/linear/close'
+import { api } from '@/api/commands'
 import { EMPTY_LYRIC, type DeskControl, type DeskLyricsConfig } from '@/composables/useDesktopLyrics'
 import type { QrcWord } from '@/types'
 import { hexToRgba } from '@/utils/color'
@@ -145,15 +147,18 @@ const rowStyle = (row: 0 | 1) => {
   }
 }
 /**
- * 逐字行的描边：渐变填充走 background-clip:text（透明文字），text-shadow 会叠在
- * 渐变上把颜色压暗，改用文字描边（paint-order: stroke 让描边垫在填充下方）。
+ * 逐字行的描边：渐变填充走 background-clip:text（透明文字），渐变属于背景层，
+ * 画在一切文字绘制之前——行内 -webkit-text-stroke 无论 paint-order 如何都盖在
+ * 渐变上把文字变成描边色（2026-09-29 实录），text-shadow 也会透过透明 fill 叠
+ * 在渐变上压暗颜色。因此词行一律不吃阴影/描边，描边改由 .dl-stroke::before
+ * 垫底伪元素绘制（见样式表）：行内只提供描边宽度与颜色两个 CSS 变量。
  */
 const strokeOutline = computed(() => {
   if (!config.value.outline) return { textShadow: 'none' }
   return {
     textShadow: 'none',
-    WebkitTextStroke: `${Math.max(2, config.value.fontSize * 0.08)}px ${config.value.outlineColor}`,
-    paintOrder: 'stroke',
+    '--dl-stroke-w': `${Math.max(2, config.value.fontSize * 0.08)}px`,
+    '--dl-stroke-c': config.value.outlineColor,
   }
 })
 /** 单词样式：按播放进度双色渐变（已唱=播放行颜色，未唱=未播放行颜色） */
@@ -285,13 +290,26 @@ const rows = computed<DeskRow[]>(() => {
         译
       </button>
       <span class="dl-divider"></span>
+      <!-- 显示主界面：唤起/前置主窗口（隐藏或最小化时还原），走 Rust 侧
+           show_main_window（复用托盘左键逻辑，顺带收起托盘菜单弹窗） -->
+      <button class="dl-btn" v-tooltip="$t('desktopLyrics.showMainHint')" @click="api.showMainWindow()">
+        <Home class="h-4 w-4" />
+      </button>
       <button class="dl-btn dl-close" v-tooltip="$t('tray.disableDesktopLyrics')" @click="control('close')">
         <X class="h-4 w-4" />
       </button>
     </div>
     <!-- 歌词（背景铺满整个面板）：播放行主样式，另一行次样式，双行交替滚动；
          逐字行按词渲染双色渐变（空白用 whitespace-pre 保留），否则整行纯文本 -->
-    <p v-for="(row, i) in rows" :key="i" class="dl-line" data-tauri-drag-region :style="row.style">
+    <p
+      v-for="(row, i) in rows"
+      :key="i"
+      class="dl-line"
+      :class="{ 'dl-stroke': !!(row.words && config.outline) }"
+      :data-text="row.text"
+      data-tauri-drag-region
+      :style="row.style"
+    >
       <template v-if="row.words">
         <span v-for="(w, wi) in row.words" :key="wi" class="dl-word" :style="wordStyle(w)">{{ w.word }}</span>
       </template>
@@ -385,5 +403,23 @@ const rows = computed<DeskRow[]>(() => {
 /* 逐字单词：保留词内/词间空白（连续空格词不被折叠） */
 .dl-word {
   white-space: pre;
+}
+/* 逐字行描边：渐变填充是背景层（画在一切文字绘制之前），行内 -webkit-text-stroke
+   无论 paint-order 如何都画在渐变上把文字变成描边色（2026-09-29 实录）⇒ 描边改由
+   垫底伪元素画：attr(data-text) 复刻整行文字（white-space: pre 与词行空格语义
+   一致，保证逐像素对齐）、stroke 宽度取 2×w（内半环被上层渐变盖住，外露 w）、
+   fill 透明只留描边环，z:-1 垫在词渐变之下、悬停背景之上 */
+.dl-line.dl-stroke {
+  position: relative;
+}
+.dl-line.dl-stroke::before {
+  content: attr(data-text);
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  color: transparent;
+  white-space: pre;
+  -webkit-text-stroke: calc(var(--dl-stroke-w, 2px) * 2) var(--dl-stroke-c, #000);
+  pointer-events: none;
 }
 </style>

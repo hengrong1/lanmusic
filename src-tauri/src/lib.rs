@@ -466,6 +466,7 @@ pub fn run() {
             commands::get_stream_url,
             commands::library_stats,
             commands::reveal_track,
+            commands::show_main_window,
             commands::playlist_list,
             commands::playlist_create,
             commands::playlist_rename,
@@ -599,7 +600,7 @@ fn toggle_tray_menu(app: &AppHandle, cursor: PhysicalPosition<f64>, tray_rect: t
 /// - 已经在最前：不操作，避免误隐藏
 ///
 /// 顺带关掉可能正显示的菜单弹窗，避免「主窗口浮起来 + 菜单弹窗还盖在上面」的怪态。
-fn focus_or_show_main_window(app: &AppHandle) {
+pub(crate) fn focus_or_show_main_window(app: &AppHandle) {
     let Some(w) = app.get_webview_window("main") else {
         return;
     };

@@ -330,7 +330,7 @@ export default {
     artistMergedRestorable: '可拆回 {count} 首',
     artistUnmergeTitle: '取消合并',
     artistUnmergeAction: '取消合并',
-    artistUnmergeConfirm: '把「{alias}」恢复为独立艺人？将按合并记录拆回 {tracks} 首曲目的归属。',
+    artistUnmergeConfirm: '把「{alias}」从主艺人「{artist}」拆出恢复为独立艺人？将按合并记录拆回 {tracks} 首曲目的归属。',
     artistUnmergeDone: '已取消合并：{name} 恢复为独立艺人（拆回 {tracks} 首曲目、{albums} 张专辑）',
     artistUnmergeNoHistoryHint: '未标注「可拆回」的记录取消后，重新扫描即按文件标签归位',
     artistMergeCustom: '自定义合并',
@@ -467,6 +467,7 @@ export default {
     onTop: '置顶', settings: '设置', noLyrics: '暂无歌词',
     backHint: '歌词后退 0.5 秒',
     forwardHint: '歌词前进 0.5 秒',
+    showMainHint: '显示主界面',
   },
   dialog: {
     confirm: '确认', cancel: '取消', delete: '删除', warning: '警告', error: '错误',

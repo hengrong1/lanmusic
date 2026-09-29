@@ -338,7 +338,7 @@ export default {
     artistMergedRestorable: '{count} restorable',
     artistUnmergeTitle: 'Unmerge',
     artistUnmergeAction: 'Unmerge',
-    artistUnmergeConfirm: 'Restore "{alias}" as a standalone artist? Track ownership of {tracks} tracks will be moved back per the merge record.',
+    artistUnmergeConfirm: 'Restore "{alias}" from "{artist}" as a standalone artist? Track ownership of {tracks} tracks will be moved back per the merge record.',
     artistUnmergeDone: 'Unmerged: {name} is a standalone artist again ({tracks} tracks, {albums} albums moved back)',
     artistUnmergeNoHistoryHint: 'Records without a restorable count can still be unmerged — tracks re-attribute on the next scan by file tags',
     artistMergeCustom: 'Custom Merge',
@@ -475,6 +475,7 @@ export default {
     onTop: 'Always on Top', settings: 'Settings', noLyrics: 'No lyrics',
     backHint: 'Lyrics back 0.5s',
     forwardHint: 'Lyrics forward 0.5s',
+    showMainHint: 'Show main window',
   },
   dialog: {
     confirm: 'Confirm', cancel: 'Cancel', delete: 'Delete', warning: 'Warning', error: 'Error',

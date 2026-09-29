@@ -1205,6 +1205,13 @@ pub fn exit_app(app: AppHandle) {
     app.exit(0);
 }
 
+/// 显示并聚焦主窗口（桌面歌词浮窗「显示主界面」按钮）：
+/// 隐藏/最小化还原、被遮挡前置，顺带收起托盘菜单弹窗（复用托盘左键逻辑）
+#[tauri::command]
+pub fn show_main_window(app: AppHandle) {
+    crate::focus_or_show_main_window(&app);
+}
+
 /// 在系统文件管理器中显示曲目文件
 #[tauri::command]
 pub fn reveal_track(state: State<'_, AppState>, id: i64) -> Result<(), String> {

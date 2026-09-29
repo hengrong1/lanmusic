@@ -67,6 +67,8 @@ export const api = {
     invoke<Track[]>('query_tracks_by_folder', { folder }),
 
   // 其他
+  /** 显示并聚焦主窗口（桌面歌词浮窗「显示主界面」按钮） */
+  showMainWindow: () => invoke<void>('show_main_window'),
   revealTrack: (id: number) => invoke<void>('reveal_track', { id }),
   /** 前端错误转发到后端日志文件（release 版无控制台，日志是唯一排查出口） */
   frontendLog: (level: 'error' | 'warn' | 'info', message: string) =>
