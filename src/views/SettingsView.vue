@@ -153,6 +153,7 @@ function getCloseAction(): CloseAction {
 }
 function setCloseAction(action: string | number) {
   const v = action as CloseAction
+  closeAction.value = v // 立即更新选中态：之前只写持久化不更新 ref，界面看起来「没变化」
   closeActionTouched = true // 用户已手动操作：启动期的 SQLite 回读不得再回滚此值
   localStorage.setItem('lm.closeAction', v)
   // 同步到 SQLite，供 Rust 侧关闭事件使用
