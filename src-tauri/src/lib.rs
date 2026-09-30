@@ -230,10 +230,11 @@ pub fn run() {
                             };
 
                         match action.as_deref() {
-                            // 首次：交给前端询问（弹窗提供「记住我的选择」）
-                            None => {
+                            // 首次（键不存在）或用户选择「每次询问」（'ask'）：
+                            // 交给前端询问（弹窗提供「记住我的选择」）
+                            None | Some("ask") => {
                                 api.prevent_close();
-                                log::info!("首次关闭：通知前端询问关闭行为");
+                                log::info!("首次关闭或「每次询问」：通知前端询问关闭行为");
                                 let _ = app_handle.emit("close-confirm-needed", ());
                             }
                             Some("quit") => {

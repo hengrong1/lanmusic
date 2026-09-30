@@ -146,32 +146,40 @@ function onPreventSleepToggle(val: boolean) {
 }
 
 // ---- 窗口关闭行为 ----
-type CloseAction = 'tray' | 'quit'
+type CloseAction = 'tray' | 'quit' | 'ask'
 function getCloseAction(): CloseAction {
   const v = localStorage.getItem('lm.closeAction')
-  return v === 'quit' ? 'quit' : 'tray'
+  if (v === 'quit') return 'quit'
+  if (v === 'tray') return 'tray'
+  // 默认「每次询问」：与 Rust 侧首次（DB 无值）弹窗询问的实际行为一致
+  return 'ask'
 }
 function setCloseAction(action: string | number) {
   const v = action as CloseAction
   closeAction.value = v // 立即更新选中态：之前只写持久化不更新 ref，界面看起来「没变化」
   closeActionTouched = true // 用户已手动操作：启动期的 SQLite 回读不得再回滚此值
   localStorage.setItem('lm.closeAction', v)
-  // 同步到 SQLite，供 Rust 侧关闭事件使用
+  // 同步到 SQLite，供 Rust 侧关闭事件使用（'ask' 由 Rust 归入「弹窗询问」分支）
   api.setSetting('lm.closeAction', v).catch(() => {})
-  toast(v === 'tray' ? t('settings.closeToTray') : t('settings.closeToQuit'), 'info', 'settings.closeAction')
+  toast(
+    v === 'tray' ? t('settings.closeToTray') : v === 'quit' ? t('settings.closeToQuit') : t('settings.closeToAsk'),
+    'info',
+    'settings.closeAction',
+  )
 }
 const closeAction = ref(getCloseAction())
 let closeActionTouched = false
 const closeActionItems = computed<ButtonGroupItem[]>(() => [
   { value: 'tray', label: t('settings.closeActionTray') },
   { value: 'quit', label: t('settings.closeActionQuit') },
+  { value: 'ask', label: t('settings.closeActionAsk') },
 ])
 // 从 SQLite 加载设置（如果存在）
 onMounted(() => {
   api.getSetting('lm.closeAction')
     .then((v) => {
       if (closeActionTouched) return
-      if (v === 'tray' || v === 'quit') {
+      if (v === 'tray' || v === 'quit' || v === 'ask') {
         closeAction.value = v
         localStorage.setItem('lm.closeAction', v)
       }
