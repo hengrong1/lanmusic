@@ -3,6 +3,7 @@ import { listen } from '@tauri-apps/api/event'
 import { usePlayerStore } from '@/stores/player'
 import { api } from '@/api/commands'
 import { toast } from '@/composables/useToast'
+import { getMvVideoEl, track as mvTrack } from '@/composables/useMvPlayer'
 import { t as tr } from '@/i18n/translate'
 
 // 系统媒体控制事件的统一消费端。两个来源共用 `media-control` 通道（payload 一致）：
@@ -42,6 +43,29 @@ function init() {
 
 function handleButton(p: MediaControlPayload) {
   const player = usePlayerStore()
+  // MV 播放中：控制转发给视频元素，不碰歌曲——否则点系统浮层的「播放」会把
+  // 已被 MV 暂停的歌曲恢复，与正在播的 MV 两路声音同时响（2026-09-29 实录）。
+  // next/prev 忽略：切歌会让 MV 与曲目错位，先关 MV 再切歌由用户自己操作
+  const mv = getMvVideoEl()
+  if (mvTrack.value && mv) {
+    switch (p.action) {
+      case 'playpause':
+        if (mv.paused) void mv.play().catch(() => {})
+        else mv.pause()
+        break
+      case 'play':
+        if (mv.paused) void mv.play().catch(() => {})
+        break
+      case 'pause':
+      case 'stop':
+        if (!mv.paused) mv.pause()
+        break
+      case 'seekto':
+        if (typeof p.positionMs === 'number') mv.currentTime = p.positionMs / 1000
+        break
+    }
+    return
+  }
   switch (p.action) {
     case 'playpause':
       player.toggle()

@@ -17,7 +17,7 @@ async function ensurePlyr(): Promise<PlyrCtor> {
 import plyrIconUrl from '@/assets/plyr.svg?url'
 import { CloseIcon as X } from '@solar-icons/vue/linear/close'
 import { toast } from '@/composables/useToast'
-import { useMvPlayer } from '@/composables/useMvPlayer'
+import { setMvVideoEl, useMvPlayer } from '@/composables/useMvPlayer'
 
 const { t, locale } = useI18n()
 const { track, url, close } = useMvPlayer()
@@ -38,6 +38,7 @@ const PLYR_I18N_ZH = {
 }
 
 function destroyPlyr() {
+  setMvVideoEl(null)
   plyr?.destroy()
   plyr = null
 }
@@ -46,6 +47,8 @@ async function initPlyr() {
   destroyPlyr()
   await nextTick()
   if (!videoEl.value) return
+  // 注册给系统媒体控制：MV 打开期间的 SMTC/媒体键事件转发到这个 video
+  setMvVideoEl(videoEl.value)
   const Plyr = await ensurePlyr()
   plyr = new Plyr(videoEl.value, {
     ratio: '16:9',

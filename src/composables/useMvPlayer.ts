@@ -5,11 +5,24 @@ import { toast } from '@/composables/useToast'
 import { usePlayerStore } from '@/stores/player'
 import { i18n } from '@/i18n'
 
-/** 正在播放 MV 的曲目；null = 未打开 */
-const track = ref<Track | null>(null)
+/** 正在播放 MV 的曲目；null = 未打开（模块级单例，供系统媒体控制等处判断） */
+export const track = ref<Track | null>(null)
 /** 视频流地址（打开前经 get_mv_url 校验同名视频确实存在） */
 const url = ref('')
 const loading = ref(false)
+
+/**
+ * 当前 MV 的 video 元素。MvPlayer 初始化 Plyr 时注册、销毁时注销；
+ * 系统媒体控制（SMTC/媒体键）在 MV 打开期间需转发给它而不是歌曲 audio，
+ * 否则点系统浮层的「播放」会同时唤醒歌曲与 MV（两路声音）。
+ */
+let mvVideoEl: HTMLVideoElement | null = null
+export function setMvVideoEl(el: HTMLVideoElement | null) {
+  mvVideoEl = el
+}
+export function getMvVideoEl() {
+  return mvVideoEl
+}
 
 /**
  * 页面内 MV 播放（Plyr 遮罩层，见 MvPlayer.vue）。
