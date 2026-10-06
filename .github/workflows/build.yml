@@ -140,30 +140,9 @@ jobs:
           $v = (Get-Content src-tauri/tauri.conf.json | ConvertFrom-Json).version
           "version=v$v" >> $env:GITHUB_OUTPUT
 
-      # ⚠️ 防「untagged-<hash>」资产错位：softprops 在 tag_name 对应的 **git 引用不存在**时，
-      # 会把安装包挂到 GitHub 自动生成的 `untagged-<hash>` release（v0.5.25 实录），导致应用内更新
-      # 按 v{version} 拼出的下载地址必然 404 → 永远提示「无更新」。
-      # 本步先确保 git tag 存在（没有就基于当前 commit 建一个），再交给下面上传资产，
-      # 这样无论 macOS job 是否先把 release 建出来，Windows 资产都落到 `vX.Y.Z` 这个 tag 上。
-      - name: Ensure git tag exists
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          $tag = "${{ steps.version.outputs.version }}"
-          $api = "repos/${{ github.repository }}/git/refs"
-          # 正常流程里 tag 已由推送提供，这里只是兜底（防 v0.5.25 那种 softprops
-          # 把资产挂到 untagged-<hash> 的错位）。直接 POST 创建引用；若 tag 已存在
-          # GitHub 返回 422 → 视为成功，绝不让它把整个 job 搞挂。
-          $out = (gh api -X POST "$api" -f "ref=refs/tags/$tag" -f "sha=${{ github.sha }}" 2>&1 | Out-String)
-          if ($LASTEXITCODE -eq 0) {
-            Write-Host "已创建 git tag $tag"
-          } elseif ($out -match "already exists" -or $out -match "422") {
-            Write-Host "git tag $tag 已存在，跳过创建（正常）"
-          } else {
-            Write-Error "创建 git tag 失败：$out"
-            exit 1
-          }
+      # 注：git tag 由做包流程（本地 `git tag vX.Y.Z` + `git push github vX.Y.Z`）保证先推送到远端，
+      # CI 运行时 tag 必然已存在，Windows 资产通过下面 softprops 的 tag_name 直接落到 `vX.Y.Z`，
+      # 不会出现 v0.5.25 那种「tag 未推送 → softprops 挂到 untagged-<hash>」的错位。无需 CI 兜底建 tag。
 
       # 与 macOS job 写入同一个草稿 Release（tag 相同自动合并）
       # ⚠️ 两个 job 并行：macOS 建草稿、这里往草稿里传；**不要在 Windows job 跑完前点 Publish**——
