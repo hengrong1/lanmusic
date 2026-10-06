@@ -151,13 +151,18 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $tag = "${{ steps.version.outputs.version }}"
-          $api = "repos/${{ github.repository }}/git/ref/tags/$tag"
-          if (gh api "$api" > $null 2>&1) {
-            Write-Host "git tag $tag 已存在，跳过创建"
+          $api = "repos/${{ github.repository }}/git/refs"
+          # 正常流程里 tag 已由推送提供，这里只是兜底（防 v0.5.25 那种 softprops
+          # 把资产挂到 untagged-<hash> 的错位）。直接 POST 创建引用；若 tag 已存在
+          # GitHub 返回 422 → 视为成功，绝不让它把整个 job 搞挂。
+          $out = (gh api -X POST "$api" -f "ref=refs/tags/$tag" -f "sha=${{ github.sha }}" 2>&1 | Out-String)
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "已创建 git tag $tag"
+          } elseif ($out -match "already exists" -or $out -match "422") {
+            Write-Host "git tag $tag 已存在，跳过创建（正常）"
           } else {
-            Write-Host "创建 git tag $tag -> ${{ github.sha }}"
-            gh api -X POST "repos/${{ github.repository }}/git/refs" `
-              -f "ref=refs/tags/$tag" -f "sha=${{ github.sha }}"
+            Write-Error "创建 git tag 失败：$out"
+            exit 1
           }
 
       # 与 macOS job 写入同一个草稿 Release（tag 相同自动合并）
