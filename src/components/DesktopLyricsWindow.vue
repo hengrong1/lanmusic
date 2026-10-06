@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { emit, listen } from '@tauri-apps/api/event'
 import { SkipPreviousIcon as SkipBack } from '@solar-icons/vue/bold/skip-previous'
 import { SkipNextIcon as SkipForward } from '@solar-icons/vue/bold/skip-next'
@@ -48,6 +48,8 @@ const config = ref<DeskLyricsConfig>({
 const playing = ref(false)
 
 let unlisten: (() => void) | undefined
+/** 最近一次收到的换句计数：变化 = 换句（或同文本下一句的逐字重推），滚动位移归零 */
+let lastSeq = 0
 onMounted(async () => {
   // 兜底透明背景（避免主题样式给浮窗加上底色）
   document.documentElement.style.background = 'transparent'
@@ -61,42 +63,38 @@ onMounted(async () => {
     font?: string
     words?: QrcWord[] | null
     anchor?: { posMs: number; rate: number; running: boolean; at: number }
+    lineTime?: { start: number; end: number } | null
+    seq?: number
   }>('lyrics:sync', (e) => {
     if (Array.isArray(e.payload?.lines)) lines.value = e.payload.lines
     if (Array.isArray(e.payload?.translations)) translations.value = e.payload.translations
     if (e.payload?.active === 0 || e.payload?.active === 1) active.value = e.payload.active
     if (e.payload?.config) config.value = { ...config.value, ...e.payload.config }
     if (typeof e.payload?.playing === 'boolean') playing.value = e.payload.playing
-    // 全局字体（设置页修改即时联动；空串 = 恢复默认字体栈）
-    if (typeof e.payload?.font === 'string') document.body.style.fontFamily = e.payload.font
+    // 全局字体（设置页修改即时联动；空串 = 恢复默认字体栈）；字宽变了需重测超宽行
+    if (typeof e.payload?.font === 'string') {
+      document.body.style.fontFamily = e.payload.font
+      void nextTick(measureScroll)
+    }
     // 逐字数据与时钟锚点：仅在有 payload 字段时覆盖（锚点可单独推送）
     if (Array.isArray(e.payload?.words)) words.value = e.payload.words
     else if (e.payload?.words === null) words.value = []
     if (e.payload?.anchor) anchor.value = e.payload.anchor
+    // 当前行时间区间（歌词轴 ms）：行级歌词按播放进度推进滚动
+    lineTime.value = e.payload?.lineTime ?? null
+    // seq 变化 = 换句：各行位移归零重新跟随；暂停/倍速/seek/字体等原句重推不 bump
+    // seq，滚动位置保持连续（seq 先于本轮 rows 重渲染读取，此处拿到的是新行数）
+    if (typeof e.payload?.seq === 'number' && e.payload.seq !== lastSeq) {
+      lastSeq = e.payload.seq
+      shifts.value = rows.value.map(() => 0)
+    }
   })
   // 通知主窗口：浮窗已就绪，请求推送当前歌词与配置
   void emit('lyrics:ready')
+  // 网络字体就绪后文本实宽可能变化，补测一次超宽行
+  void document.fonts.ready.then(() => nextTick(measureScroll))
 })
 onBeforeUnmount(() => unlisten?.())
-
-/** 卡拉OK当前歌词轴位置（毫秒）：按锚点 + 本地时钟插值，避免与主窗口逐帧通信 */
-const karaokeMs = ref(0)
-let karaokeRaf = 0
-watch(
-  words,
-  (w) => {
-    cancelAnimationFrame(karaokeRaf)
-    if (!w.length) return
-    const tick = () => {
-      const a = anchor.value
-      karaokeMs.value = a.running ? a.posMs + (Date.now() - a.at) * a.rate : a.posMs
-      karaokeRaf = requestAnimationFrame(tick)
-    }
-    karaokeRaf = requestAnimationFrame(tick)
-  },
-  { immediate: true },
-)
-onBeforeUnmount(() => cancelAnimationFrame(karaokeRaf))
 
 function control(action: DeskControl) {
   void emit('lyrics:control', action)
@@ -182,8 +180,15 @@ const controlsStyle = computed(() => ({
       : 'rgba(24, 24, 27, 0.55)',
 }))
 /** 渲染条目：歌词行或翻译行（翻译行无逐字数据，样式由 style 全量携带）；
- * 值允许 undefined（strokeOutline 未命中分支的透传，Vue 行内样式忽略 undefined） */
-type DeskRow = { text: string; words?: QrcWord[]; style: Record<string, string | number | undefined> }
+ * 值允许 undefined（strokeOutline 未命中分支的透传，Vue 行内样式忽略 undefined）。
+ * live：该行是否为正在播放的句子（超宽时跟随高亮/播放进度滚动）；
+ * 缺省 = 静止（下一句预告 / 译文副行，超宽只裁剪不滚） */
+type DeskRow = {
+  text: string
+  words?: QrcWord[]
+  live?: boolean
+  style: Record<string, string | number | undefined>
+}
 /** 渲染行：勾「译」且当前句带译文时固定「第一行歌词、第二行该句翻译」——译文必须
  * 紧跟原文，不随 active 交替换位；当前句无译文时不走此分支，落到下方双行交替
  * 逻辑（lines 已由主窗口按 active 交换位置）：单语歌词勾「译」若仍把当前句钉在
@@ -203,6 +208,7 @@ const rows = computed<DeskRow[]>(() => {
       {
         text: lines.value[active.value] || EMPTY_LYRIC,
         words: w,
+        live: true,
         style: {
           color: config.value.color,
           fontSize: `${config.value.fontSize}px`,
@@ -231,6 +237,7 @@ const rows = computed<DeskRow[]>(() => {
       {
         text: lines.value[active.value] || EMPTY_LYRIC,
         words: w,
+        live: true,
         style: { ...rowStyle(0), color: config.value.color, ...(w ? strokeOutline.value : {}) },
       },
     ]
@@ -239,15 +246,131 @@ const rows = computed<DeskRow[]>(() => {
     {
       text: lines.value[0] || (active.value === 0 ? EMPTY_LYRIC : '\u00A0'),
       words: wordsFor(0),
+      live: active.value === 0,
       style: wordsFor(0) ? { ...rowStyle(0), ...strokeOutline.value } : rowStyle(0),
     },
     {
       text: lines.value[1] || '\u00A0',
       words: wordsFor(1),
+      live: active.value === 1,
       style: wordsFor(1) ? { ...rowStyle(1), ...strokeOutline.value } : rowStyle(1),
     },
   ]
 })
+
+/** 各行溢出量：null = 未超宽不滚动；数字 = 需左移的像素（内容实宽 - 行容器宽） */
+const scroll = ref<(number | null)[]>([])
+/** 各行当前位移（px）：rAF 平滑逼近目标，仅播放行会被推进（预告行/译文行静止裁剪） */
+const shifts = ref<number[]>([])
+/** 逐字行各词的词尾 x（相对内容起点 px）：按 karaokeMs 插值出高亮位置供滚动跟随 */
+const wordXs = ref<number[]>([])
+/** 当前行时间区间（歌词轴 ms，主窗口推送）：行级歌词按播放进度推进滚动 */
+const lineTime = ref<{ start: number; end: number } | null>(null)
+const lineEls = ref<Array<HTMLParagraphElement | null>>([])
+const setLineEl = (i: number) => (el: unknown) => {
+  lineEls.value[i] = (el as HTMLParagraphElement | null) ?? null
+}
+/** 测量布局：各行溢出量 + 逐字行词尾 x。歌词/配置变化重算 rows 后、字体切换与
+ * 字体就绪时调用；载体 .dl-inner 是行内唯一元素子节点，实宽用 getBoundingClientRect（含小数） */
+function measureScroll() {
+  const next: (number | null)[] = []
+  for (let i = 0; i < rows.value.length; i++) {
+    const p = lineEls.value[i]
+    const inner = p?.firstElementChild as HTMLElement | null
+    const overflow = p && inner ? inner.getBoundingClientRect().width - p.clientWidth : 0
+    next.push(overflow > 2 ? overflow : null)
+  }
+  const cur = scroll.value
+  if (next.length !== cur.length || next.some((v, i) => v !== cur[i])) scroll.value = next
+  if (shifts.value.length !== rows.value.length) shifts.value = rows.value.map(() => 0)
+  // 词尾 x：逐字行（rows 中至多一行携带 words）各词 span 的右缘，offsetParent 即 .dl-inner
+  const wi = rows.value.findIndex((r) => r.words)
+  const inner = wi >= 0 ? ((lineEls.value[wi]?.firstElementChild as HTMLElement | null) ?? null) : null
+  wordXs.value = inner
+    ? Array.from(inner.children, (c) => (c as HTMLElement).offsetLeft + (c as HTMLElement).offsetWidth)
+    : []
+}
+// 歌词/对齐/字号/加粗等变化都会重算 rows，统一在其后重测；字体切换与字体就绪另行补测
+watch(rows, () => void nextTick(measureScroll), { immediate: true })
+
+/** 卡拉OK当前歌词轴位置（毫秒）：按锚点 + 本地时钟插值，避免与主窗口逐帧通信 */
+const karaokeMs = ref(0)
+/** 逐字高亮当前位置（px，相对内容起点）：按 karaokeMs 在词时间轴内插值；
+ * 词间空隙停在上一词词尾，句前返回 0，句后停在末词词尾 */
+function karaokeX(): number {
+  const ws = words.value
+  const xs = wordXs.value
+  if (!ws.length || xs.length !== ws.length) return 0
+  const t = karaokeMs.value
+  if (t <= ws[0].startTime) return 0
+  for (let i = 0; i < ws.length; i++) {
+    if (t < ws[i].endTime) {
+      const startX = i ? xs[i - 1] : 0
+      const p = Math.min(1, Math.max(0, (t - ws[i].startTime) / Math.max(1, ws[i].endTime - ws[i].startTime)))
+      return startX + (xs[i] - startX) * p
+    }
+  }
+  return xs[xs.length - 1]
+}
+/** 推进各行位移目标：逐字行把高亮位置钉在视口约 70% 处（句首/句尾夹在 [0, 溢出]），
+ * 行级行按播放进度线性推进到句末；非播放行恒为 0（静止）。
+ * 位移以指数平滑（τ≈120ms）逼近目标，跳字/seek 不突变；已收敛（<0.5px）不写入，
+ * 避免无效重渲染 */
+let lastFrame = 0
+function advanceShifts() {
+  const now = performance.now()
+  const k = 1 - Math.exp(-(now - lastFrame) / 120)
+  lastFrame = now
+  for (let i = 0; i < rows.value.length; i++) {
+    const ov = scroll.value[i]
+    const p = lineEls.value[i]
+    if (ov == null || !p) continue
+    const row = rows.value[i]
+    let target = 0
+    if (row.live) {
+      if (row.words && wordXs.value.length) {
+        target = Math.min(Math.max(karaokeX() - p.clientWidth * 0.7, 0), ov)
+      } else if (lineTime.value) {
+        const { start, end } = lineTime.value
+        const progress = Math.min(1, Math.max(0, (karaokeMs.value - start) / Math.max(1, end - start)))
+        target = ov * progress
+      }
+    }
+    const cur = shifts.value[i] ?? 0
+    const next = Math.abs(target - cur) < 0.5 ? target : cur + (target - cur) * k
+    if (next !== cur) shifts.value[i] = next
+  }
+}
+/** 是否需要逐帧时钟：逐字渐变（有词）或超宽播放行的滚动跟随（逐字/有行时间轴） */
+const animating = computed(
+  () =>
+    words.value.length > 0 ||
+    rows.value.some((r, i) => r.live && scroll.value[i] != null && (!!r.words || !!lineTime.value)),
+)
+let karaokeRaf = 0
+watch(
+  animating,
+  (on) => {
+    cancelAnimationFrame(karaokeRaf)
+    if (!on) return
+    lastFrame = performance.now()
+    const tick = () => {
+      const a = anchor.value
+      karaokeMs.value = a.running ? a.posMs + (Date.now() - a.at) * a.rate : a.posMs
+      advanceShifts()
+      karaokeRaf = requestAnimationFrame(tick)
+    }
+    karaokeRaf = requestAnimationFrame(tick)
+  },
+  { immediate: true },
+)
+onBeforeUnmount(() => cancelAnimationFrame(karaokeRaf))
+
+/** 滚动行内联位移：超宽行按 shifts 平移（非播放行恒 0，等效静止） */
+const innerStyle = (i: number) => {
+  if (scroll.value[i] == null) return undefined
+  return { transform: `translateX(${-(shifts.value[i] ?? 0)}px)` }
+}
 </script>
 
 <template>
@@ -300,20 +423,31 @@ const rows = computed<DeskRow[]>(() => {
       </button>
     </div>
     <!-- 歌词（背景铺满整个面板）：播放行主样式，另一行次样式，双行交替滚动；
-         逐字行按词渲染双色渐变（空白用 whitespace-pre 保留），否则整行纯文本 -->
+         超宽行不再 ellipsis 截断：播放行由 .dl-inner 载体跟随滚动（逐字行跟高亮、
+         行级行跟播放进度；预告/译文行静止裁剪），p 只负责裁剪，超宽时强制左对齐
+         让内容从行首露出；逐字行按词渲染双色渐变（空白用 whitespace-pre 保留），
+         否则整行纯文本 -->
     <p
       v-for="(row, i) in rows"
       :key="i"
+      :ref="setLineEl(i)"
       class="dl-line"
-      :class="{ 'dl-stroke': !!(row.words && config.outline) }"
-      :data-text="row.text"
       data-tauri-drag-region
-      :style="row.style"
+      :style="scroll[i] != null ? { ...row.style, textAlign: 'left' } : row.style"
     >
-      <template v-if="row.words">
-        <span v-for="(w, wi) in row.words" :key="wi" class="dl-word" :style="wordStyle(w)">{{ w.word }}</span>
-      </template>
-      <template v-else>{{ row.text }}</template>
+      <span
+        :key="row.text"
+        class="dl-inner"
+        :class="{ 'dl-stroke': !!(row.words && config.outline) }"
+        :data-text="row.text"
+        data-tauri-drag-region
+        :style="innerStyle(i)"
+      >
+        <template v-if="row.words">
+          <span v-for="(w, wi) in row.words" :key="wi" class="dl-word" :style="wordStyle(w)">{{ w.word }}</span>
+        </template>
+        <template v-else>{{ row.text }}</template>
+      </span>
     </p>
   </div>
 </template>
@@ -398,7 +532,13 @@ const rows = computed<DeskRow[]>(() => {
   line-height: 1.25;
   white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
+}
+/* 滚动载体：inline-block 取内容实宽供测量，relative 供描边伪元素定位；位移由
+   rAF 写在 transform 上（逐字行跟随高亮、行级行跟随播放进度），描边/渐变随之
+   同步移动，p 保持固定不动只负责裁剪 */
+.dl-inner {
+  position: relative;
+  display: inline-block;
 }
 /* 逐字单词：保留词内/词间空白（连续空格词不被折叠） */
 .dl-word {
@@ -408,11 +548,9 @@ const rows = computed<DeskRow[]>(() => {
    无论 paint-order 如何都画在渐变上把文字变成描边色（2026-09-29 实录）⇒ 描边改由
    垫底伪元素画：attr(data-text) 复刻整行文字（white-space: pre 与词行空格语义
    一致，保证逐像素对齐）、stroke 宽度取 2×w（内半环被上层渐变盖住，外露 w）、
-   fill 透明只留描边环，z:-1 垫在词渐变之下、悬停背景之上 */
-.dl-line.dl-stroke {
-  position: relative;
-}
-.dl-line.dl-stroke::before {
+   fill 透明只留描边环，z:-1 垫在词渐变之下、悬停背景之上；
+   伪元素挂在 .dl-inner 上与词渐变同层位移，跑马灯滚动时保持逐像素对齐 */
+.dl-inner.dl-stroke::before {
   content: attr(data-text);
   position: absolute;
   inset: 0;

@@ -105,6 +105,7 @@ function push(d: { lines: [string, string]; translations: [string, string]; acti
   // font：全局字体随事件同步给浮窗（与设置页修改即时联动）
   // words/anchor：逐字时间轴 + 卡拉OK时钟锚点，浮窗按锚点本地插值自绘逐字渐变（不逐帧通信）
   // translations：各行译文（showTranslation=false 时浮窗忽略）
+  // lineTime：当前行时间区间，行级歌词按播放进度滚动；seq：换句计数，浮窗据此归零滚动位移
   void emit('lyrics:sync', {
     lines: d.lines,
     active: d.active,
@@ -114,7 +115,27 @@ function push(d: { lines: [string, string]; translations: [string, string]; acti
     font: getAppFont(),
     words: currentDeskWords(player),
     anchor: lyricAnchor(),
+    lineTime: currentLineTime(player),
+    seq: syncSeq,
   }).catch(() => {})
+}
+
+/**
+ * 换句计数：歌词行/逐字行变化时 +1 并随事件推给浮窗。浮窗据此区分「换句」
+ * （滚动位移归零重新跟随）与暂停/倍速/seek 等原句重推（滚动位置保持连续）。
+ */
+let syncSeq = 0
+
+/** 当前行时间区间（歌词轴毫秒，与 anchor.posMs 同基准）：行级歌词随播放进度滚动；
+ * 行尾时间缺省用下一行起点，末行兜底 +5s；null = 无同步时间轴（纯文本歌词不滚） */
+function currentLineTime(player: ReturnType<typeof usePlayerStore>): { start: number; end: number } | null {
+  const lines = player.lyricsLines
+  if (!lines?.length) return null
+  const i = Math.max(0, player.activeLyricIndex)
+  const line = lines[i]
+  if (!line) return null
+  const end = line.end ?? lines[i + 1]?.time ?? line.time + 5
+  return { start: line.time * 1000, end: Math.max(line.time + 0.5, end) * 1000 }
 }
 
 /**
@@ -209,8 +230,9 @@ export function useDesktopLyrics() {
 
   if (!started) {
     started = true
-    // 歌词行 / 逐字行变化：只推送到浮窗（每句切行一次，不写磁盘）
+    // 歌词行 / 逐字行变化：换句计数 +1 并推送到浮窗（每句切行一次，不写磁盘）
     watch([deskLines, deskWords], () => {
+      syncSeq++
       push(deskLines.value)
     })
     // 配置变化：持久化 + 推送（低频，仅用户改设置时）
