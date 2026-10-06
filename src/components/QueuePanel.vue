@@ -317,11 +317,8 @@ watch(
                   {{ t.artist ?? $t('artist.unknownArtist') }}
                 </p>
               </div>
-              <span
-                class="shrink-0 font-mono text-xs tabular-nums"
-                :class="i === player.index ? (themed ? '' : 'text-violet-500') : themed ? 'text-white/40' : 'text-zinc-400'"
-                :style="accentStyle(i === player.index)"
-              >{{ fmt(t.duration) }}</span>
+              <!-- 时长是次要信息：播放行也不变强调色，主题模式下同样保持弱化白 -->
+              <span class="shrink-0 font-mono text-xs tabular-nums" :class="themed ? 'text-white/40' : 'text-zinc-400'">{{ fmt(t.duration) }}</span>
               <button
                 class="transition-colors duration-150 flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-lg text-zinc-400 opacity-0 hover:bg-zinc-200 hover:text-zinc-600 group-hover:opacity-100 dark:hover:bg-zinc-700"
                 v-tooltip="$t('player.removeFromQueue')"

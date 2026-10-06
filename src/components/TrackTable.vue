@@ -526,7 +526,8 @@ function onDragEnd() {
                 @click.stop="openAlbum(t)"
               ><HighlightText :text="t.album ?? $t('album.unknownAlbum')" :keyword="searchTerm" :field-matched="t.matchedFields?.includes('album')" /></button>
             </div>
-            <div class="text-right font-mono text-xs tabular-nums transition-colors" :class="player.current?.id === t.id ? 'text-violet-500' : 'text-zinc-500 dark:text-zinc-400'">
+            <!-- 时长是次要信息：播放行也不变主题色，与艺人/专辑列一致保持灰色 -->
+            <div class="text-right font-mono text-xs tabular-nums text-zinc-500 transition-colors dark:text-zinc-400">
               {{ fmtDuration(t.duration) }}
             </div>
           </div>
