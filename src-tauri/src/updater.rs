@@ -185,6 +185,21 @@ fn version_cmp(a: &str, b: &str) -> std::cmp::Ordering {
     std::cmp::Ordering::Equal
 }
 
+/// 从 release 页链接里取 tag：`…/releases/tag/<tag>` → `<tag>`。
+/// feed 里的 tag 未必等于 `v{version}`——CI 可能把资产挂到 `untagged-<hash>`
+/// 这类自动生成的 tag 上（见 `latest_release` 注释）。资产下载地址必须按真实 tag 拼，
+/// 不能凭空假设 `v{version}`，否则会 404 把已发布的版本误判成「无更新」。
+fn entry_tag(link: &str) -> Option<String> {
+    let idx = link.find("/releases/tag/")?;
+    let tag = &link[idx + "/releases/tag/".len()..];
+    let tag = tag.split(['/', '?', '#']).next().unwrap_or_default();
+    if tag.is_empty() {
+        None
+    } else {
+        Some(tag.to_string())
+    }
+}
+
 /// 从 feed 条目解析版本号（**三段数字，不带 v 前缀**）。
 ///
 /// ⚠️ feed 的 `<title>` 是 **Release 名称**，用户可以任意命名（如「LanMusic v0.5.5」），
@@ -193,9 +208,7 @@ fn version_cmp(a: &str, b: &str) -> std::cmp::Ordering {
 /// 所以优先取 `<link>` 里的 `releases/tag/<tag>`（与 tag 名同源），
 /// 拿不到再退回「在标题里找第一个 n.n[.n] 片段」。
 fn version_from_entry(title: &str, link: &str) -> Option<String> {
-    if let Some(idx) = link.find("/releases/tag/") {
-        let tag = &link[idx + "/releases/tag/".len()..];
-        let tag = tag.split(['/', '?', '#']).next().unwrap_or_default();
+    if let Some(tag) = entry_tag(link) {
         let v = tag.trim_start_matches(['v', 'V']).trim();
         if v.chars().next().is_some_and(|c| c.is_ascii_digit()) {
             return Some(v.to_string());
@@ -233,11 +246,18 @@ fn extract_version(s: &str) -> Option<String> {
     None
 }
 
-/// 解析 `releases.atom` 取最新一条 release。
-/// 返回 (**Release 名称**（`<title>`，不是版本号，取版本用 `version_from_entry`）；
+/// 解析 `releases.atom`，返回**全部** entry（最新在前，与 feed 顺序一致）。
+/// 每条为 (Release 名称 `<title>`（不是版本号，取版本用 `version_from_entry`）；
 /// 说明 HTML 片段；页面链接)。
-fn parse_latest_atom(xml: &str) -> Result<(String, String, String), String> {
+///
+/// ⚠️ 必须返回全部条目：feed 按时间倒序，草稿 Release 也会列入且排在最前
+/// （如 `v0.5.26` 草稿先于已发布的 `v0.5.25`）。若只取第一条，遇到「最新一条是草稿 /
+/// 资产未挂到 `v{version}` tag」时就会漏掉后面真正可升级的版本，表现为「有新版却不提示」。
+/// `latest_release` 会按列表顺序逐个尝试，跳过版本不高于当前、版本解析失败、以及
+/// 草稿 / 资产不可达的条目，取第一个「版本更高且资产可下载」的 Release。
+fn parse_atom_entries(xml: &str) -> Result<Vec<(String, String, String)>, String> {
     let mut reader = Reader::from_str(xml);
+    let mut entries: Vec<(String, String, String)> = Vec::new();
     let mut in_entry = false;
     let mut in_title = false;
     let mut in_content = false;
@@ -249,7 +269,14 @@ fn parse_latest_atom(xml: &str) -> Result<(String, String, String), String> {
             Err(e) => return Err(format!("解析 Release feed 失败：{e}")),
             Ok(Event::Eof) => break,
             Ok(Event::Start(e)) | Ok(Event::Empty(e)) => match e.name().as_ref() {
-                "entry" if !in_entry => in_entry = true,
+                "entry" => {
+                    in_entry = true;
+                    in_title = false;
+                    in_content = false;
+                    title.clear();
+                    content.clear();
+                    link.clear();
+                }
                 "title" if in_entry => in_title = true,
                 "content" if in_entry => in_content = true,
                 // <link rel="alternate" type="text/html" href="…"/>
@@ -299,7 +326,13 @@ fn parse_latest_atom(xml: &str) -> Result<(String, String, String), String> {
                 }
             }
             Ok(Event::End(e)) => match e.name().as_ref() {
-                "entry" if in_entry => break, // 只取最新一条
+                "entry" if in_entry => {
+                    // 标题为空（个别异常条目）直接跳过，不让单条脏数据拖垮整个检查
+                    if !title.is_empty() {
+                        entries.push((title.clone(), content.clone(), link.clone()));
+                    }
+                    in_entry = false;
+                }
                 "title" => in_title = false,
                 "content" => in_content = false,
                 _ => {}
@@ -307,10 +340,10 @@ fn parse_latest_atom(xml: &str) -> Result<(String, String, String), String> {
             _ => {}
         }
     }
-    if title.is_empty() {
+    if entries.is_empty() {
         return Err("Release feed 中没有任何版本条目".into());
     }
-    Ok((title, content, link))
+    Ok(entries)
 }
 
 /// 粗粒度 HTML 清洗：去标签 + 反转义常见实体，供前端按纯文本展示
@@ -487,10 +520,13 @@ fn sanitize_attrs(inner: &str) -> String {
 }
 
 /// 按发布约定拼接资产地址（feed 不含资产列表）。
+/// `version` 用于文件名（如 `LanMusic_0.5.25_x64-setup.exe`），`tag` 用于下载目录——
+/// 二者可能不同：CI 有时把资产挂到 `untagged-<hash>` 这类自动生成的 tag 上，
+/// 此时必须按真实 `tag` 拼 `releases/download/<tag>/…`，写死 `v{version}` 必然 404。
 /// 返回 (文件名, 安装包 URL, 校验文件 URL)。
-fn asset_urls(version: &str) -> (String, String, String) {
+fn asset_urls(version: &str, tag: &str) -> (String, String, String) {
     let name = format!("LanMusic_{version}_x64-setup.exe");
-    let base = format!("{REPO_URL}/releases/download/v{version}");
+    let base = format!("{REPO_URL}/releases/download/{tag}");
     let exe = format!("{base}/{name}");
     let sha = format!("{exe}.sha256");
     (name, exe, sha)
@@ -546,47 +582,57 @@ pub fn latest_release(current_version: &str) -> Result<Option<ReleaseInfo>, Stri
         .text()
         .map_err(|e| e.to_string())?;
 
-    let (title, notes_html, html_url) = parse_latest_atom(&xml)?;
-    // 版本号不能取 <title>（那是 Release 名称，用户可任意写）——见 version_from_entry
-    let version = version_from_entry(&title, &html_url)
-        .ok_or_else(|| format!("无法从 Release feed 解析版本号（Release 名称：{title}）"))?;
-    if version_cmp(&version, current_version) != std::cmp::Ordering::Greater {
-        return Ok(None);
+    let entries = parse_atom_entries(&xml)?;
+    // feed 按时间倒序：逐个尝试，取第一个「版本更高且资产可下载」的 Release。
+    // 跳过：版本不高于当前（其后皆更旧）、版本解析失败、以及草稿 / 资产不可达
+    // （HEAD 404，通常因资产挂到了别的 tag，如 untagged-<hash>，或尚未发布）。
+    // 见 `parse_atom_entries` / `asset_urls` 注释。
+    for (title, notes_html, link) in entries {
+        // 版本号不能取 <title>（那是 Release 名称，用户可任意写）——见 version_from_entry
+        let Some(version) = version_from_entry(&title, &link) else {
+            log::warn!("Release feed 条目无法解析版本号（Release 名称：{title}，链接：{link}），跳过");
+            continue;
+        };
+        // feed 倒序：遇到第一条不高于当前的，其后皆更旧，可结束
+        if version_cmp(&version, current_version) != std::cmp::Ordering::Greater {
+            break;
+        }
+        // 资产下载目录用条目真实 tag（从 link 取），文件名用解析出的 version：
+        // 二者可能不同（CI 把资产挂到 untagged-<hash>），写死 v{version} 会 404。
+        let tag = entry_tag(&link).unwrap_or_else(|| format!("v{version}"));
+        let (name, exe_url, sha_url) = asset_urls(&version, &tag);
+        // feed 不含资产列表：拼完地址后 HEAD 探测可下载性。
+        // HEAD 404（草稿 / 资产未挂到该 tag / 偶发网络错）一律视为「此条不可用」，
+        // 跳过后看更早的正式版——宁可不提示，也不给死链；日志有留痕，重查即可。
+        let asset_size = asset_exists(&client, &exe_url);
+        let Some(asset_size) = asset_size else {
+            log::info!("Release v{version}（tag {tag}）未找到可下载安装包资产：{exe_url}（草稿或发布未完成，跳过后看更早的正式版）");
+            continue;
+        };
+        // 临时目录已有一致安装包 → 直接进「待安装」：下载完成后再检查更新 /
+        // 重启应用后再检查，都不要求重新下载
+        let installer_path =
+            cached_installer(&client, &name, &sha_url).map(|p| p.to_string_lossy().to_string());
+        // link 缺失时按 tag 约定补出页面地址（「前往下载页」按钮依赖它，不能是空串）
+        let html_url = if link.is_empty() {
+            format!("{REPO_URL}/releases/tag/{tag}")
+        } else {
+            link.clone()
+        };
+        return Ok(Some(ReleaseInfo {
+            version,
+            notes: strip_html(&notes_html),
+            notes_html: sanitize_html(&notes_html),
+            html_url,
+            asset_name: Some(name),
+            asset_url: Some(exe_url),
+            // feed 不含资产大小：来自 HEAD 的 Content-Length（0 = 未知，前端不定进度）
+            asset_size: Some(asset_size),
+            sha256_url: Some(sha_url),
+            installer_path,
+        }));
     }
-    // feed 不含资产列表：按发布约定拼接 + HEAD 探测存在性。
-    // ⚠️ releases.atom 连**草稿** Release 也会列出（tag 一推 CI 建草稿就出现），
-    // 此时资产对匿名下载不开放（HEAD 404）→ 提示出来只会得到一个「前往下载页」死链
-    // （草稿 release 页对未登录也是 404）。所以资产探测不到一律视为「发布未完成」，
-    // 当作没有更新处理（宁可不提示，不误导）。副作用：真发布忘传资产时也收不到提示
-    // （本来也升不了级），日志有留痕；HEAD 偶发网络错误同样落此分支，重新检查即可。
-    let (name, exe_url, sha_url) = asset_urls(&version);
-    let asset_size = asset_exists(&client, &exe_url);
-    if asset_size.is_none() {
-        log::warn!("Release v{version} 未找到可下载的安装包资产：{exe_url}（视为发布未完成/草稿，不提示更新）");
-        return Ok(None);
-    }
-    // 临时目录已有一致安装包 → 直接进「待安装」：下载完成后再检查更新 /
-    // 重启应用后再检查，都不要求重新下载
-    let installer_path =
-        cached_installer(&client, &name, &sha_url).map(|p| p.to_string_lossy().to_string());
-    // link 缺失时按 tag 约定补出页面地址（「前往下载页」按钮依赖它，不能是空串）
-    let html_url = if html_url.is_empty() {
-        format!("{REPO_URL}/releases/tag/v{version}")
-    } else {
-        html_url
-    };
-    Ok(Some(ReleaseInfo {
-        version,
-        notes: strip_html(&notes_html),
-        notes_html: sanitize_html(&notes_html),
-        html_url,
-        asset_name: Some(name),
-        asset_url: Some(exe_url),
-        // feed 不含资产大小：来自 HEAD 的 Content-Length（0 = 未知，前端不定进度）
-        asset_size,
-        sha256_url: Some(sha_url),
-        installer_path,
-    }))
+    Ok(None)
 }
 
 /// 读取 `.sha256` 文件内容并解析出哈希值。
@@ -1054,8 +1100,8 @@ pub fn cleanup_old_installers() {
 #[cfg(test)]
 mod tests {
     use super::{
-        asset_urls, parse_latest_atom, parse_sha256_text, sanitize_html, strip_html, version_cmp,
-        version_from_entry,
+        asset_urls, entry_tag, parse_atom_entries, parse_sha256_text, sanitize_html, strip_html,
+        version_cmp, version_from_entry,
     };
     use std::cmp::Ordering;
 
@@ -1123,19 +1169,60 @@ mod tests {
 </feed>"#;
 
     #[test]
-    fn parses_first_atom_entry_only() {
-        let (title, content, link) = parse_latest_atom(ATOM_FIXTURE).unwrap();
+    fn parses_all_atom_entries_in_order() {
+        let entries = parse_atom_entries(ATOM_FIXTURE).unwrap();
+        // 返回全部条目（不再只取第一条），且顺序与 feed 一致
+        assert_eq!(entries.len(), 2);
+        let (title, content, link) = &entries[0];
         assert_eq!(title, "v0.5.2");
         assert_eq!(
-            link,
+            *link,
             "https://github.com/hengrong1/lanmusic/releases/tag/v0.5.2"
         );
         // 版本号从 link 里的 tag 取（明文 tag 与 Release 名一致时也走这条路）
-        assert_eq!(version_from_entry(&title, &link).as_deref(), Some("0.5.2"));
+        assert_eq!(version_from_entry(title, link).as_deref(), Some("0.5.2"));
         // content 为还原实体后的 HTML 片段
         assert!(content.contains("<p>"), "应为 HTML 片段：{content}");
         assert!(content.contains("&amp;"), "XML 实体应已还原：{content}");
-        assert!(!content.contains("v0.5.1"), "不应取到第二条 entry");
+        // 第二条 entry 也应被解析出来
+        assert_eq!(entries[1].0, "v0.5.1");
+        assert!(!entries[1].1.contains("v0.5.2"), "第二条应为 v0.5.1 的内容");
+    }
+
+    /// 最新一条是草稿（资产 404）时，应能跳过后取到已发布的正式版——
+    /// 正是 0.5.24 用户「有 0.5.25 发布却不提示」的根因复现。
+    #[test]
+    fn skips_draft_then_finds_published() {
+        // entry0：v0.5.26 草稿（资产挂在 v0.5.26，将被 HEAD 探测判为不可用，需跳过）
+        // entry1：v0.5.25 正式版，但资产挂在 untagged-<hash> tag 而非 v0.5.25——
+        // 资产 URL 必须按真实 tag 拼，否则写死 v0.5.25 必 404
+        const FIXTURE: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom" xml:lang="en-US">
+  <entry>
+    <link rel="alternate" type="text/html" href="https://github.com/hengrong1/lanmusic/releases/tag/v0.5.26"/>
+    <title>v0.5.26</title>
+    <content type="html">&lt;p&gt;draft&lt;/p&gt;</content>
+  </entry>
+  <entry>
+    <link rel="alternate" type="text/html" href="https://github.com/hengrong1/lanmusic/releases/tag/untagged-95820d5afb85d2a35a0a"/>
+    <title>v0.5.25</title>
+    <content type="html">&lt;p&gt;fix&lt;/p&gt;</content>
+  </entry>
+</feed>"#;
+        let entries = parse_atom_entries(FIXTURE).unwrap();
+        // 第一跳草稿：版本更高但资产 tag 是 v0.5.26 → 资产 URL 用该 tag（由调用方 HEAD 判不可用后跳过）
+        let (_, _, link0) = &entries[0];
+        assert_eq!(*link0, "https://github.com/hengrong1/lanmusic/releases/tag/v0.5.26");
+        // 第二跳正式版：版本 0.5.25，资产 tag 是 untagged-… → entry_tag 解析为该 tag
+        let tag = entry_tag(&entries[1].2).unwrap();
+        assert_eq!(tag, "untagged-95820d5afb85d2a35a0a");
+        // asset_urls 用真实 tag 拼出的下载目录正确（而非写死的 v0.5.25）
+        let (name, exe, _sha) = asset_urls("0.5.25", &tag);
+        assert_eq!(name, "LanMusic_0.5.25_x64-setup.exe");
+        assert_eq!(
+            exe,
+            "https://github.com/hengrong1/lanmusic/releases/download/untagged-95820d5afb85d2a35a0a/LanMusic_0.5.25_x64-setup.exe"
+        );
     }
 
     /// Release 被命名过（如「LanMusic v0.5.5」）时，版本必须来自 tag 而不是名称
@@ -1240,17 +1327,44 @@ mod tests {
 
     #[test]
     fn asset_urls_follow_release_convention() {
-        let (name, exe, sha) = asset_urls("0.5.2");
+        // 正常情况 tag == v{version}
+        let (name, exe, sha) = asset_urls("0.5.2", "v0.5.2");
         assert_eq!(name, "LanMusic_0.5.2_x64-setup.exe");
         assert_eq!(
             exe,
             "https://github.com/hengrong1/lanmusic/releases/download/v0.5.2/LanMusic_0.5.2_x64-setup.exe"
         );
         assert_eq!(sha, format!("{exe}.sha256"));
+        // 资产挂到 untagged-<hash> tag 时，下载目录必须跟着真实 tag 走
+        let (name2, exe2, _sha2) = asset_urls("0.5.25", "untagged-95820d5afb85d2a35a0a");
+        assert_eq!(
+            exe2,
+            "https://github.com/hengrong1/lanmusic/releases/download/untagged-95820d5afb85d2a35a0a/LanMusic_0.5.25_x64-setup.exe"
+        );
+        assert_eq!(name2, "LanMusic_0.5.25_x64-setup.exe");
     }
 
     #[test]
     fn atom_without_entries_is_error() {
-        assert!(parse_latest_atom("<feed><title>x</title></feed>").is_err());
+        assert!(parse_atom_entries("<feed><title>x</title></feed>").is_err());
+        // 真实条目但标题为空 → 跳过该条目，整体仍报错（无有效条目）
+        assert!(
+            parse_atom_entries("<feed><entry><content>x</content></entry></feed>").is_err()
+        );
+    }
+
+    #[test]
+    fn entry_tag_extracts_from_link() {
+        assert_eq!(
+            entry_tag("https://github.com/x/y/releases/tag/v0.5.5").as_deref(),
+            Some("v0.5.5")
+        );
+        assert_eq!(
+            entry_tag("https://github.com/x/y/releases/tag/untagged-95820d5afb85d2a35a0a")
+                .as_deref(),
+            Some("untagged-95820d5afb85d2a35a0a")
+        );
+        assert_eq!(entry_tag("https://github.com/x/y/releases"), None);
+        assert_eq!(entry_tag(""), None);
     }
 }
