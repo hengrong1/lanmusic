@@ -114,20 +114,10 @@ const rootStyle = computed(() => ({
   '--dl-bg':
     config.value.bgOpacity > 0 ? hexToRgba(config.value.bgColor, config.value.bgOpacity) : 'transparent',
 }))
-/** 描边阴影串：多层同色阴影模拟描边；关闭时无阴影 */
-const textShadow = computed(() => {
-  if (!config.value.outline) return 'none'
-  const c = config.value.outlineColor
-  return [
-    `0 0 3px ${hexToRgba(c, 0.9)}`,
-    `0 1px 3px ${hexToRgba(c, 0.85)}`,
-    `0 0 10px ${hexToRgba(c, 0.5)}`,
-    `0 0 22px ${hexToRgba(c, 0.35)}`,
-  ].join(', ')
-})
 /**
  * 按行位置生成样式：分离模式下对齐固定跟随行位置（第一行永远左对齐在左上、
  * 第二行永远右对齐在右下），播放状态只决定颜色（播放行/未播放行两色）。
+ * 描边不在此处：统一走 strokeOutline（所有行同一通道，见下方注释）。
  */
 const rowStyle = (row: 0 | 1) => {
   const textAlign =
@@ -140,23 +130,29 @@ const rowStyle = (row: 0 | 1) => {
     color: active.value === row ? config.value.color : config.value.pendingColor,
     fontSize: `${config.value.fontSize}px`,
     fontWeight: config.value.bold ? 700 : 500,
-    textShadow: textShadow.value,
     textAlign,
   }
 }
 /**
- * 逐字行的描边：渐变填充走 background-clip:text（透明文字），渐变属于背景层，
- * 画在一切文字绘制之前——行内 -webkit-text-stroke 无论 paint-order 如何都盖在
- * 渐变上把文字变成描边色（2026-09-29 实录），text-shadow 也会透过透明 fill 叠
- * 在渐变上压暗颜色。因此词行一律不吃阴影/描边，描边改由 .dl-stroke::before
- * 垫底伪元素绘制（见样式表）：行内只提供描边宽度与颜色两个 CSS 变量。
+ * 描边（**所有行统一**）：渐变填充走 background-clip:text（透明文字），渐变属于
+ * 背景层，画在一切文字绘制之前——行内 -webkit-text-stroke 无论 paint-order 如何
+ * 都盖在渐变上把文字变成描边色（2026-09-29 实录），text-shadow 也会透过透明 fill
+ * 叠在渐变上压暗颜色。因此开启描边时一律不吃行内阴影/描边，改由 .dl-stroke::before
+ * 垫底伪元素绘制（见样式表）；纯文本行走同一条链路（伪元素按 attr(data-text) 复刻
+ * 整行，与真实文本同源），两行视觉统一，不会一行描边、一行辉光。
+ * 行内提供三个 CSS 变量：描边宽度（伪元素的 2×w 用）、描边颜色、裁剪盒外扩量。
+ * ⚠️ overflow-clip-margin **只吃裸长度**：calc() 会被解析失败并静默退回 0px
+ * （2026-10-10 实测，Chromium/WebView2），裁剪盒不外扩 → 贴边字描边照样被削。
+ * 因此 +1px 抗锯齿余量在这里算好，不要把 calc 写进 CSS。
  */
 const strokeOutline = computed(() => {
-  if (!config.value.outline) return { textShadow: 'none' }
+  if (!config.value.outline) return {}
+  const strokeW = Math.max(2, config.value.fontSize * 0.08)
   return {
     textShadow: 'none',
-    '--dl-stroke-w': `${Math.max(2, config.value.fontSize * 0.08)}px`,
+    '--dl-stroke-w': `${strokeW}px`,
     '--dl-stroke-c': config.value.outlineColor,
+    '--dl-clip-w': `${strokeW + 1}px`,
   }
 })
 /** 单词样式：按播放进度双色渐变（已唱=播放行颜色，未唱=未播放行颜色） */
@@ -180,9 +176,8 @@ const controlsStyle = computed(() => ({
       : 'rgba(24, 24, 27, 0.55)',
 }))
 /** 渲染条目：歌词行或翻译行（翻译行无逐字数据，样式由 style 全量携带）；
- * 值允许 undefined（strokeOutline 未命中分支的透传，Vue 行内样式忽略 undefined）。
- * live：该行是否为正在播放的句子（超宽时跟随高亮/播放进度滚动）；
- * 缺省 = 静止（下一句预告 / 译文副行，超宽只裁剪不滚） */
+ * words 允许 undefined（v-if 判断用）。live：该行是否为正在播放的句子（超宽时
+ * 跟随高亮/播放进度滚动）；缺省 = 静止（下一句预告 / 译文副行，超宽只裁剪不滚） */
 type DeskRow = {
   text: string
   words?: QrcWord[]
@@ -193,7 +188,8 @@ type DeskRow = {
  * 紧跟原文，不随 active 交替换位；当前句无译文时不走此分支，落到下方双行交替
  * 逻辑（lines 已由主窗口按 active 交换位置）：单语歌词勾「译」若仍把当前句钉在
  * 第一行，会失去交替滚动的节奏（每次都是上面播放行）也看不到下一句预告。
- * 逐字行（words 非空）额外携带词级时间轴与描边覆盖，模板里按字渲染渐变 */
+ * 逐字行（words 非空）额外携带词级时间轴，模板里按字渲染渐变；描边与逐字无关，
+ * 开描边时所有行统一携带（见 strokeOutline） */
 const rows = computed<DeskRow[]>(() => {
   const wordsFor = (row: 0 | 1) => (active.value === row && words.value.length > 1 ? words.value : undefined)
   // 翻译模式：仅当前句带译文时接管渲染——固定「歌词(播放) + 译文」，颜色手动指定，
@@ -214,7 +210,7 @@ const rows = computed<DeskRow[]>(() => {
           fontSize: `${config.value.fontSize}px`,
           fontWeight: config.value.bold ? 700 : 500,
           textAlign: alignOf(0),
-          ...(w ? strokeOutline.value : { textShadow: textShadow.value }),
+          ...(config.value.outline ? strokeOutline.value : {}),
         },
       },
       {
@@ -224,8 +220,8 @@ const rows = computed<DeskRow[]>(() => {
           opacity: 0.72,
           fontSize: `${config.value.fontSize}px`,
           fontWeight: 500,
-          textShadow: textShadow.value,
           textAlign: alignOf(1),
+          ...(config.value.outline ? strokeOutline.value : {}),
         },
       },
     ]
@@ -238,7 +234,7 @@ const rows = computed<DeskRow[]>(() => {
         text: lines.value[active.value] || EMPTY_LYRIC,
         words: w,
         live: true,
-        style: { ...rowStyle(0), color: config.value.color, ...(w ? strokeOutline.value : {}) },
+        style: { ...rowStyle(0), color: config.value.color, ...(config.value.outline ? strokeOutline.value : {}) },
       },
     ]
   }
@@ -247,13 +243,13 @@ const rows = computed<DeskRow[]>(() => {
       text: lines.value[0] || (active.value === 0 ? EMPTY_LYRIC : '\u00A0'),
       words: wordsFor(0),
       live: active.value === 0,
-      style: wordsFor(0) ? { ...rowStyle(0), ...strokeOutline.value } : rowStyle(0),
+      style: { ...rowStyle(0), ...(config.value.outline ? strokeOutline.value : {}) },
     },
     {
       text: lines.value[1] || '\u00A0',
       words: wordsFor(1),
       live: active.value === 1,
-      style: wordsFor(1) ? { ...rowStyle(1), ...strokeOutline.value } : rowStyle(1),
+      style: { ...rowStyle(1), ...(config.value.outline ? strokeOutline.value : {}) },
     },
   ]
 })
@@ -438,7 +434,7 @@ const innerStyle = (i: number) => {
       <span
         :key="row.text"
         class="dl-inner"
-        :class="{ 'dl-stroke': !!(row.words && config.outline) }"
+        :class="{ 'dl-stroke': config.outline }"
         :data-text="row.text"
         data-tauri-drag-region
         :style="innerStyle(i)"
@@ -446,7 +442,9 @@ const innerStyle = (i: number) => {
         <template v-if="row.words">
           <span v-for="(w, wi) in row.words" :key="wi" class="dl-word" :style="wordStyle(w)">{{ w.word }}</span>
         </template>
-        <template v-else>{{ row.text }}</template>
+        <!-- 纯文本行包一层 .dl-word（pre）：与描边伪元素的空白语义对齐，连续空格不被
+             折叠，复刻的描边环才会与真实文字逐像素重合 -->
+        <template v-else><span class="dl-word">{{ row.text }}</span></template>
       </span>
     </p>
   </div>
@@ -531,7 +529,16 @@ const innerStyle = (i: number) => {
   font-weight: 700;
   line-height: 1.25;
   white-space: nowrap;
-  overflow: hidden;
+  /* 裁剪盒按描边宽度外扩：描边（-webkit-text-stroke 的外半环 ≈ --dl-stroke-w）
+     溢出文字盒边缘，而 hidden/clip 的裁剪盒默认与文字盒齐平，会把贴边字的外侧
+     那一笔齐整削掉——分离模式下第一行左对齐、第二行右对齐，首字/末字正贴在裁剪
+     盒边缘（实录：第一行左边、第二行右边各缺一笔，像素实测缺 1.7~2.7px）。
+     overflow-clip-margin 把裁剪盒按描边宽度 + 1px（抗锯齿）外扩，文字仍不越界，
+     跑马灯测量（p.clientWidth 为内容+padding，不含外扩量）不受影响；
+     ⚠️ 该属性不接受 calc()（解析失败静默退回 0px）⇒ 只能裸 var，见 strokeOutline。
+     不识别 overflow-clip-margin 的引擎忽略该声明，退化为齐平裁剪，无回归 */
+  overflow: clip;
+  overflow-clip-margin: var(--dl-clip-w, 0.12em);
 }
 /* 滚动载体：inline-block 取内容实宽供测量，relative 供描边伪元素定位；位移由
    rAF 写在 transform 上（逐字行跟随高亮、行级行跟随播放进度），描边/渐变随之
@@ -540,16 +547,20 @@ const innerStyle = (i: number) => {
   position: relative;
   display: inline-block;
 }
-/* 逐字单词：保留词内/词间空白（连续空格词不被折叠） */
+/* 逐字单词：保留词内/词间空白（连续空格词不被折叠）。纯文本行也包一层 .dl-word
+   渲染（见模板），使真实文字与描边伪元素（white-space: pre）空白语义一致——
+   连续空格若被 nowrap 折叠，伪元素复刻的整行会比真实文字宽，描边环整体错位 */
 .dl-word {
   white-space: pre;
 }
-/* 逐字行描边：渐变填充是背景层（画在一切文字绘制之前），行内 -webkit-text-stroke
-   无论 paint-order 如何都画在渐变上把文字变成描边色（2026-09-29 实录）⇒ 描边改由
-   垫底伪元素画：attr(data-text) 复刻整行文字（white-space: pre 与词行空格语义
-   一致，保证逐像素对齐）、stroke 宽度取 2×w（内半环被上层渐变盖住，外露 w）、
-   fill 透明只留描边环，z:-1 垫在词渐变之下、悬停背景之上；
-   伪元素挂在 .dl-inner 上与词渐变同层位移，跑马灯滚动时保持逐像素对齐 */
+/* 逐字行描边（开描边时所有行统一走此链路）：渐变填充是背景层（画在一切文字绘制
+   之前），行内 -webkit-text-stroke 无论 paint-order 如何都画在渐变上把文字变成
+   描边色（2026-09-29 实录）⇒ 描边改由垫底伪元素画：attr(data-text) 复刻整行文字
+   （white-space: pre 与词行空格语义一致，保证逐像素对齐）、stroke 宽度取 2×w
+   （内半环被上层渐变/文字盖住，外露 w）、fill 透明只留描边环，z:-1 垫在词渐变
+   之下、悬停背景之上；伪元素挂在 .dl-inner 上与词渐变同层位移，跑马灯滚动时保持
+   逐像素对齐。纯文本行同源复刻（外包一层 .dl-word，空白语义与伪元素一致），
+   因此两行描边一致 */
 .dl-inner.dl-stroke::before {
   content: attr(data-text);
   position: absolute;
