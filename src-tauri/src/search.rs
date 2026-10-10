@@ -158,6 +158,7 @@ fn row_hit(r: &rusqlite::Row) -> rusqlite::Result<Hit> {
             fav: r.get::<_, i64>(16)? != 0,
             artists: Vec::new(),
             matched_fields: Vec::new(),
+            matched_lyric: None,
             matched_artist_ids: Vec::new(),
             rg_track_gain: r.get(20)?,
             rg_track_peak: r.get(21)?,
@@ -167,6 +168,95 @@ fn row_hit(r: &rusqlite::Row) -> rusqlite::Result<Hit> {
         play_count: r.get(18)?,
         lyrics: r.get(19)?,
     })
+}
+
+/// 歌词行展示上限（字符）：超长行截断加省略号，避免结果行被一行歌词撑爆
+const LYRIC_SNIPPET_MAX: usize = 80;
+
+/// `[` 后的内容是否为 LRC 时间戳（`mm:ss` / `mm:ss.xx`）：冒号两侧都是数字。
+/// 借此区分时间戳与元信息标签（`[ar:周杰伦]` / `[ti:...]` / `[offset:...]`）。
+fn is_time_tag(s: &str) -> bool {
+    let Some((mm, ss)) = s.split_once(':') else {
+        return false;
+    };
+    !mm.is_empty()
+        && mm.chars().all(|c| c.is_ascii_digit())
+        && !ss.is_empty()
+        && ss.chars().all(|c| c.is_ascii_digit() || c == '.')
+}
+
+/// 删除字符串里所有 `<x>...</x>` 式包裹段（A2 增强 LRC 的行内字级时间标签 `<mm:ss.xx>`）
+fn remove_angle_segments(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut rest = s;
+    while let Some(open) = rest.find('<') {
+        out.push_str(&rest[..open]);
+        match rest[open + 1..].find('>') {
+            Some(rel) => {
+                rest = &rest[open + 1 + rel + 1..];
+            }
+            None => {
+                out.push_str(&rest[open..]);
+                return out;
+            }
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
+/// 剥掉歌词行的标记，只留可读文本：行内 A2 字标签 `<mm:ss.xx>` 与时间戳
+/// `[mm:ss.xx]`（可多个，如 `[00:12][01:20]同一句`）删除；元信息行
+/// （`[ar:...]` / `[ti:...]` / `[offset:...]` 等非时间戳方括号开头）返回空串跳过。
+fn strip_lyric_tags(line: &str) -> String {
+    if line.starts_with('[') {
+        if let Some(end) = line.find(']') {
+            if !is_time_tag(&line[1..end]) {
+                return String::new();
+            }
+        }
+    }
+    let s = remove_angle_segments(line);
+    let mut out = String::with_capacity(s.len());
+    let mut rest = s.as_str();
+    while let Some(i) = rest.find('[') {
+        match rest[i..].find(']') {
+            Some(rel) => {
+                let close = i + rel;
+                // 时间戳删除；非时间戳方括号（歌词里手写的注释）原样保留
+                if is_time_tag(&rest[i + 1..close]) {
+                    out.push_str(&rest[..i]);
+                } else {
+                    out.push_str(&rest[..=close]);
+                }
+                rest = &rest[close + 1..];
+            }
+            None => break,
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
+/// 从歌词索引文本里取出第一个含关键词的歌词行（大小写不敏感，剥掉标记后匹配，
+/// 与 match_field 的歌词匹配同口径）。索引文本是整首歌词原文（扫描时写入），
+/// 时间戳只是时间轴；空行（间奏）与元信息行跳过。找不到返回 None（如命中的
+/// 是 [ti:] 元信息行）。
+fn extract_lyric_line(blob: &str, q_lower: &str) -> Option<String> {
+    for raw in blob.lines() {
+        let text = strip_lyric_tags(raw).trim().to_string();
+        if text.is_empty() {
+            continue;
+        }
+        if text.to_lowercase().contains(q_lower) {
+            if text.chars().count() > LYRIC_SNIPPET_MAX {
+                let kept: String = text.chars().take(LYRIC_SNIPPET_MAX).collect();
+                return Some(format!("{kept}…"));
+            }
+            return Some(text);
+        }
+    }
+    None
 }
 /// 搜索曲目：多字段匹配 + 拼音 + 相关度排序，内存分页。
 pub fn search_tracks(conn: &Connection, q: &TrackQuery) -> Result<Page<Track>, String> {
@@ -363,6 +453,11 @@ pub fn search_tracks(conn: &Connection, q: &TrackQuery) -> Result<Page<Track>, S
             }
         }
         h.score = score;
+        // 歌词字段命中：从歌词索引原文里取出命中的那一行（剥掉时间戳）随结果
+        // 返回，前端据此在搜索下拉 / 结果页表格行内展示「为什么命中」
+        if matched.iter().any(|f| f == F_LYRICS) {
+            h.track.matched_lyric = extract_lyric_line(&h.lyrics, &q_lower);
+        }
         h.track.matched_fields = matched;
     }
     hits.retain(|h| h.score > 0);
@@ -472,6 +567,38 @@ mod tests {
         assert_eq!(like_escape("a\\b"), "a\\\\b");
     }
 
+    /// 歌词行提取：剥掉 LRC 时间戳 / A2 字级标签，跳过元信息行与空行。
+    #[test]
+    fn extracts_matched_lyric_line() {
+        // 普通 LRC：取含关键词的行，时间戳剥掉；间奏空行跳过
+        let blob = "[00:00.00]\n[00:12.34]天空之城 我们一起走过\n[00:20.00]下一句";
+        assert_eq!(
+            extract_lyric_line(blob, "一起").as_deref(),
+            Some("天空之城 我们一起走过")
+        );
+        // 未命中返回 None
+        assert_eq!(extract_lyric_line(blob, "不存在"), None);
+        // 元信息行（[ti:]/[ar:]/[offset:]）不算歌词命中
+        let meta = "[ti:一起红的歌]\n[ar:一起唱]\n[offset:+250]";
+        assert_eq!(extract_lyric_line(meta, "一起"), None);
+        // 增强 LRC（A2）：行内字级时间标签剥掉
+        let a2 = "[00:12.00]<00:12.00>你<00:12.35>好<00:13.10>世界";
+        assert_eq!(extract_lyric_line(a2, "你好").as_deref(), Some("你好世界"));
+        // 多标签逐字 LRC：一行多个时间戳
+        let multi = "[00:00.000]身[00:00.582]骑[00:01.164]白[00:02.328]马";
+        assert_eq!(extract_lyric_line(multi, "白马").as_deref(), Some("身骑白马"));
+        // 重复行写法：取第一个匹配行
+        let dup = "[00:12][01:20]同一句歌词\n[02:00]另一句";
+        assert_eq!(extract_lyric_line(dup, "同一句").as_deref(), Some("同一句歌词"));
+        // 大小写不敏感（与 match_field 的歌词匹配同口径）
+        assert_eq!(extract_lyric_line("[00:01.00]Hello Sky", "hello").as_deref(), Some("Hello Sky"));
+        // 超长行截断加省略号
+        let long: String = std::iter::repeat('歌').take(100).collect();
+        let line = extract_lyric_line(&format!("[00:01.00]{long}"), "歌").unwrap();
+        assert_eq!(line.chars().count(), LYRIC_SNIPPET_MAX + 1);
+        assert!(line.ends_with('…'));
+    }
+
     #[test]
     fn pinyin_forms_work() {
         assert_eq!(pinyin_forms("周杰伦").0, "zhoujielun");
@@ -546,6 +673,47 @@ mod tests {
         };
         let page = search_tracks(&conn, &q).unwrap();
         assert_eq!(page.total, 0);
+    }
+
+    /// 歌词搜索：命中字段标记 + 命中的歌词行（剥时间戳）随结果返回。
+    #[test]
+    fn search_returns_matched_lyric_line() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.pragma_update(None, "foreign_keys", "ON").unwrap();
+        crate::db::register_collations(&conn).unwrap();
+        conn.execute_batch(crate::db::SCHEMA).unwrap();
+        crate::db::migrate(&conn).unwrap();
+        conn.execute_batch(
+            "INSERT INTO sources (id, name) VALUES (1, 's');
+             INSERT INTO tracks (id, source_id, path, title, added_at) VALUES (1, 1, 'p1', 'T1', 100);
+             INSERT INTO lyrics_index (track_id, text) VALUES (1, '[00:00.00]前奏\n[00:12.34]天空之城 一起走过的日子\n[00:30.00]尾声');",
+        )
+        .unwrap();
+
+        let q = TrackQuery {
+            search: Some("走过".into()),
+            fields: Some(vec!["lyrics".into()]),
+            pinyin: Some(false),
+            ..no_view()
+        };
+        let page = search_tracks(&conn, &q).unwrap();
+        assert_eq!(page.total, 1);
+        assert!(page.items[0].matched_fields.contains(&"lyrics".to_string()));
+        assert_eq!(
+            page.items[0].matched_lyric.as_deref(),
+            Some("天空之城 一起走过的日子")
+        );
+
+        // 未命中歌词的搜索不带歌词行
+        let q = TrackQuery {
+            search: Some("T1".into()),
+            fields: Some(vec!["title".into()]),
+            pinyin: Some(false),
+            ..no_view()
+        };
+        let page = search_tracks(&conn, &q).unwrap();
+        assert_eq!(page.total, 1);
+        assert_eq!(page.items[0].matched_lyric, None);
     }
 
     fn no_view() -> TrackQuery {

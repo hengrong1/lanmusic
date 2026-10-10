@@ -482,28 +482,38 @@ function onDragEnd() {
                 <span class="eq-bar w-[3px] rounded-full bg-gradient-to-t from-violet-600 to-violet-400" style="animation-delay: 0.5s"></span>
               </span>
             </div>
-            <div class="flex min-w-0 items-center gap-1.5" :class="player.current?.id === t.id ? 'font-medium text-violet-600 dark:text-violet-400' : 'text-zinc-800 dark:text-zinc-100'">
-              <span class="truncate"><HighlightText :text="t.title" :keyword="searchTerm" :field-matched="t.matchedFields?.includes('title')" /></span>
-              <!-- 命中字段徽标：歌词 / 文件名 -->
-              <span
-                v-if="t.matchedFields?.includes('lyrics')"
-                class="shrink-0 rounded-full bg-violet-100 px-1.5 py-px text-[10px] font-medium text-violet-600 dark:bg-violet-500/20 dark:text-violet-300"
-                v-tooltip="$t('library.lyricsHit')"
-              >{{ $t('player.lyrics') }}</span>
-              <span
-                v-if="t.matchedFields?.includes('filename')"
-                class="shrink-0 rounded-full bg-emerald-100 px-1.5 py-px text-[10px] font-medium text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-300"
-                v-tooltip="filenameTip(t.path)"
-              >{{ $t('settings.fieldFilename') }}</span>
-              <button
-                v-if="t.hasMv"
-                class="shrink-0 rounded-lg p-0.5 text-violet-500 transition hover:bg-violet-500/10"
-                v-tooltip="$t('mv.play')"
-                :aria-label="$t('mv.play')"
-                @click.stop="playMv(t)"
+            <div class="flex min-h-0 min-w-0 flex-col justify-center gap-1" :class="player.current?.id === t.id ? 'font-medium text-violet-600 dark:text-violet-400' : 'text-zinc-800 dark:text-zinc-100'">
+              <div class="flex min-w-0 items-center gap-1.5">
+                <span class="truncate"><HighlightText :text="t.title" :keyword="searchTerm" :field-matched="t.matchedFields?.includes('title')" /></span>
+                <!-- 命中字段徽标：歌词 / 文件名 -->
+                <span
+                  v-if="t.matchedFields?.includes('lyrics')"
+                  class="shrink-0 rounded-full bg-violet-100 px-1.5 py-px text-[10px] font-medium text-violet-600 dark:bg-violet-500/20 dark:text-violet-300"
+                  v-tooltip="t.matchedLyric || $t('library.lyricsHit')"
+                >{{ $t('player.lyrics') }}</span>
+                <span
+                  v-if="t.matchedFields?.includes('filename')"
+                  class="shrink-0 rounded-full bg-emerald-100 px-1.5 py-px text-[10px] font-medium text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-300"
+                  v-tooltip="filenameTip(t.path)"
+                >{{ $t('settings.fieldFilename') }}</span>
+                <button
+                  v-if="t.hasMv"
+                  class="shrink-0 rounded-lg p-0.5 text-violet-500 transition hover:bg-violet-500/10"
+                  v-tooltip="$t('mv.play')"
+                  :aria-label="$t('mv.play')"
+                  @click.stop="playMv(t)"
+                >
+                  <ClapperboardPlay class="h-4 w-4" />
+                </button>
+              </div>
+              <!-- 歌词命中（搜索）：展示命中的歌词行（关键词高亮），小一号弱化色；
+                   44px 行高下 title(20px) + 本行(14px) + 间距仍容得下 -->
+              <div
+                v-if="t.matchedLyric"
+                class="min-w-0 truncate text-[11px] font-normal leading-tight text-zinc-400 dark:text-zinc-500"
               >
-                <ClapperboardPlay class="h-4 w-4" />
-              </button>
+                <HighlightText :text="t.matchedLyric" :keyword="searchTerm" />
+              </div>
             </div>
             <div class="min-w-0 truncate text-zinc-500 dark:text-zinc-400">
               <!-- 多艺人：每个名字独立可点击（区分每一个艺人）；

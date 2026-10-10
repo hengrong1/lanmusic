@@ -6,6 +6,7 @@ import { MoonIcon as Moon } from '@solar-icons/vue/linear/moon'
 import { SidebarMinimalisticIcon as SidebarCollapse } from '@solar-icons/vue/linear/sidebar-minimalistic'
 import { SidebarIcon as SidebarExpand } from '@solar-icons/vue/linear/sidebar'
 import { MagnifierIcon as Search } from '@solar-icons/vue/linear/magnifier'
+import { MusicNoteIcon as MusicNote } from '@solar-icons/vue/linear/music-note'
 import { SettingsIcon as SettingsBold } from '@solar-icons/vue/bold/settings'
 import { SettingsIcon as Settings } from '@solar-icons/vue/linear/settings'
 import { SunIcon as Sun } from '@solar-icons/vue/linear/sun'
@@ -376,6 +377,14 @@ defineExpose({ focusSearch })
                     </template>
                     <span v-if="t.artist && t.album" class="shrink-0">·</span>
                     <HighlightText v-if="t.album" :text="t.album" :keyword="input.trim()" :field-matched="t.matchedFields?.includes('album')" class="min-w-0 truncate" />
+                  </div>
+                  <!-- 歌词命中：展示命中的歌词行（关键词高亮），说明为什么搜到这首歌 -->
+                  <div
+                    v-if="t.matchedLyric"
+                    class="mt-0.5 flex min-w-0 items-center gap-1 text-xs text-zinc-500 dark:text-zinc-400"
+                  >
+                    <MusicNote class="h-3 w-3 shrink-0 text-violet-400" />
+                    <HighlightText :text="t.matchedLyric" :keyword="input.trim()" class="min-w-0 truncate" />
                   </div>
                 </div>
               </button>

@@ -53,6 +53,11 @@ pub struct Track {
     pub artists: Vec<TrackArtistRef>,
     /// 命中的搜索字段（title/artist/album/lyrics/filename），仅搜索时非空
     pub matched_fields: Vec<String>,
+    /// 歌词字段命中时，命中的那一行歌词原文（已剥掉 LRC 时间戳 / A2 字级标签，
+    /// 元信息行如 [ar:]/[offset:] 跳过）；仅搜索且命中歌词时非空——
+    /// 前端在搜索下拉与结果页表格行内展示「为什么命中」
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub matched_lyric: Option<String>,
     /// 艺人字段命中的艺人 id（含按合并别名 / 拼音命中者），仅搜索时非空——
     /// 前端据此只给真正命中的艺人上主题色，合作艺人不受牵连
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -163,6 +168,7 @@ fn row_track(r: &rusqlite::Row) -> rusqlite::Result<Track> {
         fav: r.get::<_, i64>(16)? != 0,
         artists: Vec::new(),
         matched_fields: Vec::new(),
+        matched_lyric: None,
         matched_artist_ids: Vec::new(),
         rg_track_gain: r.get(17)?,
         rg_track_peak: r.get(18)?,
