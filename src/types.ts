@@ -298,6 +298,16 @@ export type ViewName =
   | 'stats'
   | 'folder'
 
+/** 设置页分区 id（与 SettingsView 顶部目录/锚点一致） */
+export type SettingsSectionId =
+  | 'library'
+  | 'appearance'
+  | 'playback'
+  | 'audio'
+  | 'search'
+  | 'lyrics'
+  | 'general'
+
 export interface NavRoute {
   view: ViewName
   albumId?: number
@@ -311,6 +321,8 @@ export interface NavRoute {
   search?: string
   /** 文件夹视图：当前目录（相对来源根的路径，空 = 根目录） */
   folderPath?: string
+  /** 设置页目标分区（从别处跳转设置时带上，进入后滚动到对应分区） */
+  section?: SettingsSectionId
 }
 
 /** 文件夹视图：一个子目录节点 */

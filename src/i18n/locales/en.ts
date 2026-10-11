@@ -360,6 +360,8 @@ export default {
     sortAdded: 'Recently added first', sortPlays: 'Most played first',
     inputDebounce: 'Input Debounce',
     inputDebounceDesc: 'A search is triggered only after typing pauses for this long, avoiding laggy repeated queries.',
+    // Shortcut buttons that jump to settings (search box / now playing / desktop lyrics)
+    gotoSearch: 'Search settings', gotoAudio: 'Equalizer settings', gotoLyrics: 'Desktop lyrics settings',
     // Lyric source priority
     lyricPriority: 'Lyric source priority',
     lyricPriorityDesc: 'Sources are tried in order: external QRC (word-level karaoke), external LRC, embedded tags',

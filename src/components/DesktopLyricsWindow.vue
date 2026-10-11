@@ -9,6 +9,7 @@ import { Rewind5SecondsBackIcon as RewindBack } from '@solar-icons/vue/linear/re
 import { Rewind5SecondsForwardIcon as RewindForward } from '@solar-icons/vue/linear/rewind-5-seconds-forward'
 import { RestartIcon as RotateCcw } from '@solar-icons/vue/linear/restart'
 import { HomeAngle2Icon as Home } from '@solar-icons/vue/linear/home-angle-2'
+import { SettingsIcon as Settings } from '@solar-icons/vue/linear/settings'
 import { CloseIcon as X } from '@solar-icons/vue/linear/close'
 import { api } from '@/api/commands'
 import { EMPTY_LYRIC, type DeskControl, type DeskLyricsConfig } from '@/composables/useDesktopLyrics'
@@ -98,6 +99,12 @@ onBeforeUnmount(() => unlisten?.())
 
 function control(action: DeskControl) {
   void emit('lyrics:control', action)
+}
+
+/** 跳转主窗口设置页「歌词」分区（桌面歌词各项设置所在），顺带前置主窗口 */
+function openLyricsSettings() {
+  void emit('app:open-settings', 'lyrics')
+  void api.showMainWindow().catch(() => {})
 }
 
 const rootStyle = computed(() => ({
@@ -409,6 +416,10 @@ const innerStyle = (i: number) => {
         译
       </button>
       <span class="dl-divider"></span>
+      <!-- 桌面歌词设置：跳转主窗口设置页「歌词」分区并前置主窗口 -->
+      <button class="dl-btn" v-tooltip="$t('settings.gotoLyrics')" @click="openLyricsSettings">
+        <Settings class="h-4 w-4" />
+      </button>
       <!-- 显示主界面：唤起/前置主窗口（隐藏或最小化时还原），走 Rust 侧
            show_main_window（复用托盘左键逻辑，顺带收起托盘菜单弹窗） -->
       <button class="dl-btn" v-tooltip="$t('desktopLyrics.showMainHint')" @click="api.showMainWindow()">

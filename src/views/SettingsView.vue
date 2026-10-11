@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { open as openDialog } from '@tauri-apps/plugin-dialog'
 import { getVersion } from '@tauri-apps/api/app'
 import { DatabaseIcon as HardDriveBold } from '@solar-icons/vue/bold/database'
@@ -59,7 +59,7 @@ import {
 import { usePlayerStore } from '@/stores/player'
 import { api } from '@/api/commands'
 import { getSearchSettings, setSearchSettings, type SearchSettings } from '@/composables/useSearchSettings'
-import type { ArtistAlias, ArtistNormalizeChange, ArtistSplitChange, RemovedTrack, Source } from '@/types'
+import type { ArtistAlias, ArtistNormalizeChange, ArtistSplitChange, RemovedTrack, SettingsSectionId, Source } from '@/types'
 import { setLocale } from '@/i18n'
 import { useI18n } from 'vue-i18n'
 import {
@@ -88,17 +88,23 @@ const { t, locale } = useI18n()
 
 // ---- 锚点目录：六个分类纵向铺开；顶部目录点击滚动跳转，滚动时反向高亮当前分区 ----
 const CATEGORY_IDS = ['library', 'appearance', 'playback', 'audio', 'search', 'lyrics', 'general'] as const
-type CategoryId = (typeof CATEGORY_IDS)[number]
+/** 与 NavRoute.section 同源（types.ts SettingsSectionId）：别处跳转设置页时按分区滚动 */
+type CategoryId = SettingsSectionId
 const SECTION_ID_PREFIX = 'settings-section-'
 
 /** 当前分区：点击目录即时更新，滚动时由 scroll spy 跟随。
  * 刻意**不持久化**：设置页每次进入都从顶部开始，不回到上次看的分区/滚动位置 */
 const active = ref<CategoryId>(CATEGORY_IDS[0])
 
-/** 点击目录项：平滑滚动到对应分区（滚动途经的分区会依次高亮，最终停在目标分区） */
-function scrollToSection(id: CategoryId) {
+/** 点击目录项：平滑滚动到对应分区（滚动途经的分区会依次高亮，最终停在目标分区）。
+ * smooth=false 供跨页跳转（别处按钮带 section 进来）用：直接落位，不表演缓动——
+ * 长距离 smooth 太慢，按钮进设置的观感应该是「秒到」 */
+function scrollToSection(id: CategoryId, smooth = true) {
   active.value = id
-  document.getElementById(SECTION_ID_PREFIX + id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  document.getElementById(SECTION_ID_PREFIX + id)?.scrollIntoView({
+    behavior: smooth ? 'smooth' : 'auto',
+    block: 'start',
+  })
 }
 
 const categories = computed(() => [
@@ -704,6 +710,11 @@ function updateActiveFromScroll() {
 // 挂载后只需同步一次高亮（首帧即 library）
 onMounted(() => {
   spyRaf = requestAnimationFrame(updateActiveFromScroll)
+  // 从别处跳转进来（搜索框齿轮 / 播放页均衡器钮 / 桌面歌词浮窗设置钮）：滚动到
+  // 目标分区，与点击顶部目录同链路（smooth + 高亮同步）；无 section 时保持顶部
+  const section = nav.current.value.section
+  // 跨页跳转直接落位（instant）：smooth 缓动长距离太慢，按钮进设置的观感是「秒到」
+  if (section) void nextTick(() => scrollToSection(section, false))
 })
 
 // ---- 弹窗偏好（外观）：可拖动 + 背景模糊度；弹窗打开时读取，立即生效于下一个弹窗 ----

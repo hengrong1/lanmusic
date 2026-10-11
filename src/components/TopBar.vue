@@ -209,6 +209,12 @@ function clearSearch() {
   replaceSearch('')
 }
 
+/** 跳转设置页「搜索」分区（搜索框右侧齿轮按钮；先收起下拉再走） */
+function goSearchSettings() {
+  closeDropdown()
+  go({ view: 'settings', section: 'search' })
+}
+
 function cycleTheme() {
   const order = ['dark', 'light', 'system'] as const
   const i = order.indexOf(mode.value as (typeof order)[number])
@@ -259,7 +265,7 @@ defineExpose({ focusSearch })
         id="search-input"
         v-model="input"
         autocomplete="off"
-        class="hover-accent-border h-9 w-full rounded-full border border-zinc-200/70 bg-zinc-100 pr-8 pl-9 text-sm text-zinc-800 outline-none transition placeholder:text-zinc-400 hover:bg-zinc-200/60 focus:border-violet-400 focus:bg-white dark:border-transparent dark:bg-zinc-800/70 dark:text-zinc-100 dark:hover:bg-zinc-800 dark:focus:bg-zinc-800"
+        class="hover-accent-border h-9 w-full rounded-full border border-zinc-200/70 bg-zinc-100 pr-14 pl-9 text-sm text-zinc-800 outline-none transition placeholder:text-zinc-400 hover:bg-zinc-200/60 focus:border-violet-400 focus:bg-white dark:border-transparent dark:bg-zinc-800/70 dark:text-zinc-100 dark:hover:bg-zinc-800 dark:focus:bg-zinc-800"
         :placeholder="$t('library.searchPlaceholder') + ' (Ctrl+F)'"
         @focus="onFocus"
         @blur="onBlur"
@@ -267,9 +273,17 @@ defineExpose({ focusSearch })
         @keydown.enter="onEnter"
         @keydown.esc="clearSearch"
       />
+      <!-- 跳转设置页「搜索」分区：齿轮常驻；有输入时清除钮让到右侧 -->
+      <button
+        class="absolute top-1/2 right-2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-lg text-zinc-400 transition hover:bg-zinc-200 hover:text-violet-500 dark:hover:bg-zinc-700 dark:hover:text-violet-400"
+        v-tooltip="$t('settings.gotoSearch')"
+        @click="goSearchSettings"
+      >
+        <Settings class="h-3.5 w-3.5" />
+      </button>
       <button
         v-if="input"
-        class="transition-colors duration-150 absolute top-1/2 right-2 flex h-5 w-5 cursor-pointer -translate-y-1/2 items-center justify-center rounded-lg text-zinc-400 hover:bg-zinc-200 hover:text-zinc-600 dark:hover:bg-zinc-700"
+        class="transition-colors duration-150 absolute top-1/2 right-8 flex h-5 w-5 cursor-pointer -translate-y-1/2 items-center justify-center rounded-lg text-zinc-400 hover:bg-zinc-200 hover:text-zinc-600 dark:hover:bg-zinc-700"
         @click="clearSearch"
       >
         <X class="h-3 w-3" />

@@ -16,11 +16,21 @@ export function useNav() {
       a.search === b.search &&
       a.recent === b.recent &&
       a.favorites === b.favorites &&
-      a.folderPath === b.folderPath
+      a.folderPath === b.folderPath &&
+      a.section === b.section
     )
   }
 
   function go(route: NavRoute) {
+    // 设置页内跳转（侧栏/顶栏/托盘入口，或搜索框/播放页/桌面歌词三个快捷钮换分区）
+    // 一律原地替换、不压栈：返回键一次离开设置回到先前的页面。否则 sameRoute 因
+    // section 不同而放行压栈，连点几个快捷钮会在返回栈里堆
+    // settings/search → settings/audio → settings/lyrics，返回连环弹设置页
+    // （2026-10-12 实录：用户连点后「点击返回还是在设置画面」）
+    if (route.view === 'settings' && current.value.view === 'settings') {
+      current.value = { ...route }
+      return
+    }
     // 目标与当前路由相同（如艺人页内再次点击同一艺人）：不重复压栈，
     // 否则返回键会连续弹出相同页面，看起来“返回不生效”
     if (!sameRoute(route, current.value)) {

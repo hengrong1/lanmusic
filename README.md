@@ -62,7 +62,7 @@
 - **艺人合并**：艺人名规整（「陈奕迅（Eason Chan）」→「陈奕迅」）一键归并；设置页展示已合并名单，支持自定义合并（两位名字不同的艺人实为同一人时手动归并）。旧名记为别名（`artist_aliases`），之后扫描遇到旧名仍归到主艺人名下，不会重新建出独立艺人
 - **歌曲淡入淡出**：播放/暂停与切歌时音量平滑过渡（淡入 0.8s、淡出 0.6s），**默认开启**，设置页可关闭
 - **播放倍速**：播放条右侧循环切换 0.5x–2x（`0.5/0.75/1/1.25/1.5/2`），倍速跨切歌延续，持久化到 `lm.rate`；非 1x 时按钮高亮
-- **均衡器 / 音效**：10 段图形均衡器（31Hz–16kHz，BiquadFilter peaking，每段 ±24dB），内置 8 组预设（平直 / 摇滚 / 流行 / 古典 / 爵士 / 低音增强 / 人声 / 高音增强），也可在预设基础上逐段拖动微调；**默认关闭**（键不存在即关，仅显式存开为启用），开关与增益持久化到 `lm.eq`；增益变化用 `setTargetAtTime` 约 30ms 平滑过渡，调节时不爆音。设置 → 音效
+- **均衡器 / 音效**：10 段图形均衡器（31Hz–16kHz，BiquadFilter peaking，每段 ±24dB），内置 8 组预设（平直 / 摇滚 / 流行 / 古典 / 爵士 / 低音增强 / 人声 / 高音增强），也可在预设基础上逐段拖动微调；**默认关闭**（键不存在即关，仅显式存开为启用），开关与增益持久化到 `lm.eq`；增益变化用 `setTargetAtTime` 约 30ms 平滑过渡，调节时不爆音。设置 → 音效（播放页顶栏有均衡器快捷按钮直达）
 - **音量归一化（ReplayGain）**：读取曲目内嵌的 ReplayGain 标签（`REPLAYGAIN_TRACK_GAIN` / `_TRACK_PEAK`，Rust 侧 `lofty` 解析）在共享音频图的归一化节点上叠加修正增益，让不同专辑/曲目响度拉齐；无标签的曲目可在设置 → 音效点「分析当前曲目」，用 Web Audio 解码整首音频（降采样 24kHz、最长取前 300s）统计 RMS 与峰值，按目标 RMS −18 dBFS 并保留峰值余量算出增益后落库（`tracks.rg_track_gain` / `rg_track_peak`）；增益限制在 ±24dB，避免削波。**默认关闭**（`lm.normOn`，仅显式 `'1'` 为开），开关与切歌即时生效
 - **睡眠定时器**：设置 → 音效可选 15 / 30 / 45 / 60 分钟后停止，或「播完当前曲目后停止」；到时（或曲目结束）走与手动暂停一致的淡出后暂停，并 toast 提示；剩余时间只存内存（重启不保留），所选模式存 `lm.sleepTimerMode`
 - **系统级「正在播放」**：Windows SMTC / macOS Now Playing / Linux MPRIS（Rust 侧用 [souvlaki](https://crates.io/crates/souvlaki)）。系统媒体浮层（Windows 音量条上方控件、macOS 控制中心、Linux 桌面环境）与锁屏显示当前歌曲、封面与进度，并可播放控制、拖进度、快进快退；`Raise` 事件唤起主窗口。前端切歌 / 播放暂停 / seek 与 1Hz 心跳把元数据与进度推给 Rust（`now_playing_set` / `now_playing_state`），系统按钮回调统一以 `media-control` 事件回给播放器。封面用缓存 `covers/{albumId}.jpg`：命中直接随首推带上；未命中先推**应用图标占位**（souvlaki 不带封面时不清系统侧缩略图，上一首的封面会一直挂着）、后台提取，300ms 内完成改推真封面，超时（远程 WebDAV 常见）提取完且仍是当前曲目时补推（切歌后到期的补推按 album_id 校验自动丢弃）；确认无封面（`.none` 哨兵）保持占位。URL 三平台统一 `file://` + 路径原样拼接。设置 → 音效可开关（`lm.nowPlaying`，**默认开启**，存 `'0'` 为关），重新开启会恢复上次的曲目显示。Windows 侧两个关键取舍：暂停这类纯状态切换只发 `SetPlaybackStatus`、不连带时间轴（对齐 Chromium，规避 Win11 浮层在 Paused 批次中丢元数据的怪癖）；WebView2 自带的媒体会话服务已禁用（`lib.rs::WEBVIEW2_BROWSER_ARGS`）——`<audio>` 会在 SMTC 注册一个空元数据的「幽灵会话」（紧凑卡片），应用一暂停它就顶掉真正的卡片，可用 `cargo run --example smtc_probe` 枚举系统会话诊断
@@ -281,7 +281,7 @@ src-tauri/                 # Rust 后端
 
 `query_tracks` 支持的 `sort` 值：`title` `-title` `album` `-album` `artist` `-artist` `added` `duration` `-duration` `recent` `none`（`-` 前缀为降序）。文本列（title/album/artist）按「数字 → 字母 → 汉字（拼音）」分组序比较（见 M2「中文拼音排序」）。
 
-搜索（`search` 非空时）自动启用多字段匹配：搜索范围（`fields`: title/artist/album/lyrics/filename，默认前三）、拼音匹配（`pinyin`，可关）、排序偏好（`sort`：`relevance` 相关度 / `added` 时间添加 / `plays` 播放次数），结果带 `matchedFields` 命中字段。**歌词为唯一命中字段时额外返回 `matchedLyric`（命中的那一行歌词原文，已剥掉 LRC 时间戳/A2 字标签、跳过 `[ti:]` 等元信息行，超长截断）**——标题/艺术家/专辑/文件名任一命中则以元数据为主、不再返回歌词行，搜索下拉与结果页的「歌词」徽标也同理仅在歌词唯一命中时显示；混合结果里只命中歌词的曲目仍带出该行并高亮关键词，一眼看出为什么搜到这首歌。设置页「搜索」可调整上述选项、输入防抖时长；搜索框聚焦展示最近搜索（最多 50 条）。
+搜索（`search` 非空时）自动启用多字段匹配：搜索范围（`fields`: title/artist/album/lyrics/filename，默认前三）、拼音匹配（`pinyin`，可关）、排序偏好（`sort`：`relevance` 相关度 / `added` 时间添加 / `plays` 播放次数），结果带 `matchedFields` 命中字段。**歌词为唯一命中字段时额外返回 `matchedLyric`（命中的那一行歌词原文，已剥掉 LRC 时间戳/A2 字标签、跳过 `[ti:]` 等元信息行，超长截断）**——标题/艺术家/专辑/文件名任一命中则以元数据为主、不再返回歌词行，搜索下拉与结果页的「歌词」徽标也同理仅在歌词唯一命中时显示；混合结果里只命中歌词的曲目仍带出该行并高亮关键词，一眼看出为什么搜到这首歌。设置页「搜索」可调整上述选项、输入防抖时长；搜索框聚焦展示最近搜索（最多 50 条），右侧齿轮按钮一键跳到本分区。
 
 ## 事件（Rust → 前端）
 
@@ -301,6 +301,7 @@ src-tauri/                 # Rust 后端
 | `lyrics:sync` | 主窗口 → 歌词浮窗 | `{lines: [行1, 行2], active: 0\|1, config, playing}` | 双行交替：`active` 指明播放行所在位置，行/配置/播放状态变化即推送 |
 | `lyrics:ready` | 歌词浮窗 → 主窗口 | - | 浮窗就绪，主窗口立即补推一次 |
 | `lyrics:control` | 歌词浮窗 → 主窗口 | `"prev" \| "toggle" \| "next" \| "close" \| "calib-back" \| "calib-forward" \| "calib-reset"` | 浮窗控制条指令（切歌/关闭/歌词校准），由播放器执行 |
+| `app:open-settings` | 歌词浮窗 → 主窗口 | `"library" \| "appearance" \| "playback" \| "audio" \| "search" \| "lyrics" \| "general"`（分区 id） | 浮窗「设置」按钮：跳转设置页对应分区并前置主窗口（useSettingsJump） |
 | `tray:sync` | 主窗口 → 托盘弹窗 | `{title, artist, albumId, playing, fav, deskLyrics, font}` | 曲目/播放/喜欢/桌面歌词状态变化即推送 |
 | `tray:ready` | 托盘弹窗 → 主窗口 | - | 弹窗就绪，主窗口立即补推一次 |
 | `tray:action` | 托盘弹窗 → 主窗口 | `"show" \| "lyrics" \| "settings" \| "quit"` | 系统级指令：显示主窗口 / 切换桌面歌词 / 跳转设置 / 退出应用 |

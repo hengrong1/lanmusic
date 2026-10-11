@@ -352,6 +352,8 @@ export default {
     sortAdded: '时间添加优先', sortPlays: '播放次数优先',
     inputDebounce: '输入防抖',
     inputDebounceDesc: '打字停顿超过该时长才发起搜索，避免输入过快导致频繁查询卡顿。',
+    // 跳转设置的快捷按钮（搜索框 / 播放页 / 桌面歌词浮窗）
+    gotoSearch: '搜索设置', gotoAudio: '均衡器设置', gotoLyrics: '桌面歌词设置',
     // 歌词来源优先级
     lyricPriority: '歌词来源优先级',
     lyricPriorityDesc: '按顺序取用：外挂 QRC（逐字卡拉OK）、外挂 LRC、内嵌歌词',

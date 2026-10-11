@@ -36,6 +36,7 @@ import { useNowPlaying } from '@/composables/useNowPlaying'
 import { useDesktopLyrics } from '@/composables/useDesktopLyrics'
 import { isFocusModeEnabled } from '@/composables/useFocusMode'
 import { useTrayMenu } from '@/composables/useTrayMenu'
+import { useSettingsJump } from '@/composables/useSettingsJump'
 import { useMvPlayer } from '@/composables/useMvPlayer'
 import { useThemeColor } from '@/composables/useThemeColor'
 import { useBackground } from '@/composables/useBackground'
@@ -109,6 +110,8 @@ useDesktopLyrics()
 useThemeColor()
 // 系统托盘菜单：向 tray 弹窗同步播放状态并处理其系统级指令
 useTrayMenu()
+// 桌面歌词浮窗「设置」按钮：跨窗口跳转设置页对应分区（主窗口监听 app:open-settings）
+useSettingsJump()
 
 /** 播放页专注模式：仅当正在播放且播放页打开时启用；鼠标不在底部/顶栏控制区，5s 无移动则隐藏控制 */
 const npFocus = ref(false)

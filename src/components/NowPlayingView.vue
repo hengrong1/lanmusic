@@ -2,9 +2,11 @@
 import { computed, ref, watch } from 'vue'
 import gsap from 'gsap'
 import { AltArrowDownIcon as ChevronDown } from '@solar-icons/vue/linear/alt-arrow-down'
+import { TuningIcon as Tuning } from '@solar-icons/vue/linear/tuning'
 import { usePlayerStore } from '@/stores/player'
 import { useAmbient } from '@/composables/useAmbient'
 import { useNowPlayingStyle } from '@/composables/useNowPlayingStyle'
+import { useNav } from '@/composables/useNav'
 import { CUSTOM_WINDOW_CONTROLS, IS_MAC } from '@/utils/platform'
 import { useI18n } from 'vue-i18n'
 import WindowControls from '@/components/WindowControls.vue'
@@ -38,6 +40,13 @@ watch(() => player.current?.albumId, (id) => void setAlbum(id), { immediate: tru
 
 const collapseTip = computed(() => `${tr('player.collapseNowPlaying')} (Esc)`)
 
+const nav = useNav()
+/** 跳转设置页「音效」分区（均衡器）：先收起播放页再进设置（浮层会盖住设置页） */
+function goEqSettings() {
+  emit('close')
+  nav.go({ view: 'settings', section: 'audio' })
+}
+
 // ---- 布局切换：装扮面板选中的预设映射到 stage 组件 ----
 const npStyle = useNowPlayingStyle()
 const stage = computed(() => (npStyle.value === 'stacked' ? NpStackedLayout : NpSideLayout))
@@ -52,14 +61,23 @@ const stage = computed(() => (npStyle.value === 'stacked' ? NpStackedLayout : Np
       class="np-fade flex h-14 shrink-0 items-center justify-between"
       :class="IS_MAC ? 'pl-[76px] pr-4' : 'pl-4 pr-0'"
     >
-      <!-- 左：关闭播放页（其余空白仍为拖拽区） -->
-      <button
-        class="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg text-white/70 transition hover:bg-white/10 hover:text-white"
-        v-tooltip="collapseTip"
-        @click="emit('close')"
-      >
-        <ChevronDown class="h-5 w-5" />
-      </button>
+      <!-- 左：关闭播放页 + 均衡器设置快捷钮（其余空白仍为拖拽区） -->
+      <div class="flex items-center gap-1">
+        <button
+          class="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg text-white/70 transition hover:bg-white/10 hover:text-white"
+          v-tooltip="collapseTip"
+          @click="emit('close')"
+        >
+          <ChevronDown class="h-5 w-5" />
+        </button>
+        <button
+          class="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg text-white/70 transition hover:bg-white/10 hover:text-white"
+          v-tooltip="$t('settings.gotoAudio')"
+          @click="goEqSettings"
+        >
+          <Tuning class="h-5 w-5" />
+        </button>
+      </div>
       <WindowControls v-if="CUSTOM_WINDOW_CONTROLS" ambient />
     </header>
 
