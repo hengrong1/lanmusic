@@ -307,6 +307,11 @@ export const usePlayerStore = defineStore('player', () => {
   }
   let fadeRaf = 0
   let fadeSeq = 0
+  /** 当前动画方向；null = 无淡入淡出进行 */
+  let fadeDir: 'in' | 'out' | null = null
+  /** 淡出用途（仅 fadeDir==='out' 时有意义）：'pause'=暂停/播完即停——toggle
+   * 连点第二下可取消挂起的暂停续播；'switch'=换歌——toggle 视作暂停请求 */
+  let fadeOutKind: 'pause' | 'switch' | null = null
   /** 淡入淡出期间禁止 watch(volume) 直接写 audio.volume（避免与逐帧渐变打架） */
   let suppressVolSync = false
   function cancelFade() {
@@ -314,6 +319,8 @@ export const usePlayerStore = defineStore('player', () => {
     fadeRaf = 0
     fadeSeq++
     suppressVolSync = false
+    fadeDir = null
+    fadeOutKind = null
   }
   /** 平滑淡入：从当前音量升到用户设定音量 */
   function fadeIn() {
@@ -326,6 +333,7 @@ export const usePlayerStore = defineStore('player', () => {
       return
     }
     const seq = ++fadeSeq
+    fadeDir = 'in'
     const from = audio.volume
     const to = volume.value
     const start = performance.now()
@@ -344,17 +352,21 @@ export const usePlayerStore = defineStore('player', () => {
     step()
     fadeRaf = setInterval(step, 16)
   }
-  /** 平滑淡出：降到 0 后执行回调（暂停/换源） */
-  function fadeOut(cb?: () => void) {
+  /** 平滑淡出：降到 0 后执行回调。kind：'pause'=暂停/播完即停（toggle 连点第二下
+   * 可取消挂起的暂停续播）；'switch'=换歌（toggle 期间按下视作暂停请求） */
+  function fadeOut(cb?: () => void, kind: 'pause' | 'switch' = 'pause') {
     // 后台窗口直达（原因同 fadeIn）：睡眠定时器挂机触发时尤其重要，
     // 别让 600ms 的动画在强节流下把暂停拖到几十秒之后
     if (!fadeEnabled() || audio.paused || document.hidden) {
+      cancelFade() // 有残留动画（如后台窗口里打断淡入）一并停掉，别让旧帧继续写音量
       audio.volume = 0
       cb?.()
       return
     }
     cancelFade()
     const seq = ++fadeSeq
+    fadeDir = 'out'
+    fadeOutKind = kind
     const from = audio.volume
     const start = performance.now()
     suppressVolSync = true
@@ -366,6 +378,8 @@ export const usePlayerStore = defineStore('player', () => {
       clearInterval(fadeRaf)
       fadeRaf = 0
       suppressVolSync = false
+      fadeDir = null
+      fadeOutKind = null
       audio.volume = 0
       cb?.()
     }
@@ -521,8 +535,9 @@ export const usePlayerStore = defineStore('player', () => {
       cancelFade()
       doLoad()
     } else {
-      // 正在播放：先淡出旧曲再换源（自然衔接）
-      fadeOut(doLoad)
+      // 正在播放：先淡出旧曲再换源（自然衔接）；kind='switch'——这 600ms 里按
+      // 暂停键视作暂停请求（取消挂起的换源），而不是「续播旧曲」
+      fadeOut(doLoad, 'switch')
     }
   }
 
@@ -556,21 +571,35 @@ export const usePlayerStore = defineStore('player', () => {
 
   function toggle() {
     if (!current.value) return
+    // 暂停淡出进行中（600ms 窗口，audio 尚未真正 pause）：这次点击 = 「再播」——
+    // 取消挂起的暂停，从已衰减的音量淡回升。否则连点暂停/播放会被当成两次暂停、
+    // 以暂停收场（QQ 音乐手感：按钮意图立即生效，淡出只是音量动画）。
+    // 守卫：音频已被外部停下（出错/自然播完，ended 已吞掉自动切歌）时不续播，
+    // 交给下面的播放路径重新起播。
+    if (fadeDir === 'out' && fadeOutKind === 'pause' && !audio.paused && !audio.ended) {
+      cancelFade()
+      playing.value = true // 音频从未真正暂停，不会有 playing 事件来置位，需回填
+      fadeIn()
+      return
+    }
     if (audio.paused) {
       cancelFade()
       audio.volume = 0 // 淡入起点
       requestPlay()
       fadeIn()
-    } else {
-      // 暂停前先淡出，避免音量突变。同时：摘除挂起的 canplay 重试（用户要暂停，
-      // 不能让残留监听在缓冲完成后把播放悄悄拉起）、强制落盘一次进度
-      // （timeupdate 的 lastPos 写入有节流，暂停点要存准确值）
-      fadeOut(() => {
-        cancelCanplayRetry()
-        localStorage.setItem(LS.lastPos, String(audio.currentTime))
-        audio.pause()
-      })
+      return
     }
+    // 暂停前先淡出，避免音量突变。同时：摘除挂起的 canplay 重试（用户要暂停，
+    // 不能让残留监听在缓冲完成后把播放悄悄拉起）、强制落盘一次进度
+    // （timeupdate 的 lastPos 写入有节流，暂停点要存准确值）。
+    // playing 先行置 false：按钮立即变「播放」图标，不等 600ms 淡出结束的
+    // pause 事件（连点第二下命中上面的淡出分支即可续播）
+    playing.value = false
+    fadeOut(() => {
+      cancelCanplayRetry()
+      localStorage.setItem(LS.lastPos, String(audio.currentTime))
+      audio.pause()
+    })
   }
 
   function next(fromError = false) {
