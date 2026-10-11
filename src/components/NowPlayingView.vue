@@ -61,15 +61,15 @@ const stage = computed(() => (npStyle.value === 'stacked' ? NpStackedLayout : Np
       class="np-fade flex h-14 shrink-0 items-center justify-between"
       :class="IS_MAC ? 'pl-[76px] pr-4' : 'pl-4 pr-0'"
     >
-      <!-- 左：关闭播放页 + 均衡器设置快捷钮（其余空白仍为拖拽区） -->
-      <div class="flex items-center gap-1">
-        <button
-          class="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg text-white/70 transition hover:bg-white/10 hover:text-white"
-          v-tooltip="collapseTip"
-          @click="emit('close')"
-        >
-          <ChevronDown class="h-5 w-5" />
-        </button>
+      <!-- 左：收起播放页；右：均衡器设置快捷钮 + 窗口控制（均衡器在最小化左边，其余空白仍为拖拽区） -->
+      <button
+        class="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg text-white/70 transition hover:bg-white/10 hover:text-white"
+        v-tooltip="collapseTip"
+        @click="emit('close')"
+      >
+        <ChevronDown class="h-5 w-5" />
+      </button>
+      <div class="flex h-full items-center gap-1">
         <button
           class="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg text-white/70 transition hover:bg-white/10 hover:text-white"
           v-tooltip="$t('settings.gotoAudio')"
@@ -77,8 +77,8 @@ const stage = computed(() => (npStyle.value === 'stacked' ? NpStackedLayout : Np
         >
           <Tuning class="h-5 w-5" />
         </button>
+        <WindowControls v-if="CUSTOM_WINDOW_CONTROLS" ambient />
       </div>
-      <WindowControls v-if="CUSTOM_WINDOW_CONTROLS" ambient />
     </header>
 
     <!-- 中部舞台：布局由装扮面板的预设决定（即时切换）；布局内点击艺人/专辑跳转后关闭播放页。
