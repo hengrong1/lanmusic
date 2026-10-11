@@ -34,7 +34,7 @@ export interface Track {
   artists?: TrackArtistRef[]
   /** 命中的搜索字段（title/artist/album/lyrics/filename），仅搜索结果非空 */
   matchedFields?: string[]
-  /** 歌词字段命中时的歌词行（已剥 LRC 时间戳/A2 字标签），仅搜索命中歌词时非空 */
+  /** 歌词字段命中时的歌词行（已剥 LRC 时间戳/A2 字标签）；仅当歌词是唯一命中字段时非空（标题/艺术家/专辑/文件名任一命中则以元数据为主，不返回） */
   matchedLyric?: string
   /** 艺人字段命中的艺人 id（含按合并别名/拼音命中者），仅搜索时非空 */
   matchedArtistIds?: number[]

@@ -30,6 +30,7 @@ import { toast } from '@/composables/useToast'
 import { confirmDialog } from '@/composables/useConfirm'
 import { useI18n } from 'vue-i18n'
 import { errorText } from '@/i18n/error'
+import { isLyricOnlyHit } from '@/utils/search'
 
 const props = defineProps<{ tracks: Track[]; playlistId?: number; favoritesView?: boolean; sort?: string; reorderable?: boolean; batchMode?: boolean; /** 切歌时自动滚动到正在播放的行（全部歌曲/歌单/文件夹视图启用） */ followPlaying?: boolean; /** 列表是分页加载的：跟随的歌不在已加载页里时自动翻页找它（目前=全部歌曲/喜欢视图） */ paginateMissing?: boolean }>()
 const emit = defineEmits<{
@@ -485,9 +486,9 @@ function onDragEnd() {
             <div class="flex min-h-0 min-w-0 flex-col justify-center gap-1" :class="player.current?.id === t.id ? 'font-medium text-violet-600 dark:text-violet-400' : 'text-zinc-800 dark:text-zinc-100'">
               <div class="flex min-w-0 items-center gap-1.5">
                 <span class="truncate"><HighlightText :text="t.title" :keyword="searchTerm" :field-matched="t.matchedFields?.includes('title')" /></span>
-                <!-- 命中字段徽标：歌词 / 文件名 -->
+                <!-- 命中字段徽标：歌词仅在唯一命中字段时展示（元数据任一命中以元数据为主）/ 文件名 -->
                 <span
-                  v-if="t.matchedFields?.includes('lyrics')"
+                  v-if="isLyricOnlyHit(t)"
                   class="shrink-0 rounded-full bg-violet-100 px-1.5 py-px text-[10px] font-medium text-violet-600 dark:bg-violet-500/20 dark:text-violet-300"
                   v-tooltip="t.matchedLyric || $t('library.lyricsHit')"
                 >{{ $t('player.lyrics') }}</span>

@@ -453,9 +453,12 @@ pub fn search_tracks(conn: &Connection, q: &TrackQuery) -> Result<Page<Track>, S
             }
         }
         h.score = score;
-        // 歌词字段命中：从歌词索引原文里取出命中的那一行（剥掉时间戳）随结果
-        // 返回，前端据此在搜索下拉 / 结果页表格行内展示「为什么命中」
-        if matched.iter().any(|f| f == F_LYRICS) {
+        // 歌词命中行仅在「歌词是唯一命中字段」时随结果返回：标题/艺人/专辑/文件名
+        // 任一命中都以元数据为主（对应文本已高亮），不再重复展示歌词行；混合结果里
+        // 只命中歌词的曲目仍然带出命中的那一行（剥掉时间戳），前端高亮关键词
+        let lyrics_hit = matched.iter().any(|f| f == F_LYRICS);
+        let meta_hit = matched.iter().any(|f| f != F_LYRICS);
+        if lyrics_hit && !meta_hit {
             h.track.matched_lyric = extract_lyric_line(&h.lyrics, &q_lower);
         }
         h.track.matched_fields = matched;
@@ -714,6 +717,33 @@ mod tests {
         let page = search_tracks(&conn, &q).unwrap();
         assert_eq!(page.total, 1);
         assert_eq!(page.items[0].matched_lyric, None);
+
+        // 标题与歌词同时命中：以元数据为主——matched_fields 两者都记，但不带歌词行
+        conn.execute_batch(
+            "INSERT INTO tracks (id, source_id, path, title, added_at) VALUES (2, 1, 'p2', '一起', 100);
+             INSERT INTO lyrics_index (track_id, text) VALUES (2, '[00:12.34]一起走过的日子');",
+        )
+        .unwrap();
+        let q = TrackQuery {
+            search: Some("一起".into()),
+            fields: Some(vec!["title".into(), "lyrics".into()]),
+            pinyin: Some(false),
+            ..no_view()
+        };
+        let page = search_tracks(&conn, &q).unwrap();
+        assert_eq!(page.total, 2);
+        // 只命中歌词的曲目：仍带出歌词行（混合结果里也展示并高亮）
+        let lyric_only = page.items.iter().find(|t| t.id == 1).unwrap();
+        assert_eq!(lyric_only.matched_fields, vec!["lyrics".to_string()]);
+        assert_eq!(
+            lyric_only.matched_lyric.as_deref(),
+            Some("天空之城 一起走过的日子")
+        );
+        // 标题 + 歌词都命中：以元数据为主，matched_lyric 为 None
+        let both = page.items.iter().find(|t| t.id == 2).unwrap();
+        assert!(both.matched_fields.contains(&"title".to_string()));
+        assert!(both.matched_fields.contains(&"lyrics".to_string()));
+        assert_eq!(both.matched_lyric, None);
     }
 
     fn no_view() -> TrackQuery {

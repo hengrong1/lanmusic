@@ -22,6 +22,7 @@ import { usePlayerStore } from '@/stores/player'
 import { api } from '@/api/commands'
 import type { Track } from '@/types'
 import { CUSTOM_WINDOW_CONTROLS } from '@/utils/platform'
+import { isLyricOnlyHit } from '@/utils/search'
 import WindowControls from '@/components/WindowControls.vue'
 import HighlightText from '@/components/HighlightText.vue'
 
@@ -352,9 +353,9 @@ defineExpose({ focusSearch })
                       :field-matched="t.matchedFields?.includes('title')"
                       class="min-w-0 truncate text-sm font-medium text-zinc-800 dark:text-zinc-100"
                     />
-                    <!-- 匹配字段徽标 -->
+                    <!-- 匹配字段徽标：歌词仅在唯一命中字段时展示（元数据任一命中以元数据为主） -->
                     <span
-                      v-if="t.matchedFields?.includes('lyrics')"
+                      v-if="isLyricOnlyHit(t)"
                       class="shrink-0 rounded-full bg-green-100 px-1.5 py-0.5 text-[10px] font-medium text-green-700 dark:bg-green-900/40 dark:text-green-300"
                     >{{ $t('player.lyrics') }}</span>
                     <span

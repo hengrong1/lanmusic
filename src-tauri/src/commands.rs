@@ -53,9 +53,10 @@ pub struct Track {
     pub artists: Vec<TrackArtistRef>,
     /// 命中的搜索字段（title/artist/album/lyrics/filename），仅搜索时非空
     pub matched_fields: Vec<String>,
-    /// 歌词字段命中时，命中的那一行歌词原文（已剥掉 LRC 时间戳 / A2 字级标签，
-    /// 元信息行如 [ar:]/[offset:] 跳过）；仅搜索且命中歌词时非空——
-    /// 前端在搜索下拉与结果页表格行内展示「为什么命中」
+    /// 命中的那一行歌词原文（已剥掉 LRC 时间戳 / A2 字级标签，元信息行如
+    /// [ar:]/[offset:] 跳过）；仅当歌词是唯一命中字段时非空（标题/艺人/专辑/
+    /// 文件名任一命中则以元数据为主，不返回）——前端在搜索下拉与结果页表格行内
+    /// 展示「为什么命中」并高亮关键词
     #[serde(skip_serializing_if = "Option::is_none")]
     pub matched_lyric: Option<String>,
     /// 艺人字段命中的艺人 id（含按合并别名 / 拼音命中者），仅搜索时非空——

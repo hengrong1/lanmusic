@@ -281,7 +281,7 @@ src-tauri/                 # Rust 后端
 
 `query_tracks` 支持的 `sort` 值：`title` `-title` `album` `-album` `artist` `-artist` `added` `duration` `-duration` `recent` `none`（`-` 前缀为降序）。文本列（title/album/artist）按「数字 → 字母 → 汉字（拼音）」分组序比较（见 M2「中文拼音排序」）。
 
-搜索（`search` 非空时）自动启用多字段匹配：搜索范围（`fields`: title/artist/album/lyrics/filename，默认前三）、拼音匹配（`pinyin`，可关）、排序偏好（`sort`：`relevance` 相关度 / `added` 时间添加 / `plays` 播放次数），结果带 `matchedFields` 命中字段。**歌词命中时额外返回 `matchedLyric`（命中的那一行歌词原文，已剥掉 LRC 时间戳/A2 字标签、跳过 `[ti:]` 等元信息行，超长截断）**，搜索下拉与结果页表格行内展示该行并对关键词高亮——一眼看出为什么搜到这首歌。设置页「搜索」可调整上述选项、输入防抖时长；搜索框聚焦展示最近搜索（最多 50 条）。
+搜索（`search` 非空时）自动启用多字段匹配：搜索范围（`fields`: title/artist/album/lyrics/filename，默认前三）、拼音匹配（`pinyin`，可关）、排序偏好（`sort`：`relevance` 相关度 / `added` 时间添加 / `plays` 播放次数），结果带 `matchedFields` 命中字段。**歌词为唯一命中字段时额外返回 `matchedLyric`（命中的那一行歌词原文，已剥掉 LRC 时间戳/A2 字标签、跳过 `[ti:]` 等元信息行，超长截断）**——标题/艺术家/专辑/文件名任一命中则以元数据为主、不再返回歌词行，搜索下拉与结果页的「歌词」徽标也同理仅在歌词唯一命中时显示；混合结果里只命中歌词的曲目仍带出该行并高亮关键词，一眼看出为什么搜到这首歌。设置页「搜索」可调整上述选项、输入防抖时长；搜索框聚焦展示最近搜索（最多 50 条）。
 
 ## 事件（Rust → 前端）
 
