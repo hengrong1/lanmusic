@@ -355,8 +355,8 @@ defineExpose({ focusSearch })
                 @mousedown.prevent="playResult(t)"
               >
                 <!-- 音符占位 -->
-                <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded bg-zinc-200 dark:bg-zinc-700">
-                  <span class="text-sm text-zinc-400">♪</span>
+                <div class="cover-fallback flex h-9 w-9 shrink-0 items-center justify-center rounded">
+                  <span class="text-sm">♪</span>
                 </div>
                 <!-- 信息 -->
                 <div class="min-w-0 flex-1">

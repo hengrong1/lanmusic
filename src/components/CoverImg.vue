@@ -45,8 +45,8 @@ function onImgError() {
     :class="rounded ?? 'rounded-md'"
   >
     <!-- 默认占位图常驻最底层：封面未加载完成（网络慢 / 虚拟滚动刚挂载）或加载失败时显示，
-         图片就绪后淡入盖上，避免加载期间只剩空白灰底 -->
-    <div class="absolute inset-0 flex items-center justify-center text-zinc-400 dark:text-zinc-600">
+         图片就绪后淡入盖上，避免加载期间只剩空白灰底；底色与图标色由 .cover-fallback 统一下发 -->
+    <div class="absolute inset-0 flex items-center justify-center">
       <Music class="h-[42%] w-[42%]" :stroke-width="1.5" />
     </div>
     <!-- 旧图兜底层（交叉淡入用）：新图淡入期间保持画面连续，就绪后同步淡出 -->

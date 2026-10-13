@@ -224,7 +224,12 @@ function action(a: 'show' | 'lyrics' | 'settings' | 'quit') {
   height: 48px;
   overflow: hidden;
   border-radius: 10px;
-  background: linear-gradient(135deg, #3f3f46, #27272a);
+  /* 无封面默认封面：主题色深玻璃（violet 变量被 useThemeColor 覆盖，随设置走；与主窗口深色档同配方） */
+  background: linear-gradient(
+    135deg,
+    var(--color-violet-800),
+    color-mix(in srgb, var(--color-violet-800) 50%, transparent)
+  );
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
   transition: transform 0.15s ease;
 }
@@ -234,7 +239,7 @@ function action(a: 'show' | 'lyrics' | 'settings' | 'quit') {
   justify-content: center;
   width: 100%;
   height: 100%;
-  color: rgba(255, 255, 255, 0.35);
+  color: rgba(255, 255, 255, 0.5);
 }
 .meta {
   min-width: 0;
