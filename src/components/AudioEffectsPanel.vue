@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { BaseSwitch, BaseButton } from '@/components/ui'
 import {
@@ -39,8 +39,9 @@ const presetOptions = computed(() => [
   { value: 'custom', label: t('effects.preset.custom') },
 ])
 
+/** 频率轴标签带单位：<1kHz 用 Hz，其余用 kHz（SI 单位符号，无需翻译） */
 function fmtFreq(f: number): string {
-  return f >= 1000 ? `${f / 1000}k` : `${f}`
+  return f >= 1000 ? `${f / 1000} kHz` : `${f} Hz`
 }
 
 function onEqToggle(v: boolean) {
@@ -69,6 +70,74 @@ function bumpBand(i: number, delta: number) {
   const next = Math.max(-12, Math.min(12, (gains.value[i] ?? 0) + delta))
   onBand(i, next)
 }
+
+// ---------- 频率响应曲线（垫底装饰层） ----------
+// 把各频段滑块的当前增益点连成一条平滑曲线（Catmull-Rom → 三次贝塞尔），
+// 垫在滑块下方（行容器 relative+isolate，画布 -z-10）。
+// 坐标不靠 CSS 公式猜：滑块盒子位置直接量（列宽/间距随布局变化），
+// 增益→y 用拇指中心行程换算——拇指 14px，中心相对轨道两端各内缩一个半径。
+const EQ_THUMB_R = 7
+const eqRowEl = ref<HTMLDivElement | null>(null)
+const eqAnchors = ref<{ x: number; top: number; h: number }[]>([])
+const eqCurveSize = ref({ w: 0, h: 0 })
+
+function measureAnchors() {
+  const row = eqRowEl.value
+  if (!row) return
+  const rowRect = row.getBoundingClientRect()
+  const w = Math.max(row.scrollWidth, row.clientWidth)
+  const h = row.clientHeight
+  if (w <= 0 || h <= 0) return
+  eqAnchors.value = Array.from(row.querySelectorAll<HTMLInputElement>('input.eq-slider')).map((el) => {
+    const r = el.getBoundingClientRect()
+    return {
+      x: r.left + r.width / 2 - rowRect.left + row.scrollLeft,
+      top: r.top - rowRect.top + row.scrollTop,
+      h: r.height,
+    }
+  })
+  if (eqCurveSize.value.w !== w || eqCurveSize.value.h !== h) eqCurveSize.value = { w, h }
+}
+
+let eqResizeObs: ResizeObserver | null = null
+onMounted(() => {
+  measureAnchors()
+  // 行宽随窗口/侧栏变化时重测；创建时也会回调一次（双保险）
+  eqResizeObs = new ResizeObserver(() => measureAnchors())
+  if (eqRowEl.value) eqResizeObs.observe(eqRowEl.value)
+})
+onBeforeUnmount(() => {
+  eqResizeObs?.disconnect()
+  eqResizeObs = null
+})
+
+const curvePath = computed(() => {
+  const { w, h } = eqCurveSize.value
+  const anchors = eqAnchors.value
+  if (!w || !h || anchors.length !== EQ_FREQS.length) return ''
+  const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v))
+  const nodes = anchors.map((a, i) => {
+    const g = clamp(gains.value[i] ?? 0, -12, 12)
+    return { x: a.x, y: a.top + EQ_THUMB_R + (1 - (g + 12) / 24) * (a.h - EQ_THUMB_R * 2) }
+  })
+  // 两端水平延伸到卡片边缘，读起来更像频响曲线
+  const pts = [{ x: 0, y: nodes[0]!.y }, ...nodes, { x: w, y: nodes[nodes.length - 1]!.y }]
+  const f = (n: number) => n.toFixed(1)
+  let d = `M ${f(pts[0]!.x)} ${f(pts[0]!.y)}`
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[i - 1] ?? pts[i]!
+    const p1 = pts[i]!
+    const p2 = pts[i + 1]!
+    const p3 = pts[i + 2] ?? p2
+    // Catmull-Rom 控制点；y 夹在画布内，防大落差时曲线探出被裁
+    const c1x = p1.x + (p2.x - p0.x) / 6
+    const c1y = clamp(p1.y + (p2.y - p0.y) / 6, 1, h - 1)
+    const c2x = p2.x - (p3.x - p1.x) / 6
+    const c2y = clamp(p2.y - (p3.y - p1.y) / 6, 1, h - 1)
+    d += ` C ${f(c1x)} ${f(c1y)} ${f(c2x)} ${f(c2y)} ${f(p2.x)} ${f(p2.y)}`
+  }
+  return d
+})
 
 // ---------- 音量归一化 ----------
 const normOn = ref(normEnabled.value)
@@ -165,7 +234,19 @@ function onNpToggle(v: boolean) {
             {{ opt.label }}
           </button>
         </div>
-        <div class="flex items-end justify-between gap-1 overflow-x-auto pb-1">
+        <div ref="eqRowEl" class="relative isolate flex items-end justify-between gap-1 overflow-x-auto pb-1">
+          <!-- 频率响应曲线：连接各频段当前增益点（垫底装饰层，不响应指针） -->
+          <svg
+            v-if="curvePath"
+            class="pointer-events-none absolute left-0 top-0 -z-10 text-violet-500 dark:text-violet-400"
+            :width="eqCurveSize.w"
+            :height="eqCurveSize.h"
+            :viewBox="`0 0 ${eqCurveSize.w} ${eqCurveSize.h}`"
+            aria-hidden="true"
+          >
+            <path :d="curvePath" fill="none" stroke="currentColor" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" opacity="0.12" />
+            <path :d="curvePath" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
           <div v-for="(f, i) in EQ_FREQS" :key="f" class="flex w-12 shrink-0 flex-col items-center gap-1.5">
             <span class="tabular-nums text-[10px] text-zinc-400">{{ gains[i] > 0 ? '+' : '' }}{{ gains[i] }}</span>
             <button
@@ -191,7 +272,7 @@ function onNpToggle(v: boolean) {
               :disabled="!eqOn"
               @click="bumpBand(i, 1)"
             >+</button>
-            <span class="text-[10px] text-zinc-500">{{ fmtFreq(f) }}</span>
+            <span class="whitespace-nowrap text-[10px] text-zinc-500">{{ fmtFreq(f) }}</span>
           </div>
         </div>
         <p class="mt-2 text-xs text-zinc-400">{{ t('effects.eqDesc') }}</p>
