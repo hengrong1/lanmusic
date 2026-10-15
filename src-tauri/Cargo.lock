@@ -2915,7 +2915,7 @@ dependencies = [
 
 [[package]]
 name = "lanmusic"
-version = "0.5.31"
+version = "0.5.32"
 dependencies = [
  "encoding_rs",
  "image",
