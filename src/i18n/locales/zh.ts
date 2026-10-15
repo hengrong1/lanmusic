@@ -34,7 +34,7 @@ export default {
     },
     normalize: '音量归一化',
     normalizeEnable: '启用',
-    normalizeDesc: '按曲目响度自动调整播放增益，拉齐不同歌曲的音量。可读取文件内嵌的 ReplayGain 标签，或点击下方按钮分析当前歌曲。',
+    normalizeDesc: '按曲目响度自动调整播放增益，拉齐不同歌曲的音量。优先读取文件内嵌的 ReplayGain 标签；没有数据的曲目会在切歌时自动在后台分析，也可点击下方按钮立即分析当前歌曲。',
     normalizeAnalyze: '分析当前歌曲响度',
     normalizeNoTrack: '当前没有正在播放的歌曲',
     normalizeAnalyzed: '分析完成：建议增益 {db} dB',

@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { AltArrowUpIcon as ArrowUp } from '@solar-icons/vue/linear/alt-arrow-up'
+import { AltArrowDownIcon as ArrowDown } from '@solar-icons/vue/linear/alt-arrow-down'
 import { BaseSwitch, BaseButton } from '@/components/ui'
 import {
   eqEnabled,
@@ -17,7 +19,7 @@ import {
 import { useSleepTimer, SLEEP_PRESETS } from '@/composables/useSleepTimer'
 import { useMediaControls } from '@/composables/useMediaControls'
 import { useNowPlaying, setNowPlayingEnabled } from '@/composables/useNowPlaying'
-import { analyzeLoudness } from '@/composables/useLoudness'
+import { analyzeTrackLoudness } from '@/composables/useLoudness'
 import { usePlayerStore } from '@/stores/player'
 import { toast } from '@/composables/useToast'
 import { t as tr } from '@/i18n/translate'
@@ -154,7 +156,8 @@ async function analyzeCurrent() {
   }
   analyzing.value = true
   try {
-    const r = await analyzeLoudness(cur.id, cur.duration)
+    // 与切歌自动分析共用去重入口：同一曲目并发请求复用同一任务，不重复解码
+    const r = await analyzeTrackLoudness(cur.id, cur.duration)
     // 分析耗时（最长 64MB 拉取 + 解码），期间用户可能已切歌：
     // 增益照常记到分析的那首（cur）上，但共享音频图的归一化增益属于
     // 当前曲目，不能把旧曲增益误写到新曲的播放上
@@ -251,10 +254,12 @@ function onNpToggle(v: boolean) {
             <span class="tabular-nums text-[10px] text-zinc-400">{{ gains[i] > 0 ? '+' : '' }}{{ gains[i] }}</span>
             <button
               type="button"
-              class="flex h-5 w-5 cursor-pointer items-center justify-center rounded-md border border-zinc-200 bg-zinc-50 text-sm leading-none text-zinc-500 transition-colors hover-accent-border hover:bg-violet-100 hover:text-violet-700 disabled:cursor-not-allowed disabled:opacity-40 dark:border-zinc-700 dark:bg-zinc-800/60 dark:text-zinc-400 dark:hover:bg-violet-500/20 dark:hover:text-violet-300"
+              class="flex h-5 w-5 cursor-pointer items-center justify-center rounded-md border border-zinc-200 bg-zinc-50 text-zinc-500 transition-colors hover-accent-border hover:bg-violet-100 hover:text-violet-700 disabled:cursor-not-allowed disabled:opacity-40 dark:border-zinc-700 dark:bg-zinc-800/60 dark:text-zinc-400 dark:hover:bg-violet-500/20 dark:hover:text-violet-300"
               :disabled="!eqOn"
-              @click="bumpBand(i, -1)"
-            >−</button>
+              @click="bumpBand(i, 1)"
+            >
+              <ArrowUp class="h-3.5 w-3.5" />
+            </button>
             <input
               type="range"
               min="-12"
@@ -268,10 +273,12 @@ function onNpToggle(v: boolean) {
             />
             <button
               type="button"
-              class="flex h-5 w-5 cursor-pointer items-center justify-center rounded-md border border-zinc-200 bg-zinc-50 text-sm leading-none text-zinc-500 transition-colors hover-accent-border hover:bg-violet-100 hover:text-violet-700 disabled:cursor-not-allowed disabled:opacity-40 dark:border-zinc-700 dark:bg-zinc-800/60 dark:text-zinc-400 dark:hover:bg-violet-500/20 dark:hover:text-violet-300"
+              class="flex h-5 w-5 cursor-pointer items-center justify-center rounded-md border border-zinc-200 bg-zinc-50 text-zinc-500 transition-colors hover-accent-border hover:bg-violet-100 hover:text-violet-700 disabled:cursor-not-allowed disabled:opacity-40 dark:border-zinc-700 dark:bg-zinc-800/60 dark:text-zinc-400 dark:hover:bg-violet-500/20 dark:hover:text-violet-300"
               :disabled="!eqOn"
-              @click="bumpBand(i, 1)"
-            >+</button>
+              @click="bumpBand(i, -1)"
+            >
+              <ArrowDown class="h-3.5 w-3.5" />
+            </button>
             <span class="whitespace-nowrap text-[10px] text-zinc-500">{{ fmtFreq(f) }}</span>
           </div>
         </div>

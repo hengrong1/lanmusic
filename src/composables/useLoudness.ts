@@ -134,6 +134,23 @@ export async function analyzeLoudness(
   }
 }
 
+/** 同一曲目的并发分析请求复用一个任务：手动「分析」按钮与切歌自动分析共用此入口，
+ *  避免对同一首歌同时跑两次解码（结果一致，纯粹浪费 CPU 与网络）。 */
+const inflight = new Map<number, Promise<LoudnessResult>>()
+
+export function analyzeTrackLoudness(
+  trackId: number,
+  durationSec?: number | null,
+): Promise<LoudnessResult> {
+  const running = inflight.get(trackId)
+  if (running) return running
+  const p = analyzeLoudness(trackId, durationSec).finally(() => {
+    inflight.delete(trackId)
+  })
+  inflight.set(trackId, p)
+  return p
+}
+
 /** analyzeLoudness 的实际实现；外层套总超时，确保任何环节挂起都能恢复。 */
 async function innerAnalyze(trackId: number, durationSec?: number | null): Promise<LoudnessResult> {
   const url = await api.getStreamUrl(trackId)

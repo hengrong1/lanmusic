@@ -34,7 +34,7 @@ export default {
     },
     normalize: 'Volume Normalization',
     normalizeEnable: 'Enable',
-    normalizeDesc: 'Automatically adjust playback gain by track loudness to even out volume. Reads embedded ReplayGain tags, or analyze the current track with the button below.',
+    normalizeDesc: 'Automatically adjust playback gain by track loudness to even out volume. Embedded ReplayGain tags are used when present; tracks without data are analyzed automatically in the background on track change, or use the button below to analyze the current track immediately.',
     normalizeAnalyze: 'Analyze Current Track',
     normalizeNoTrack: 'No track is currently playing',
     normalizeAnalyzed: 'Analyzed: suggested gain {db} dB',

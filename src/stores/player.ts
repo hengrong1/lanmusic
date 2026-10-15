@@ -22,6 +22,7 @@ import type { QrcLine } from '@/types'
 import { applyPowerGuard } from '@/composables/usePowerGuard'
 import { consumeSleepStop } from '@/composables/useSleepTimer'
 import { setNormalizeGain, normEnabled } from '@/composables/useAudioGraph'
+import { analyzeTrackLoudness } from '@/composables/useLoudness'
 import { errorText } from '@/i18n/error'
 
 export type PlayMode = 'order' | 'loop' | 'one' | 'shuffle'
@@ -780,13 +781,81 @@ export const usePlayerStore = defineStore('player', () => {
     saveQueueSnapshot(queue.value, index.value)
   }
 
+  // ---------- 音量归一化（ReplayGain）：切歌应用 + 自动分析 ----------
+  // 开启归一化后，切到「库中无增益数据」的曲目时后台自动分析（useLoudness：拉前缀
+  // 字节 + WebView 解码），完成后落库并（若仍是当前曲目）应用增益，实现切歌即自动拉齐。
+  // 调度规则：同刻最多一首在算（解码吃 CPU，串行），等待位只保留最新切到的曲目——
+  // 连续快切不会为「路过的歌」堆积任务；已开算的会跑完并落库（数据仍有长期价值，
+  // 只是不再应用到音量）。全程静默：失败仅由 useLoudness 落盘日志，无 toast。
+  /** 本会话内自动分析失败过的曲目：不再自动重试（防格式不支持/解码失败的歌
+   *  每次切到都反复拉取解码）；手动点「分析当前歌曲」不受此限，仍可主动重试 */
+  const autoLoudnessFailed = new Set<number>()
+  /** 切歌后延迟启动的句柄：停留时长超过延迟才真正开算，快速连切不为路过的歌白跑 */
+  let autoLoudnessTimer: ReturnType<typeof setTimeout> | undefined
+  let autoLoudnessBusy = false
+  let autoLoudnessPending: Track | null = null
+
+  /** 切歌后多久（ms）仍停留在该曲目才启动自动分析 */
+  const AUTO_LOUDNESS_DELAY_MS = 1000
+
+  /** 后台自动分析某曲目的响度：完成后落库，并（若仍是当前曲目）应用到播放 */
+  async function runAutoLoudness(t: Track) {
+    autoLoudnessBusy = true
+    try {
+      const r = await analyzeTrackLoudness(t.id, t.duration)
+      t.rgTrackGain = r.gainDb
+      t.rgTrackPeak = r.peak
+      api
+        .frontendLog('info', `[loudness] auto analyzed trackId=${t.id} gain=${r.gainDb}`)
+        .catch(() => {})
+      // 分析期间用户可能已切歌：增益照常记到分析的那首上，但只有它仍是当前曲目才应用到播放
+      if (current.value?.id === t.id) setNormalizeGain(r.gainDb)
+    } catch {
+      // 静默失败：日志已由 useLoudness 落盘；手动分析时会向用户提示
+      autoLoudnessFailed.add(t.id)
+    } finally {
+      autoLoudnessBusy = false
+      const next = autoLoudnessPending
+      autoLoudnessPending = null
+      if (next && normEnabled.value && next.rgTrackGain == null && !autoLoudnessFailed.has(next.id)) {
+        void runAutoLoudness(next)
+      }
+    }
+  }
+
+  /** 按当前曲目调度自动分析：无数据且开关开 → 延迟起步（busy 时占住等待位）；
+   *  其余情况清掉尚未开始的旧任务（用户已切走，不必再为它耗费解码） */
+  function scheduleAutoLoudness(t: Track | null) {
+    if (autoLoudnessTimer !== undefined) {
+      clearTimeout(autoLoudnessTimer)
+      autoLoudnessTimer = undefined
+    }
+    if (!t || !normEnabled.value || t.rgTrackGain != null || autoLoudnessFailed.has(t.id)) {
+      autoLoudnessPending = null
+      return
+    }
+    if (autoLoudnessBusy) {
+      autoLoudnessPending = t
+      return
+    }
+    autoLoudnessTimer = setTimeout(() => {
+      autoLoudnessTimer = undefined
+      // 延迟期间可能已切歌/已补上数据：仅当它仍是当前曲目且仍缺数据才启动
+      if (current.value?.id === t.id && t.rgTrackGain == null && normEnabled.value) {
+        void runAutoLoudness(t)
+      }
+    }, AUTO_LOUDNESS_DELAY_MS)
+  }
+
   /**
    * 音量归一化（ReplayGain）：把当前曲目的增益写入共享音频图的归一化节点。
-   * 无增益数据时写 0（增益=1，不改变音量）；开启归一化后切歌/切换开关即时生效。
+   * 无增益数据时写 0（增益=1，不改变音量）；开启归一化后切歌/切换开关即时生效；
+   * 无数据的曲目另行触发后台自动分析（见 scheduleAutoLoudness），完成后自动拉齐音量。
    */
   function applyCurrentNormalize() {
-    const db = current.value?.rgTrackGain ?? 0
-    setNormalizeGain(db)
+    const t = current.value
+    setNormalizeGain(t?.rgTrackGain ?? 0)
+    scheduleAutoLoudness(t)
   }
   watch([current, normEnabled], () => applyCurrentNormalize())
 
