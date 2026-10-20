@@ -516,6 +516,10 @@ export const usePlayerStore = defineStore('player', () => {
       listenSeconds = 0
       lastListenTick = performance.now()
       audio.src = trackStreamUrl(t.id)
+      // 归一化增益必须与换源同一时刻切换（瞬跳）：此刻旧曲已切断、新曲还没出声。
+      // 若跟着 current 的 watch 走，会早于换源 600ms 生效——而那 600ms 里旧曲正在淡出，
+      // 会顶着新曲的增益出声（从低调音量的歌切到高增益的歌时就是「突然响一声」）
+      setNormalizeGain(t.rgTrackGain ?? 0, t.rgTrackPeak ?? null, true)
       position.value = 0
       duration.value = t.duration ?? 0
       // 切换新歌立即进入加载态，直到 canplay/playing 事件清除
@@ -737,11 +741,13 @@ export const usePlayerStore = defineStore('player', () => {
           load(next)
         } else {
           audio.src = trackStreamUrl(next.id)
+          setNormalizeGain(next.rgTrackGain ?? 0, next.rgTrackPeak ?? null, true)
           duration.value = next.duration ?? 0
           void loadLyrics(next)
         }
       } else {
         audio.removeAttribute('src')
+        setNormalizeGain(0, null, true)
       }
     }
     snapshotQueue()
@@ -752,6 +758,7 @@ export const usePlayerStore = defineStore('player', () => {
     index.value = -1
     audio.pause()
     audio.removeAttribute('src')
+    setNormalizeGain(0, null, true)
     playing.value = false
     position.value = 0
     duration.value = 0
@@ -795,8 +802,10 @@ export const usePlayerStore = defineStore('player', () => {
   let autoLoudnessBusy = false
   let autoLoudnessPending: Track | null = null
 
-  /** 切歌后多久（ms）仍停留在该曲目才启动自动分析 */
-  const AUTO_LOUDNESS_DELAY_MS = 1000
+  /** 切歌后多久（ms）仍停留在该曲目才启动自动分析。
+   *  3s 而不是 1s：刚切歌时 <audio> 正在猛拉缓冲，此时再并发拉分析前缀会抢同一个
+   *  host 的连接，实测出现过单块卡住 30s+ 的超时；等播放稳定后再算，冲突小得多 */
+  const AUTO_LOUDNESS_DELAY_MS = 3000
 
   /** 后台自动分析某曲目的响度：完成后落库，并（若仍是当前曲目）应用到播放 */
   async function runAutoLoudness(t: Track) {
@@ -809,7 +818,7 @@ export const usePlayerStore = defineStore('player', () => {
         .frontendLog('info', `[loudness] auto analyzed trackId=${t.id} gain=${r.gainDb}`)
         .catch(() => {})
       // 分析期间用户可能已切歌：增益照常记到分析的那首上，但只有它仍是当前曲目才应用到播放
-      if (current.value?.id === t.id) setNormalizeGain(r.gainDb)
+      if (current.value?.id === t.id) setNormalizeGain(r.gainDb, r.peak)
     } catch {
       // 静默失败：日志已由 useLoudness 落盘；手动分析时会向用户提示
       autoLoudnessFailed.add(t.id)
@@ -849,15 +858,27 @@ export const usePlayerStore = defineStore('player', () => {
 
   /**
    * 音量归一化（ReplayGain）：把当前曲目的增益写入共享音频图的归一化节点。
-   * 无增益数据时写 0（增益=1，不改变音量）；开启归一化后切歌/切换开关即时生效；
-   * 无数据的曲目另行触发后台自动分析（见 scheduleAutoLoudness），完成后自动拉齐音量。
+   * 无增益数据时写 0（增益=1，不改变音量）；无数据的曲目另行触发后台自动分析
+   * （见 scheduleAutoLoudness），完成后自动拉齐音量。
+   *
+   * 关键：增益切换必须跟「换源」对齐，不能跟 `current` 对齐。切歌是先 fadeOut
+   * 旧曲 600ms 再换源，`current` 在那之前就变了；若此刻就把新曲增益写进去，
+   * 正在淡出的旧曲会顶着新曲增益出声——从低增益的歌切到 +12dB 的歌时，就是
+   * 用户听到的「突然响一声然后声音变小」。所以换源路径（load / 预载 / 清空 /
+   * 启动恢复）各自在 audio.src 变更处直接调 setNormalizeGain(..., true)。
    */
-  function applyCurrentNormalize() {
+  function applyCurrentNormalize(immediate = false) {
     const t = current.value
-    setNormalizeGain(t?.rgTrackGain ?? 0)
-    scheduleAutoLoudness(t)
+    // 同时写入峰值：图里的归一化节点据此做削波保护（增益过大时自动压到安全电平）
+    setNormalizeGain(t?.rgTrackGain ?? 0, t?.rgTrackPeak ?? null, immediate)
   }
-  watch([current, normEnabled], () => applyCurrentNormalize())
+  // current 变化只负责调度后台自动分析；增益在换源处同步切换（见 load）
+  watch(current, (t) => scheduleAutoLoudness(t))
+  // 开关切换不涉及换源，立即生效
+  watch(normEnabled, () => {
+    applyCurrentNormalize(true)
+    scheduleAutoLoudness(current.value)
+  })
 
   // 系统托盘控制（M2）
   void listen<string>('tray', (e) => {
@@ -932,6 +953,7 @@ export const usePlayerStore = defineStore('player', () => {
     index.value = startIndex
     const first = tracks[startIndex]
     audio.src = trackStreamUrl(first.id)
+    setNormalizeGain(first.rgTrackGain ?? 0, first.rgTrackPeak ?? null, true)
     duration.value = first.duration ?? 0
     void loadLyrics(first)
     const pos = Number(localStorage.getItem(LS.lastPos) ?? 0)

@@ -118,6 +118,25 @@ function dbToLinear(db: number): number {
   return Math.pow(10, db / 20)
 }
 
+/** 归一化增益上限（dB）：+12 已足够覆盖低电平录音；不设 +24 这种会把歌推爆的值 */
+const NORM_CLAMP_DB = 12
+/** 削波保护：应用增益后峰值不得超过此电平（dBFS） */
+const PEAK_SAFE_DB = -0.3
+
+function clampNorm(db: number): number {
+  return Math.max(-NORM_CLAMP_DB, Math.min(NORM_CLAMP_DB, db))
+}
+
+/**
+ * 由峰值反推「最大安全增益」（dB）。峰值缺失/无效时返回 +∞（无从限制）。
+ * 这是归一化的最后一道保险：即便增益数据有误（如标签乱写、分析异常），
+ * 也不会把超过 0dBFS 的信号送进扬声器——削波的听感正是「声音巨大又闷又破」。
+ */
+function maxSafeGainDb(peak: number | null): number {
+  if (peak == null || !Number.isFinite(peak) || peak <= 0.0001) return Number.POSITIVE_INFINITY
+  return PEAK_SAFE_DB - 20 * Math.log10(peak)
+}
+
 /** 把 EQ 状态落到图上（图未就绪时只更新内存状态，待建图时一并应用） */
 function applyEqState(s: EqState) {
   // 内存态始终更新，便于图就绪后 apply
@@ -139,10 +158,21 @@ function applyEqState(s: EqState) {
 // 建图前的待应用 EQ 状态：从本地存档载入（否则首次建图会把已保存的均衡器覆盖成平直）
 let pendingEq: EqState = loadEq()
 
-function applyNormalize(db: number, enabled: boolean) {
+function applyNormalize(db: number, enabled: boolean, peak: number | null, immediate = false) {
   if (!ctx || !normGain) return
-  const linear = enabled ? dbToLinear(clampGain(db)) : 1
-  normGain.gain.setTargetAtTime(linear, ctx.currentTime, 0.02)
+  let effective = clampNorm(db)
+  const safe = maxSafeGainDb(peak)
+  if (effective > safe) effective = safe
+  const linear = enabled ? dbToLinear(effective) : 1
+  if (immediate) {
+    // 换源瞬间必须瞬跳：此时旧音频已切断、新音频还没出声，平滑过渡没有意义，
+    // 反而会让上一个值残留几十毫秒（旧曲尾巴被新曲增益放大 = 用户听到「响一声」）
+    normGain.gain.cancelScheduledValues(ctx.currentTime)
+    normGain.gain.setValueAtTime(linear, ctx.currentTime)
+  } else {
+    // 播放中调整（开关、分析完成、微调）用平滑过渡，避免可闻的跳变
+    normGain.gain.setTargetAtTime(linear, ctx.currentTime, 0.02)
+  }
 }
 
 export interface AudioGraph {
@@ -196,7 +226,7 @@ export function ensureGraph(): AudioGraph | null {
 
     // 应用已保存的 EQ 与归一化状态
     applyEqState(pendingEq)
-    if (normEnabled.value) applyNormalize(currentNormalizeDb, true)
+    if (normEnabled.value) applyNormalize(currentNormalizeDb, true, currentNormalizePeak)
     armGesture()
   } catch {
     // 创建失败（如二次创建）：静默降级为无音效处理，不影响播放
@@ -224,6 +254,8 @@ export function getAnalyser(): AnalyserNode | null {
 // ---- 归一化（ReplayGain / 音量归一化）内存态 ----
 export const normEnabled = ref(localStorage.getItem(LS_NORM_ON) === '1')
 let currentNormalizeDb = 0
+/** 最近一次写入的峰值（线性）：用于削波保护，null 表示无数据 */
+let currentNormalizePeak: number | null = null
 
 export function getNormalizeEnabled(): boolean {
   return normEnabled.value
@@ -237,13 +269,18 @@ export function setNormalizeEnabled(v: boolean) {
   } catch {
     /* ignore */
   }
-  applyNormalize(currentNormalizeDb, v)
+  applyNormalize(currentNormalizeDb, v, currentNormalizePeak)
 }
 
-/** 写入某曲目的归一化增益（dB，已 clamp），并在开启时立即应用 */
-export function setNormalizeGain(db: number) {
-  currentNormalizeDb = clampGain(db)
-  applyNormalize(currentNormalizeDb, normEnabled.value)
+/**
+ * 写入某曲目的归一化增益（dB）与峰值（线性，可选），并在开启时立即应用。
+ * peak 参与削波保护：实际生效增益会被压到「应用后峰值 ≤ PEAK_SAFE_DB」以内。
+ * immediate=true 用于换源瞬间：直接跳到目标值，不做 20ms 平滑（见 applyNormalize）。
+ */
+export function setNormalizeGain(db: number, peak?: number | null, immediate = false) {
+  currentNormalizeDb = clampNorm(db)
+  currentNormalizePeak = peak ?? null
+  applyNormalize(currentNormalizeDb, normEnabled.value, currentNormalizePeak, immediate)
 }
 
 // ---- EQ 内存态与接口 ----

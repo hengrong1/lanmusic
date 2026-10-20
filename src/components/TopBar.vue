@@ -199,6 +199,29 @@ function onInput() {
   // 防抖时长可在设置中调整，避免打字过快导致频繁查询卡顿
   timer = setTimeout(() => runSearch(input.value), getSearchSettings().debounceMs)
 }
+
+/**
+ * 粘贴兜底：WebView2 偶发「第一次 Ctrl+V 不落字」（paste 事件到了，但原生插入
+ * 没有生效；用户表现为「要按两次才粘贴上」）。这里在下一轮事件循环对比值是否变化，
+ * 没变就按当前光标位置手动插入，并派发 input 让 v-model 同步（撤销栈保留）。
+ * 仅在确实没插进去时动手，正常粘贴完全不干预；命中兜底时落一条日志便于事后统计。
+ */
+function onPaste(e: ClipboardEvent) {
+  const text = e.clipboardData?.getData('text') ?? ''
+  if (!text) return
+  const el = e.target as HTMLInputElement
+  const before = el.value
+  setTimeout(() => {
+    if (el.value !== before) return // 原生粘贴成功，什么都不做
+    const start = el.selectionStart ?? el.value.length
+    const end = el.selectionEnd ?? el.value.length
+    el.setRangeText(text, start, end, 'end')
+    el.dispatchEvent(new Event('input', { bubbles: true }))
+    api
+      .frontendLog('warn', `[search] paste fallback used len=${text.length} at=${start}-${end}`)
+      .catch(() => {})
+  }, 0)
+}
 onBeforeUnmount(() => {
   clearTimeout(timer)
   clearTimeout(blurTimer)
@@ -270,6 +293,7 @@ defineExpose({ focusSearch })
         @focus="onFocus"
         @blur="onBlur"
         @input="onInput"
+        @paste="onPaste"
         @keydown.enter="onEnter"
         @keydown.esc="clearSearch"
       />

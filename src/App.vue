@@ -368,6 +368,10 @@ function runShortcut(action: ShortcutAction) {
 window.addEventListener('keydown', (e) => {
   const target = e.target as HTMLElement
   const typing = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable
+  // 系统编辑键（Ctrl/Cmd + C/V/X/A/Z/Y）无条件放行：它们属于剪贴板/撤销基础设施，
+  // 任何自定义快捷键都不该劫持。尤其 search 动作带 ignoresTyping——一旦被改成
+  // Ctrl+V，输入框里的粘贴会被这里的 preventDefault 吞掉，表现为「Ctrl+V 没反应」。
+  if ((e.ctrlKey || e.metaKey) && !e.altKey && /^[cvxazy]$/i.test(e.key)) return
   // MV 播放层打开时让位：快捷键交给播放器（Esc 关闭由 MvPlayer 处理）
   if (mv.opened.value) return
   // 任意弹窗打开时让位：快捷键不穿透弹窗操作背景（空格/搜索/切歌等），

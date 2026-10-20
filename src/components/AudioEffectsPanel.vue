@@ -162,7 +162,8 @@ async function analyzeCurrent() {
     // 增益照常记到分析的那首（cur）上，但共享音频图的归一化增益属于
     // 当前曲目，不能把旧曲增益误写到新曲的播放上
     cur.rgTrackGain = r.gainDb
-    if (player.current?.id === cur.id) setNormalizeGain(r.gainDb)
+    cur.rgTrackPeak = r.peak
+    if (player.current?.id === cur.id) setNormalizeGain(r.gainDb, r.peak)
     toast(tr('effects.normalizeAnalyzed', { db: r.gainDb.toFixed(1) }), 'info')
   } catch (e) {
     toast(tr('effects.normalizeFailed', { msg: String(e) }), 'error')

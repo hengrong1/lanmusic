@@ -24,6 +24,12 @@ use crate::network;
 /// 也只返回该大小的数据，媒体引擎会自动发起后续 Range 请求。
 const CHUNK: u64 = 2 * 1024 * 1024;
 
+/// 跨域响应必须显式暴露的头。前端的 fetch（应用源 tauri.localhost → 音频源
+/// music.localhost）是跨域请求，只能读到 CORS 安全名单内的头；Content-Range
+/// 不在名单里，不 expose 的话 JS 端 headers.get() 恒为 null——响度分析拿不到
+/// 文件总大小，就会低估需要拉取的字节数（实测只解码出 14s 的前奏）。
+const CORS_EXPOSE_HEADERS: &str = "Content-Range, Content-Length, Accept-Ranges";
+
 pub fn music_protocol<R: Runtime>(
     ctx: UriSchemeContext<'_, R>,
     req: Request<Vec<u8>>,
@@ -260,12 +266,12 @@ pub(crate) fn serve_file_response(
                 return server_error();
             }
             let len = (end - start + 1) as usize;
-            let buf = file
-                .take(len as u64)
-                .bytes()
-                .collect::<Result<Vec<u8>, _>>();
-            match buf {
-                Ok(data) => Response::builder()
+            // 批量读：Read::bytes() 是逐字节 read（每字节一次系统调用），2MB 分块在
+            // SMB/NAS 上要好几秒；read_to_end 走大缓冲，同一块是毫秒级。
+            // 响度分析要连续拉十几个分块，这个差异直接决定分析能否在超时内跑完。
+            let mut data = Vec::with_capacity(len);
+            match file.take(len as u64).read_to_end(&mut data) {
+                Ok(_) => Response::builder()
                     .status(StatusCode::PARTIAL_CONTENT)
                     .header(CONTENT_TYPE, mime)
                     .header(ACCEPT_RANGES, "bytes")
@@ -273,6 +279,7 @@ pub(crate) fn serve_file_response(
                     .header(CONTENT_LENGTH, data.len())
                     .header(CACHE_CONTROL, "no-store")
                     .header("Access-Control-Allow-Origin", "*")
+                    .header("Access-Control-Expose-Headers", CORS_EXPOSE_HEADERS)
                     .body(data)
                     .unwrap_or_else(|_| server_error()),
                 Err(_) => server_error(),
@@ -282,9 +289,9 @@ pub(crate) fn serve_file_response(
         // 并返回 206 + Content-Range，告知客户端后续自行续传（避免大文件一次性进内存 OOM）
         None => {
             let capped = size.min(CHUNK);
-            let buf = file.take(capped).bytes().collect::<Result<Vec<u8>, _>>();
-            match buf {
-                Ok(data) => {
+            let mut data = Vec::with_capacity(capped as usize);
+            match file.take(capped).read_to_end(&mut data) {
+                Ok(_) => {
                     let full = (size > 0 && data.len() as u64 == size) || size == 0;
                     let mut b = Response::builder();
                     if full {
@@ -301,6 +308,7 @@ pub(crate) fn serve_file_response(
                         .header(CONTENT_LENGTH, data.len())
                         .header(CACHE_CONTROL, "no-store")
                         .header("Access-Control-Allow-Origin", "*")
+                        .header("Access-Control-Expose-Headers", CORS_EXPOSE_HEADERS)
                         .body(data)
                         .unwrap_or_else(|_| server_error())
                 }
@@ -335,6 +343,7 @@ pub(crate) fn serve_raw(data: &[u8], range_header: Option<&str>) -> Response<Vec
                 .header(CONTENT_LENGTH, e - s)
                 .header(CACHE_CONTROL, "no-store")
                 .header("Access-Control-Allow-Origin", "*")
+                .header("Access-Control-Expose-Headers", CORS_EXPOSE_HEADERS)
                 .body(data[s..e].to_vec())
                 .unwrap_or_else(|_| server_error())
         }
@@ -345,6 +354,7 @@ pub(crate) fn serve_raw(data: &[u8], range_header: Option<&str>) -> Response<Vec
             .header(CONTENT_LENGTH, size)
             .header(CACHE_CONTROL, "no-store")
             .header("Access-Control-Allow-Origin", "*")
+            .header("Access-Control-Expose-Headers", CORS_EXPOSE_HEADERS)
             .body(data.to_vec())
             .unwrap_or_else(|_| server_error()),
     }
@@ -492,7 +502,8 @@ pub(crate) fn proxy_response(
         .header(ACCEPT_RANGES, "bytes")
         .header(CONTENT_LENGTH, buf.len())
         .header(CACHE_CONTROL, "no-store")
-        .header("Access-Control-Allow-Origin", "*");
+        .header("Access-Control-Allow-Origin", "*")
+        .header("Access-Control-Expose-Headers", CORS_EXPOSE_HEADERS);
     if partial {
         builder = builder.header(CONTENT_RANGE, range_value);
     }

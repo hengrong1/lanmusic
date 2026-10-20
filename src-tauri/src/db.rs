@@ -331,6 +331,21 @@ pub(crate) fn migrate(conn: &Connection) -> rusqlite::Result<()> {
         )?;
         set_setting(conn, "raw_artist_migrated", "1")?;
     }
+
+    // 响度分析算法修正（2026-10-20）：旧实现受 scheme::parse_range 的 2MB 封顶影响，
+    // 实际只解码了前 2MB（高码率 FLAC 仅几秒前奏），增益严重偏乐观——出现过 +24dB
+    // 把歌推爆（削波听感「非常大而且闷」）。旧结果全部作废，切歌时按新算法自动重算。
+    if get_setting(conn, "loudness_gain_reset_v2").is_none() {
+        let n = conn.execute(
+            "UPDATE tracks SET rg_track_gain = NULL, rg_track_peak = NULL
+             WHERE rg_track_gain IS NOT NULL",
+            [],
+        )?;
+        if n > 0 {
+            log::info!("迁移：响度分析算法修正，清空 {n} 条旧增益，切歌时自动重算");
+        }
+        set_setting(conn, "loudness_gain_reset_v2", "1")?;
+    }
     Ok(())
 }
 
